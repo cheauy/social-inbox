@@ -1,0 +1,17 @@
+﻿[TENH Admin] Paged connection search failed: Database query failed.
+✔ paged connection search preserves the full admin auth gate before database reads (3443.4229ms)
+✔ bounded combined pages traverse more than 200 tied connections without missing or duplicate IDs (1986.1701ms)
+✔ business-name, Khmer and NFC case-insensitive searches apply across the full dataset before pagination (344.9921ms)
+✔ literal punctuation, row fields, @username and UUID IDs remain searchable without losing business labels (316.1353ms)
+✔ released visibility and platform filters apply before pagination with the existing null-status rules (125.8873ms)
+✔ a literal asterisk never expands to unrelated connections or business names (300.1742ms)
+✔ literal asterisks match only exact name, business, username and ID text (120.3378ms)
+✔ invalid pagination rejects without reads, database failures fail closed, and legacy GET keeps its 200-per-platform contract (401.5889ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9478.4553

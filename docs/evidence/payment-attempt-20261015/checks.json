@@ -1,0 +1,147 @@
+{
+  "scope": "TENH CHAT subscription payment attempt flow",
+  "head": "140151e",
+  "productionVerified": false,
+  "checks": [
+    {
+      "name": "Node API, billing, PayWay, native fixtures, manual lifecycle, application baselines and subscription access suites",
+      "command": "TENH_PGLITE_MODULE=<local PGlite> node --test tests/billing-payment-attempt.test.cjs tests/billing-payment-display.test.cjs tests/billing-receipts-server.test.cjs tests/manual-payment-attempts.test.cjs tests/mobile-aba-payment.test.cjs tests/mobile-billing-duration.test.cjs tests/native-payway-fixture-check.test.cjs tests/payway-account-deletion-hold.test.cjs tests/payway-account-deletion-release.test.cjs tests/payway-application-baseline.test.cjs tests/payway-coexistence-installer.test.cjs tests/payway-cross-provider-recovery.test.cjs tests/payway-legacy-coexistence.test.cjs tests/payway-pending-preservation.test.cjs tests/payway-return.test.cjs tests/payway-safety.test.cjs tests/payway-sql-isolated.test.cjs tests/payway-strict-workspace.test.cjs tests/payway-upgrade-duration-ui.test.cjs tests/payway-upgrade-matrix.test.cjs tests/subscription-overview-payment-state.test.cjs tests/subscription-access-gate.test.mjs",
+      "exitCode": 0,
+      "tests": 323,
+      "passed": 323,
+      "failed": 0,
+      "skipped": 0,
+      "log": "logs/payment-flow-tests-final.txt",
+      "files": [
+        "tests/billing-payment-attempt.test.cjs",
+        "tests/billing-payment-display.test.cjs",
+        "tests/billing-receipts-server.test.cjs",
+        "tests/manual-payment-attempts.test.cjs",
+        "tests/mobile-aba-payment.test.cjs",
+        "tests/mobile-billing-duration.test.cjs",
+        "tests/native-payway-fixture-check.test.cjs",
+        "tests/payway-account-deletion-hold.test.cjs",
+        "tests/payway-account-deletion-release.test.cjs",
+        "tests/payway-application-baseline.test.cjs",
+        "tests/payway-coexistence-installer.test.cjs",
+        "tests/payway-cross-provider-recovery.test.cjs",
+        "tests/payway-legacy-coexistence.test.cjs",
+        "tests/payway-pending-preservation.test.cjs",
+        "tests/payway-return.test.cjs",
+        "tests/payway-safety.test.cjs",
+        "tests/payway-sql-isolated.test.cjs",
+        "tests/payway-strict-workspace.test.cjs",
+        "tests/payway-upgrade-duration-ui.test.cjs",
+        "tests/payway-upgrade-matrix.test.cjs",
+        "tests/subscription-overview-payment-state.test.cjs",
+        "tests/subscription-access-gate.test.mjs"
+      ]
+    },
+    {
+      "name": "Existing upgrade effect browser regression, standalone",
+      "command": "node --test tests/payway-upgrade-duration-browser.test.cjs",
+      "exitCode": 0,
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "log": "logs/payment-flow-duration-browser.txt"
+    },
+    {
+      "name": "Payment attempt real React browser",
+      "command": "node tests/payment-attempt-browser.cjs",
+      "exitCode": 0,
+      "cases": 8,
+      "assertions": 536,
+      "widths": [
+        390,
+        768,
+        1024,
+        1440
+      ],
+      "languages": [
+        "en",
+        "km"
+      ],
+      "externalRequests": 0,
+      "paymentBytesTransferred": 0,
+      "evidence": "browser/browser-results.json"
+    },
+    {
+      "name": "Existing billing history/receipt/print browser compatibility",
+      "command": "TENH_BILLING_EVIDENCE=<this evidence>/receipt-compatibility node tests/billing-receipts-browser.cjs",
+      "exitCode": 0,
+      "cases": 6,
+      "assertions": 864,
+      "languages": [
+        "en",
+        "km"
+      ],
+      "log": "logs/payment-flow-receipt-browser.txt"
+    },
+    {
+      "name": "TypeScript, standalone after build",
+      "command": "npx tsc --noEmit",
+      "exitCode": 0,
+      "log": "logs/payment-flow-types-final.txt"
+    },
+    {
+      "name": "Scoped ESLint",
+      "command": "npx eslint <23 touched source/test files> --format json --output-file <evidence>/logs/payment-flow-eslint.json",
+      "exitCode": 0,
+      "files": 23,
+      "errors": 0,
+      "warnings": 27,
+      "warningsByFile": {
+        "components\\subscription\\subscription-payment-view.tsx": 4,
+        "components\\subscription\\subscription-view.tsx": 23
+      }
+    },
+    {
+      "name": "Production build, local only",
+      "command": "npm run build",
+      "exitCode": 0,
+      "log": "logs/payment-flow-build.txt"
+    },
+    {
+      "name": "Whitespace",
+      "command": "git diff --check",
+      "exitCode": 0,
+      "log": "logs/payment-flow-whitespace.txt"
+    }
+  ],
+  "intermediateFailures": [
+    {
+      "check": "Combined runner including upgrade browser",
+      "result": "Interrupted one owned stalled upgrade-browser child after about 570 seconds; other tests passed. Separate rerun passed, and full non-browser rerun passed.",
+      "log": "logs/payment-flow-tests.txt"
+    },
+    {
+      "check": "TypeScript while Next build regenerated .next/types",
+      "result": "Failed TS6053 for missing generated files during concurrent build; standalone TypeScript after build passed.",
+      "log": "logs/payment-flow-types.txt"
+    },
+    {
+      "check": "Initial legacy manual prepare fixture",
+      "result": "Failed because mock lacked new readiness/upload RPC; fixture updated and final suites passed."
+    }
+  ],
+  "unrun": [
+    "Hosted migrations and actual installed SQL verification",
+    "Real multi-session PostgreSQL locking/deadlock tests; local postgres/initdb/psql unavailable",
+    "Live PayWay, real payments, live callbacks, production proof storage and deployed behavior",
+    "Physical native devices/runtime and physical mobile/tablet devices",
+    "Full unrelated repository lint/test sweep"
+  ],
+  "prerequisites": [
+    "Review installed compatibility functions and the two forward migrations",
+    "Apply manual lifecycle migration then application baseline migration only with separate approval and drained writers",
+    "Deploy coordinated callers only after guard readiness passes",
+    "Review old unresolved payments lacking original baselines; no automatic backfill or cleanup"
+  ],
+  "notes": [
+    "PGlite is a temporary local dependency, not added to package.json",
+    "Sandbox/unknown classification and active-owner receipt access are retained",
+    "No hosted mutation, POS edits, commit, push or deploy for this task",
+    "Unrelated existing and concurrent working changes retained"
+  ]
+}

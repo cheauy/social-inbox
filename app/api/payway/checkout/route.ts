@@ -26,9 +26,7 @@ import {
   getBillingCycleDefinition,
   getTrustedSubscriptionQuote,
 } from "@/lib/subscription/plan-catalog";
-import { closePayWayTransaction } from "@/lib/payway/close-transaction";
 import { getPendingCheckoutBlocker, MAX_SUPERSEDED_PAYWAY_CHECKOUTS } from "@/lib/payway/pending-checkout-policy";
-import { verifyAndFinalizePayWayTransaction } from "@/lib/payway/finalize-payment";
 import {
   supabaseAdmin,
 } from "@/lib/supabase/admin";
@@ -265,6 +263,8 @@ export async function POST(
     if (unresolvedManual?.length) {
       return NextResponse.json({ success: false,
         code: "TENH_BILLING_PURCHASE_PENDING",
+        manualRequestId: unresolvedManual[0].id,
+        businessId: billingMember.business_id,
         error: "An unresolved manual payment requires billing review before another checkout." }, { status: 409 });
     }
 
@@ -311,9 +311,7 @@ export async function POST(
       error: subscriptionError,
     } = await supabaseAdmin
       .from("business_subscriptions")
-      .select(
-        "id,business_id,status,plan_code,billing_cycle,last_paid_amount,last_paid_currency,member_limit,channel_limit,pricing_version,pricing_snapshot,current_period_start,current_period_end,cancel_at_period_end,pending_plan_change_type",
-      )
+      .select("*")
       .eq(
         "business_id",
         billingMember.business_id,
@@ -604,16 +602,7 @@ export async function POST(
       );
     }
 
-    /*
-     * Duplicate-payment guard.
-     *
-     * Each POST previously created a new billing_transactions row and a new
-     * ABA QR. Clicking Pay several times therefore left several live QRs for
-     * the same purchase, and paying two of them charged the customer twice
-     * and stacked two activations. Reuse is not safe (the PayWay hash is
-     * bound to req_time), so instead close any still-open transaction for
-     * this workspace before opening a new one.
-     */
+    // Return the saved attempt instead of replacing an unresolved provider transaction.
     const { data: openTransactions, error: openTransactionsError } =
       await supabaseAdmin
         .from("billing_transactions")
@@ -646,6 +635,7 @@ export async function POST(
         {
           success: false,
           code: pendingBlocker.code,
+          businessId: billingMember.business_id,
           error: "An earlier saved ABA PayWay checkout is still unresolved. Open that payment or review its status before starting another.",
           ...(pendingBlocker.transactionId
             ? { transactionId: pendingBlocker.transactionId }
@@ -655,139 +645,17 @@ export async function POST(
       );
     }
 
-    for (const open of openTransactions ?? []) {
-      const openTransactionId = String(
-        open.provider_transaction_id ?? "",
-      ).trim();
-
-      if (!openTransactionId) {
-        continue;
-      }
-
-      /*
-       * Verify first: if the customer already paid this one, stop here and
-       * send them back to that transaction instead of charging them again.
-       */
-      try {
-        const verification = await verifyAndFinalizePayWayTransaction(
-          openTransactionId,
-          "browser-status",
-        );
-
-        if (verification.paymentState === "recovery_required") {
-          return NextResponse.json({ success: false,
-            code: "TENH_BILLING_RECOVERY_REQUIRED",
-            error: "The existing payment requires billing review before another checkout." }, { status: 409 });
-        }
-
-        if (verification.paymentState === "approved") {
-          return NextResponse.json(
-            {
-              success: false,
-              code: "TENH_PAYWAY_ALREADY_PAID",
-              error:
-                "This purchase was already paid. Open Subscription to see the active plan and receipt.",
-              transactionId: openTransactionId,
-            },
-            { status: 409 },
-          );
-        }
-
-        if (verification.paymentState !== "pending") {
-          // Already declined/cancelled/failed and recorded; nothing to close.
-          continue;
-        }
-      } catch (error) {
-        console.warn(
-          "[TENH PayWay] Could not verify an open transaction before checkout:",
-          error,
-        );
-        return NextResponse.json({ success: false,
-          code: "TENH_BILLING_RECOVERY_REQUIRED",
-          error: "The existing payment could not be verified. Billing review is required before another checkout." }, { status: 409 });
-      }
-
-      let closeResult: Awaited<
-        ReturnType<
-          typeof closePayWayTransaction
-        >
-      >;
-
-      try {
-        closeResult = await closePayWayTransaction(openTransactionId);
-      } catch (error) {
-        console.warn(
-          "[TENH PayWay] Could not close a previous open transaction:",
-          error,
-        );
-
-        return NextResponse.json(
-          {
-            success: false,
-            code: "TENH_PAYWAY_PREVIOUS_CHECKOUT_OPEN",
-            error:
-              "TENH could not safely close the previous ABA PayWay checkout. Retry after its status is confirmed.",
-            transactionId: openTransactionId,
-          },
-          { status: 503 },
-        );
-      }
-
-      if (!closeResult.closed) {
-        return NextResponse.json(
-          {
-            success: false,
-            code: "TENH_PAYWAY_PREVIOUS_CHECKOUT_OPEN",
-            error:
-              "The previous ABA PayWay checkout could not be confirmed closed. Check its payment status before trying again.",
-            transactionId: openTransactionId,
-          },
-          { status: 409 },
-        );
-      }
-
-      const {
-        data: cancelledPrevious,
-        error: cancelPreviousError,
-      } = await supabaseAdmin
-        .from("billing_transactions")
-        .update({
-          status: "cancelled",
-          provider_status: "SUPERSEDED_BY_NEW_CHECKOUT",
-        })
-        .eq("id", open.id)
-        .eq("status", "pending")
-        .select("id")
-        .maybeSingle();
-
-      if (cancelPreviousError) {
-        console.error(
-          "[TENH PayWay] Provider transaction closed but local cancellation failed:",
-          cancelPreviousError,
-        );
-
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "The previous ABA PayWay checkout was closed, but TENH could not save its state. Retry after the payment status is refreshed.",
-          },
-          { status: 500 },
-        );
-      }
-
-      if (!cancelledPrevious) {
-        return NextResponse.json(
-          {
-            success: false,
-            code: "TENH_PAYWAY_PREVIOUS_CHECKOUT_CHANGED",
-            error:
-              "The previous ABA PayWay checkout changed while TENH was closing it. Refresh its payment status before trying again.",
-            transactionId: openTransactionId,
-          },
-          { status: 409 },
-        );
-      }
+    const applicationGuard = await supabaseAdmin.rpc("tenh_payment_application_guards_ready", {});
+    if (applicationGuard.error || applicationGuard.data !== true) {
+      return NextResponse.json({ success: false, code: "TENH_BILLING_APPLICATION_MIGRATION_REQUIRED",
+        error: "Payment preparation is unavailable until the billing application guards are installed." }, { status: 503 });
+    }
+    const preparedManual = await supabaseAdmin.from("manual_payment_uploads").select("id")
+      .eq("business_id", billingMember.business_id).eq("state", "prepared").limit(1).maybeSingle();
+    if (preparedManual.error) throw new Error("Unable to verify prepared manual payments.");
+    if (preparedManual.data) {
+      return NextResponse.json({ success: false, code: "TENH_BILLING_PURCHASE_PENDING", businessId: billingMember.business_id,
+        manualRequestId: preparedManual.data.id, error: "Resume the original manual payment before starting another checkout." }, { status: 409 });
     }
 
     const reqTime =
@@ -982,6 +850,7 @@ export async function POST(
           billingMember.id,
         request_time: reqTime,
         metadata: {
+          _expected_subscription: subscription,
           checkout_contract_version: 2,
           environment:
             config.environment,

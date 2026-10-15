@@ -5,7 +5,7 @@ type SavedPendingCheckout = {
 
 export const MAX_SUPERSEDED_PAYWAY_CHECKOUTS = 20;
 
-/** Saved checkouts created before this contract must remain available for recovery. */
+/** Every unresolved attempt must keep its original provider reference. */
 export function getPendingCheckoutBlocker(rows: SavedPendingCheckout[]) {
   if (rows.length > MAX_SUPERSEDED_PAYWAY_CHECKOUTS) {
     return {
@@ -31,5 +31,8 @@ export function getPendingCheckoutBlocker(rows: SavedPendingCheckout[]) {
     }
   }
 
-  return null;
+  return rows.length ? {
+    code: "TENH_PAYWAY_CHECKOUT_IN_PROGRESS",
+    transactionId: String(rows[0].provider_transaction_id),
+  } : null;
 }

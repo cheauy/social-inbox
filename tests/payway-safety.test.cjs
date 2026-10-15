@@ -16,21 +16,12 @@ test('payment page never trusts a success query parameter without a transaction 
   );
 });
 
-test('checkout never supersedes a transaction unless PayWay confirmed it closed', () => {
+test('checkout never closes or supersedes an unresolved attempt', () => {
   const source = fs.readFileSync(
     'app/api/payway/checkout/route.ts',
     'utf8',
   );
-  const closeGuard = source.indexOf('if (!closeResult.closed)');
-  const localCancellation = source.indexOf(
-    'provider_status: "SUPERSEDED_BY_NEW_CHECKOUT"',
-  );
-
-  assert.notEqual(closeGuard, -1);
-  assert.notEqual(localCancellation, -1);
-  assert.ok(closeGuard < localCancellation);
-  assert.match(source, /if \(cancelPreviousError\)/);
-  assert.match(source, /if \(!cancelledPrevious\)/);
+  assert.doesNotMatch(source, /closePayWayTransaction|SUPERSEDED_BY_NEW_CHECKOUT|verifyAndFinalizePayWayTransaction/);
   assert.match(source, /transactionError\.code === "23505"/);
 });
 
@@ -264,7 +255,7 @@ test('callback signature follows the sorted-key PayWay contract', () => {
   );
 });
 
-function finalizerHarness(providerPatch = {}, transactionPatch = {}, rpcPatch = {}) {
+function finalizerHarness(providerPatch = {}, transactionPatch = {}, rpcPatch = {}, guardReady = true) {
   const transaction = {
     id: 'billing-1',
     business_id: 'business-1',
@@ -289,10 +280,12 @@ function finalizerHarness(providerPatch = {}, transactionPatch = {}, rpcPatch = 
       return query;
     },
     async rpc(name, args) {
+      if (name === 'tenh_payment_application_guards_ready') return { data: guardReady, error: null };
       rpcCalls.push({ name, args });
       if (name === 'tenh_observe_payway_verification') return { data: { payment_state: args.p_observation.conflict_reason?'recovery_required':transaction.status, ...rpcPatch }, error: null };
       return {
         data: [{
+          business_id: transaction.business_id,
           already_approved: false,
           plan_code: transaction.plan_code,
           subscription_status: 'active',
@@ -363,7 +356,7 @@ test('only the signed USD billing currency can reach activation', async () => {
   assert.equal(app.rpcCalls[0].args.p_observation.conflict_reason,'SIGNED_BILLING_CURRENCY_MISMATCH');
 });
 
-test('matching approved response reaches the atomic activation boundary once', async () => {
+test('matching approved response reaches the activation RPC once', async () => {
   const app = finalizerHarness();
   const result = await app.finalize(
     '1760000000123456789',
@@ -383,6 +376,25 @@ test('legacy approval recovery is never returned as a paid subscription',async()
  const result=await app.finalize('1760000000123456789','callback');
  assert.equal(result.paymentState,'recovery_required');assert.equal(result.subscription,undefined);
  assert.equal(app.rpcCalls.length,1);
+});
+
+test('activation acknowledgement must match the saved payment workspace',async()=>{
+ const app=finalizerHarness({}, {}, {business_id:'another-workspace'});
+ await assert.rejects(()=>app.finalize('1760000000123456789','callback'),/expected active TENH subscription/);
+ assert.equal(app.rpcCalls.length,1);
+});
+
+test('callback replay of an already-approved source never reapplies its entitlement',async()=>{
+ const app=finalizerHarness({}, {status:'approved'});
+ const result=await app.finalize('1760000000123456789','callback');
+ assert.equal(result.paymentState,'approved');assert.equal(result.alreadyApproved,true);assert.deepEqual(app.rpcCalls,[]);
+});
+
+test('provider approval cannot activate through an unavailable database application guard',async()=>{
+ const app=finalizerHarness({}, {}, {}, false);
+ assert.equal((await app.finalize('1760000000123456789','callback')).paymentState,'recovery_required');
+ assert.equal(app.rpcCalls.length,1);assert.equal(app.rpcCalls[0].name,'tenh_observe_payway_verification');
+ assert.equal(app.rpcCalls[0].args.p_observation.conflict_reason,'PAYMENT_APPLICATION_GUARD_NOT_READY');
 });
 
 for(const amount of [undefined,null,''])test('approved response missing its amount records recovery: '+String(amount),async()=>{

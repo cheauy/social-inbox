@@ -245,10 +245,19 @@ async function loadRequests() {
       role: string | null;
     }
   >();
-  const subscriptionMap = new Map<string, any>();
+  const subscriptionMap = new Map<string, {
+    status: string; plan_code: string; billing_cycle: string | null;
+    member_limit: number | null; channel_limit: number | null;
+    current_period_start: string | null; current_period_end: string | null; payment_provider: string | null;
+  }>();
   const activeMembersMap = new Map<string, number>();
   const activeChannelsMap = new Map<string, number>();
-  const payWayMap = new Map<string, any[]>();
+  const payWayMap = new Map<string, Array<{
+    id: string; provider_transaction_id: string; plan_code: string; billing_cycle: string;
+    target_member_limit: number | null; target_channel_limit: number | null;
+    amount: number | string; currency: string; status: string;
+    verified_at: string | null; created_at: string;
+  }>>();
 
   if (businessIds.length > 0) {
     const [
@@ -721,6 +730,11 @@ export async function POST(request: Request) {
   }
 
   if (payment.status === "submitted") {
+    const guards = await supabaseAdmin.rpc("tenh_payment_application_guards_ready");
+    if (guards.error || guards.data !== true) {
+      return noStoreJson({ success: false, code: "TENH_BILLING_APPLICATION_MIGRATION_REQUIRED",
+        error: "Payment application safety is unavailable. Install the billing migration before approval." }, { status: 503 });
+    }
     const payWaySafety = await getManualPaymentPayWaySafety({
       businessId: payment.business_id,
       planCode: payment.plan_code,
@@ -804,7 +818,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const wasAlreadyApproved = payment.status === "approved";
+  let wasAlreadyApproved = payment.status === "approved";
 
   const { data: activation, error: activationError } =
     await supabaseAdmin.rpc("tenh_approve_manual_payment", {
@@ -826,6 +840,7 @@ export async function POST(request: Request) {
   }
 
   const activationRow = Array.isArray(activation) ? activation[0] : activation;
+  wasAlreadyApproved = wasAlreadyApproved || activationRow?.already_approved === true;
   if (activationRow?.subscription_status === "recovery_required") {
     return noStoreJson({
       success: false,
@@ -833,7 +848,7 @@ export async function POST(request: Request) {
       error: "An unresolved payment requires billing review before approval. The subscription has not been changed.",
     }, { status: 409 });
   }
-  if (!activationRow || activationRow.subscription_status !== "active" || activationRow.business_id !== payment.business_id) {
+  if (!activationRow || activationRow.request_id !== requestId || activationRow.subscription_status !== "active" || activationRow.business_id !== payment.business_id) {
     return noStoreJson({ success: false, error: "Manual approval did not return the expected active subscription." }, { status: 500 });
   }
 

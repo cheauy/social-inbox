@@ -1,0 +1,4734 @@
+{
+  "passed": true,
+  "complete": true,
+  "reports": [
+    {
+      "language": "en",
+      "width": 1440,
+      "navigation": {
+        "checks": 55,
+        "routes": 10
+      },
+      "drawerChecks": null,
+      "safeArea": null,
+      "lightScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-navigation-20261015\\browser\\en-1440-light.png",
+      "openDrawerScreenshot": null,
+      "shortDrawerScreenshot": null,
+      "themeEvidence": [
+        {
+          "theme": "dark",
+          "contrastRatios": [
+            7.933323059277419,
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278
+          ],
+          "badgeContrastRatios": [
+            8.006370405995623,
+            8.006370405995623,
+            8.006370405995623,
+            8.327319601911361
+          ],
+          "sidebarColor": "rgb(246, 248, 250)",
+          "background": "rgb(21, 27, 38)",
+          "screenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-navigation-20261015\\browser\\en-1440-dark.png"
+        },
+        {
+          "theme": "dim",
+          "contrastRatios": [
+            7.137025923704538,
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138
+          ],
+          "badgeContrastRatios": [
+            7.322073001092914,
+            7.322073001092914,
+            7.322073001092914,
+            7.580565104765366
+          ],
+          "sidebarColor": "rgb(242, 245, 249)",
+          "background": "rgb(30, 37, 50)",
+          "screenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-navigation-20261015\\browser\\en-1440-dim.png"
+        }
+      ],
+      "checks": [
+        {
+          "name": "all ten existing routes share one ordered menu",
+          "passed": true,
+          "detail": "overview,billing,usage,manual-payments,customer-reports,announcements,connections,webhook-events,channel-health,security"
+        },
+        {
+          "name": "one active navigation item per menu",
+          "passed": true
+        },
+        {
+          "name": "new sidebar has no old card descriptions",
+          "passed": true
+        },
+        {
+          "name": "all navigation targets are at least 44px high",
+          "passed": true,
+          "detail": "44,44,44,44,44,44,44,44,44,44"
+        },
+        {
+          "name": "long navigation labels fit without clipping",
+          "passed": true
+        },
+        {
+          "name": "navigation uses small outline icons",
+          "passed": true
+        },
+        {
+          "name": "grouped menu keeps requested compact labels",
+          "passed": true
+        },
+        {
+          "name": "navigation group order matches the mockup",
+          "passed": true,
+          "detail": "0,32,94,132"
+        },
+        {
+          "name": "summary badges use returned counts",
+          "passed": true
+        },
+        {
+          "name": "desktop sidebar is 240px",
+          "passed": true,
+          "detail": 240
+        },
+        {
+          "name": "desktop hides menu trigger and drawer",
+          "passed": true
+        },
+        {
+          "name": "overview keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=overview"
+        },
+        {
+          "name": "overview active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "overview existing panel remains selected",
+          "passed": true,
+          "detail": "overview"
+        },
+        {
+          "name": "billing keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=billing"
+        },
+        {
+          "name": "billing active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "billing existing panel remains selected",
+          "passed": true,
+          "detail": "billing"
+        },
+        {
+          "name": "usage keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=usage"
+        },
+        {
+          "name": "usage active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "usage existing panel remains selected",
+          "passed": true,
+          "detail": "usage"
+        },
+        {
+          "name": "manual-payments keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=manual-payments"
+        },
+        {
+          "name": "manual-payments active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "manual-payments existing panel remains selected",
+          "passed": true,
+          "detail": "manual-payments"
+        },
+        {
+          "name": "customer-reports keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=customer-reports"
+        },
+        {
+          "name": "customer-reports active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "customer-reports existing panel remains selected",
+          "passed": true,
+          "detail": "customer-reports"
+        },
+        {
+          "name": "announcements keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=announcements"
+        },
+        {
+          "name": "announcements active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "announcements existing panel remains selected",
+          "passed": true,
+          "detail": "announcements"
+        },
+        {
+          "name": "connections keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=connections"
+        },
+        {
+          "name": "connections active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "connections existing panel remains selected",
+          "passed": true,
+          "detail": "connections"
+        },
+        {
+          "name": "webhook-events keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=webhook-events"
+        },
+        {
+          "name": "webhook-events active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "webhook-events existing panel remains selected",
+          "passed": true,
+          "detail": "webhook-events"
+        },
+        {
+          "name": "channel-health keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=channel-health"
+        },
+        {
+          "name": "channel-health active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "channel-health existing panel remains selected",
+          "passed": true,
+          "detail": "channel-health"
+        },
+        {
+          "name": "security keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=security"
+        },
+        {
+          "name": "security active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "security existing panel remains selected",
+          "passed": true,
+          "detail": "security"
+        },
+        {
+          "name": "channel-health active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "channel-health existing panel remains selected",
+          "passed": true,
+          "detail": "channel-health"
+        },
+        {
+          "name": "security active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "security existing panel remains selected",
+          "passed": true,
+          "detail": "security"
+        },
+        {
+          "name": "security panel retains existing MFA requirement prop",
+          "passed": true
+        },
+        {
+          "name": "connections active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "connections existing panel remains selected",
+          "passed": true,
+          "detail": "connections"
+        },
+        {
+          "name": "security active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "security existing panel remains selected",
+          "passed": true,
+          "detail": "security"
+        },
+        {
+          "name": "queue badges update dynamically",
+          "passed": true
+        },
+        {
+          "name": "large badges are capped from live values",
+          "passed": true
+        },
+        {
+          "name": "admin panels and navigation only read the mocked summary",
+          "passed": true
+        },
+        {
+          "name": "navigation has no page overflow",
+          "passed": true,
+          "detail": "1440/1440"
+        },
+        {
+          "name": "navigation content stays inside viewport",
+          "passed": true
+        },
+        {
+          "name": "dark labels remain visible",
+          "passed": true
+        },
+        {
+          "name": "dark navigation text has readable contrast",
+          "passed": true,
+          "detail": "7.93,11.21,11.21,11.21,11.21,11.21,11.21,11.21,11.21,11.21"
+        },
+        {
+          "name": "dark count badges have readable contrast",
+          "passed": true,
+          "detail": "8.01,8.01,8.01,8.33"
+        },
+        {
+          "name": "dark theme has no page overflow",
+          "passed": true,
+          "detail": "1440/1440"
+        },
+        {
+          "name": "dark theme content stays inside viewport",
+          "passed": true
+        },
+        {
+          "name": "dim labels remain visible",
+          "passed": true
+        },
+        {
+          "name": "dim navigation text has readable contrast",
+          "passed": true,
+          "detail": "7.14,10.29,10.29,10.29,10.29,10.29,10.29,10.29,10.29,10.29"
+        },
+        {
+          "name": "dim count badges have readable contrast",
+          "passed": true,
+          "detail": "7.32,7.32,7.32,7.58"
+        },
+        {
+          "name": "dim theme has no page overflow",
+          "passed": true,
+          "detail": "1440/1440"
+        },
+        {
+          "name": "dim theme content stays inside viewport",
+          "passed": true
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        },
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        },
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        },
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        },
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        }
+      ],
+      "currentTab": "overview",
+      "route": "/dashboard/admin?tab=overview"
+    },
+    {
+      "language": "en",
+      "width": 1024,
+      "navigation": {
+        "checks": 69,
+        "routes": 10
+      },
+      "drawerChecks": {
+        "checks": 85,
+        "focusableCount": 11
+      },
+      "safeArea": {
+        "checks": 76,
+        "restoredStyle": "padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right);"
+      },
+      "lightScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-navigation-20261015\\browser\\en-1024-light.png",
+      "openDrawerScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-navigation-20261015\\browser\\en-1024-open-drawer-light.png",
+      "shortDrawerScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-navigation-20261015\\browser\\en-1024-short-drawer.png",
+      "themeEvidence": [
+        {
+          "theme": "dark",
+          "contrastRatios": [
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278,
+            7.933323059277419,
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278
+          ],
+          "badgeContrastRatios": [
+            8.006370405995623,
+            8.006370405995623,
+            8.006370405995623,
+            8.327319601911361
+          ],
+          "sidebarColor": "rgb(235, 239, 244)",
+          "background": "rgb(21, 27, 38)",
+          "screenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-navigation-20261015\\browser\\en-1024-dark.png"
+        },
+        {
+          "theme": "dim",
+          "contrastRatios": [
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138,
+            7.137025923704538,
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138
+          ],
+          "badgeContrastRatios": [
+            7.322073001092914,
+            7.322073001092914,
+            7.322073001092914,
+            7.580565104765366
+          ],
+          "sidebarColor": "rgb(234, 239, 245)",
+          "background": "rgb(30, 37, 50)",
+          "screenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-navigation-20261015\\browser\\en-1024-dim.png"
+        }
+      ],
+      "checks": [
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "all ten existing routes share one ordered menu",
+          "passed": true,
+          "detail": "overview,billing,usage,manual-payments,customer-reports,announcements,connections,webhook-events,channel-health,security"
+        },
+        {
+          "name": "one active navigation item per menu",
+          "passed": true
+        },
+        {
+          "name": "new sidebar has no old card descriptions",
+          "passed": true
+        },
+        {
+          "name": "all navigation targets are at least 44px high",
+          "passed": true,
+          "detail": "44,44,44,44,44,44,44,44,44,44"
+        },
+        {
+          "name": "long navigation labels fit without clipping",
+          "passed": true
+        },
+        {
+          "name": "navigation uses small outline icons",
+          "passed": true
+        },
+        {
+          "name": "grouped menu keeps requested compact labels",
+          "passed": true
+        },
+        {
+          "name": "navigation group order matches the mockup",
+          "passed": true,
+          "detail": "0,32,94,132"
+        },
+        {
+          "name": "summary badges use returned counts",
+          "passed": true
+        },
+        {
+          "name": "tablet and mobile hide the permanent sidebar",
+          "passed": true
+        },
+        {
+          "name": "drawer is a real modal dialog",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "overview keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=overview"
+        },
+        {
+          "name": "overview active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "overview existing panel remains selected",
+          "passed": true,
+          "detail": "overview"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "billing keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=billing"
+        },
+        {
+          "name": "billing active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "billing existing panel remains selected",
+          "passed": true,
+          "detail": "billing"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "usage keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=usage"
+        },
+        {
+          "name": "usage active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "usage existing panel remains selected",
+          "passed": true,
+          "detail": "usage"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "manual-payments keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=manual-payments"
+        },
+        {
+          "name": "manual-payments active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "manual-payments existing panel remains selected",
+          "passed": true,
+          "detail": "manual-payments"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "customer-reports keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=customer-reports"
+        },
+        {
+          "name": "customer-reports active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "customer-reports existing panel remains selected",
+          "passed": true,
+          "detail": "customer-reports"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "announcements keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=announcements"
+        },
+        {
+          "name": "announcements active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "announcements existing panel remains selected",
+          "passed": true,
+          "detail": "announcements"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "connections keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=connections"
+        },
+        {
+          "name": "connections active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "connections existing panel remains selected",
+          "passed": true,
+          "detail": "connections"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "webhook-events keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=webhook-events"
+        },
+        {
+          "name": "webhook-events active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "webhook-events existing panel remains selected",
+          "passed": true,
+          "detail": "webhook-events"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "channel-health keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=channel-health"
+        },
+        {
+          "name": "channel-health active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "channel-health existing panel remains selected",
+          "passed": true,
+          "detail": "channel-health"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "security keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=security"
+        },
+        {
+          "name": "security active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "security existing panel remains selected",
+          "passed": true,
+          "detail": "security"
+        },
+        {
+          "name": "channel-health active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "channel-health existing panel remains selected",
+          "passed": true,
+          "detail": "channel-health"
+        },
+        {
+          "name": "security active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "security existing panel remains selected",
+          "passed": true,
+          "detail": "security"
+        },
+        {
+          "name": "security panel retains existing MFA requirement prop",
+          "passed": true
+        },
+        {
+          "name": "connections active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "connections existing panel remains selected",
+          "passed": true,
+          "detail": "connections"
+        },
+        {
+          "name": "security active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "security existing panel remains selected",
+          "passed": true,
+          "detail": "security"
+        },
+        {
+          "name": "queue badges update dynamically",
+          "passed": true
+        },
+        {
+          "name": "large badges are capped from live values",
+          "passed": true
+        },
+        {
+          "name": "admin panels and navigation only read the mocked summary",
+          "passed": true
+        },
+        {
+          "name": "navigation has no page overflow",
+          "passed": true,
+          "detail": "1024/1024"
+        },
+        {
+          "name": "navigation content stays inside viewport",
+          "passed": true
+        },
+        {
+          "name": "navigation menu trigger fits header",
+          "passed": true
+        },
+        {
+          "name": "navigation header controls do not overlap",
+          "passed": true
+        },
+        {
+          "name": "navigation content starts below its header",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "drawer uses all four actual safe-area insets",
+          "passed": true
+        },
+        {
+          "name": "synthetic safe area keeps close control reachable",
+          "passed": true
+        },
+        {
+          "name": "synthetic safe area keeps final route reachable",
+          "passed": true,
+          "detail": "731/775/1000"
+        },
+        {
+          "name": "synthetic safe area has no horizontal overflow",
+          "passed": true
+        },
+        {
+          "name": "actual safe-area environment style is restored",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "connections keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=connections"
+        },
+        {
+          "name": "connections active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "connections existing panel remains selected",
+          "passed": true,
+          "detail": "connections"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "native modal focuses within the drawer",
+          "passed": true
+        },
+        {
+          "name": "trigger exposes expanded state",
+          "passed": true
+        },
+        {
+          "name": "body and HTML scroll are locked",
+          "passed": true
+        },
+        {
+          "name": "main pane scroll is locked",
+          "passed": true
+        },
+        {
+          "name": "native modal traps forward Tab",
+          "passed": true,
+          "detail": "<button data-admin-drawer-close=\"true\" type=\"button\" aria-label=\"Close admin menu\" class=\"flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-sla"
+        },
+        {
+          "name": "native modal traps reverse Tab",
+          "passed": true,
+          "detail": "<a href=\"/dashboard/admin?tab=security\" data-admin-tab=\"security\" class=\"flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm leading-5 transition focus-visible:outline-2 "
+        },
+        {
+          "name": "Escape restores trigger focus",
+          "passed": true
+        },
+        {
+          "name": "Escape restores scroll",
+          "passed": true
+        },
+        {
+          "name": "Escape preserves existing panel filters",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "Close button restores trigger focus",
+          "passed": true
+        },
+        {
+          "name": "Close button restores scroll",
+          "passed": true
+        },
+        {
+          "name": "Close button preserves existing panel filters",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "Backdrop restores trigger focus",
+          "passed": true
+        },
+        {
+          "name": "Backdrop restores scroll",
+          "passed": true
+        },
+        {
+          "name": "Backdrop preserves existing panel filters",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "short drawer reaches its final route",
+          "passed": true,
+          "detail": "436/480/480"
+        },
+        {
+          "name": "drawer owns its vertical scrolling",
+          "passed": true
+        },
+        {
+          "name": "desktop resize releases body/main locks",
+          "passed": true
+        },
+        {
+          "name": "resize preserves content filters",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "dark labels remain visible",
+          "passed": true
+        },
+        {
+          "name": "dark navigation text has readable contrast",
+          "passed": true,
+          "detail": "11.21,11.21,11.21,11.21,11.21,11.21,7.93,11.21,11.21,11.21"
+        },
+        {
+          "name": "dark count badges have readable contrast",
+          "passed": true,
+          "detail": "8.01,8.01,8.01,8.33"
+        },
+        {
+          "name": "dark theme has no page overflow",
+          "passed": true,
+          "detail": "1024/1024"
+        },
+        {
+          "name": "dark theme content stays inside viewport",
+          "passed": true
+        },
+        {
+          "name": "dark theme menu trigger fits header",
+          "passed": true
+        },
+        {
+          "name": "dark theme header controls do not overlap",
+          "passed": true
+        },
+        {
+          "name": "dark theme content starts below its header",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "dim labels remain visible",
+          "passed": true
+        },
+        {
+          "name": "dim navigation text has readable contrast",
+          "passed": true,
+          "detail": "10.29,10.29,10.29,10.29,10.29,10.29,7.14,10.29,10.29,10.29"
+        },
+        {
+          "name": "dim count badges have readable contrast",
+          "passed": true,
+          "detail": "7.32,7.32,7.32,7.58"
+        },
+        {
+          "name": "dim theme has no page overflow",
+          "passed": true,
+          "detail": "1024/1024"
+        },
+        {
+          "name": "dim theme content stays inside viewport",
+          "passed": true
+        },
+        {
+          "name": "dim theme menu trigger fits header",
+          "passed": true
+        },
+        {
+          "name": "dim theme header controls do not overlap",
+          "passed": true
+        },
+        {
+          "name": "dim theme content starts below its header",
+          "passed": true
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        },
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        },
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        },
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        },
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        }
+      ],
+      "currentTab": "connections",
+      "route": "/dashboard/admin?tab=connections"
+    },
+    {
+      "language": "en",
+      "width": 768,
+      "navigation": {
+        "checks": 69,
+        "routes": 10
+      },
+      "drawerChecks": {
+        "checks": 84,
+        "focusableCount": 11
+      },
+      "safeArea": {
+        "checks": 75,
+        "restoredStyle": "padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right);"
+      },
+      "lightScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-navigation-20261015\\browser\\en-768-light.png",
+      "openDrawerScreenshot": null,
+      "shortDrawerScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-navigation-20261015\\browser\\en-768-short-drawer.png",
+      "themeEvidence": [
+        {
+          "theme": "dark",
+          "contrastRatios": [
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278,
+            7.933323059277419,
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278
+          ],
+          "badgeContrastRatios": [
+            8.006370405995623,
+            8.006370405995623,
+            8.006370405995623,
+            8.327319601911361
+          ],
+          "sidebarColor": "rgb(235, 239, 244)",
+          "background": "rgb(21, 27, 38)",
+          "screenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-navigation-20261015\\browser\\en-768-dark.png"
+        },
+        {
+          "theme": "dim",
+          "contrastRatios": [
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138,
+            7.137025923704538,
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138
+          ],
+          "badgeContrastRatios": [
+            7.322073001092914,
+            7.322073001092914,
+            7.322073001092914,
+            7.580565104765366
+          ],
+          "sidebarColor": "rgb(234, 239, 245)",
+          "background": "rgb(30, 37, 50)",
+          "screenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-navigation-20261015\\browser\\en-768-dim.png"
+        }
+      ],
+      "checks": [
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "all ten existing routes share one ordered menu",
+          "passed": true,
+          "detail": "overview,billing,usage,manual-payments,customer-reports,announcements,connections,webhook-events,channel-health,security"
+        },
+        {
+          "name": "one active navigation item per menu",
+          "passed": true
+        },
+        {
+          "name": "new sidebar has no old card descriptions",
+          "passed": true
+        },
+        {
+          "name": "all navigation targets are at least 44px high",
+          "passed": true,
+          "detail": "44,44,44,44,44,44,44,44,44,44"
+        },
+        {
+          "name": "long navigation labels fit without clipping",
+          "passed": true
+        },
+        {
+          "name": "navigation uses small outline icons",
+          "passed": true
+        },
+        {
+          "name": "grouped menu keeps requested compact labels",
+          "passed": true
+        },
+        {
+          "name": "navigation group order matches the mockup",
+          "passed": true,
+          "detail": "0,32,94,132"
+        },
+        {
+          "name": "summary badges use returned counts",
+          "passed": true
+        },
+        {
+          "name": "tablet and mobile hide the permanent sidebar",
+          "passed": true
+        },
+        {
+          "name": "drawer is a real modal dialog",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "overview keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=overview"
+        },
+        {
+          "name": "overview active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "overview existing panel remains selected",
+          "passed": true,
+          "detail": "overview"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "billing keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=billing"
+        },
+        {
+          "name": "billing active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "billing existing panel remains selected",
+          "passed": true,
+          "detail": "billing"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "usage keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=usage"
+        },
+        {
+          "name": "usage active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "usage existing panel remains selected",
+          "passed": true,
+          "detail": "usage"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "manual-payments keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=manual-payments"
+        },
+        {
+          "name": "manual-payments active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "manual-payments existing panel remains selected",
+          "passed": true,
+          "detail": "manual-payments"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "customer-reports keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=customer-reports"
+        },
+        {
+          "name": "customer-reports active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "customer-reports existing panel remains selected",
+          "passed": true,
+          "detail": "customer-reports"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "announcements keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=announcements"
+        },
+        {
+          "name": "announcements active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "announcements existing panel remains selected",
+          "passed": true,
+          "detail": "announcements"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "connections keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=connections"
+        },
+        {
+          "name": "connections active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "connections existing panel remains selected",
+          "passed": true,
+          "detail": "connections"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "webhook-events keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=webhook-events"
+        },
+        {
+          "name": "webhook-events active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "webhook-events existing panel remains selected",
+          "passed": true,
+          "detail": "webhook-events"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "channel-health keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=channel-health"
+        },
+        {
+          "name": "channel-health active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "channel-health existing panel remains selected",
+          "passed": true,
+          "detail": "channel-health"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "security keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=security"
+        },
+        {
+          "name": "security active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "security existing panel remains selected",
+          "passed": true,
+          "detail": "security"
+        },
+        {
+          "name": "channel-health active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "channel-health existing panel remains selected",
+          "passed": true,
+          "detail": "channel-health"
+        },
+        {
+          "name": "security active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "security existing panel remains selected",
+          "passed": true,
+          "detail": "security"
+        },
+        {
+          "name": "security panel retains existing MFA requirement prop",
+          "passed": true
+        },
+        {
+          "name": "connections active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "connections existing panel remains selected",
+          "passed": true,
+          "detail": "connections"
+        },
+        {
+          "name": "security active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "security existing panel remains selected",
+          "passed": true,
+          "detail": "security"
+        },
+        {
+          "name": "queue badges update dynamically",
+          "passed": true
+        },
+        {
+          "name": "large badges are capped from live values",
+          "passed": true
+        },
+        {
+          "name": "admin panels and navigation only read the mocked summary",
+          "passed": true
+        },
+        {
+          "name": "navigation has no page overflow",
+          "passed": true,
+          "detail": "768/768"
+        },
+        {
+          "name": "navigation content stays inside viewport",
+          "passed": true
+        },
+        {
+          "name": "navigation menu trigger fits header",
+          "passed": true
+        },
+        {
+          "name": "navigation header controls do not overlap",
+          "passed": true
+        },
+        {
+          "name": "navigation content starts below its header",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "drawer uses all four actual safe-area insets",
+          "passed": true
+        },
+        {
+          "name": "synthetic safe area keeps close control reachable",
+          "passed": true
+        },
+        {
+          "name": "synthetic safe area keeps final route reachable",
+          "passed": true,
+          "detail": "731/775/1000"
+        },
+        {
+          "name": "synthetic safe area has no horizontal overflow",
+          "passed": true
+        },
+        {
+          "name": "actual safe-area environment style is restored",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "connections keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=connections"
+        },
+        {
+          "name": "connections active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "connections existing panel remains selected",
+          "passed": true,
+          "detail": "connections"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "native modal focuses within the drawer",
+          "passed": true
+        },
+        {
+          "name": "trigger exposes expanded state",
+          "passed": true
+        },
+        {
+          "name": "body and HTML scroll are locked",
+          "passed": true
+        },
+        {
+          "name": "main pane scroll is locked",
+          "passed": true
+        },
+        {
+          "name": "native modal traps forward Tab",
+          "passed": true,
+          "detail": "<button data-admin-drawer-close=\"true\" type=\"button\" aria-label=\"Close admin menu\" class=\"flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-sla"
+        },
+        {
+          "name": "native modal traps reverse Tab",
+          "passed": true,
+          "detail": "<a href=\"/dashboard/admin?tab=security\" data-admin-tab=\"security\" class=\"flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm leading-5 transition focus-visible:outline-2 "
+        },
+        {
+          "name": "Escape restores trigger focus",
+          "passed": true
+        },
+        {
+          "name": "Escape restores scroll",
+          "passed": true
+        },
+        {
+          "name": "Escape preserves existing panel filters",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "Close button restores trigger focus",
+          "passed": true
+        },
+        {
+          "name": "Close button restores scroll",
+          "passed": true
+        },
+        {
+          "name": "Close button preserves existing panel filters",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "Backdrop restores trigger focus",
+          "passed": true
+        },
+        {
+          "name": "Backdrop restores scroll",
+          "passed": true
+        },
+        {
+          "name": "Backdrop preserves existing panel filters",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "short drawer reaches its final route",
+          "passed": true,
+          "detail": "436/480/480"
+        },
+        {
+          "name": "drawer owns its vertical scrolling",
+          "passed": true
+        },
+        {
+          "name": "desktop resize releases body/main locks",
+          "passed": true
+        },
+        {
+          "name": "resize preserves content filters",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "dark labels remain visible",
+          "passed": true
+        },
+        {
+          "name": "dark navigation text has readable contrast",
+          "passed": true,
+          "detail": "11.21,11.21,11.21,11.21,11.21,11.21,7.93,11.21,11.21,11.21"
+        },
+        {
+          "name": "dark count badges have readable contrast",
+          "passed": true,
+          "detail": "8.01,8.01,8.01,8.33"
+        },
+        {
+          "name": "dark theme has no page overflow",
+          "passed": true,
+          "detail": "768/768"
+        },
+        {
+          "name": "dark theme content stays inside viewport",
+          "passed": true
+        },
+        {
+          "name": "dark theme menu trigger fits header",
+          "passed": true
+        },
+        {
+          "name": "dark theme header controls do not overlap",
+          "passed": true
+        },
+        {
+          "name": "dark theme content starts below its header",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "dim labels remain visible",
+          "passed": true
+        },
+        {
+          "name": "dim navigation text has readable contrast",
+          "passed": true,
+          "detail": "10.29,10.29,10.29,10.29,10.29,10.29,7.14,10.29,10.29,10.29"
+        },
+        {
+          "name": "dim count badges have readable contrast",
+          "passed": true,
+          "detail": "7.32,7.32,7.32,7.58"
+        },
+        {
+          "name": "dim theme has no page overflow",
+          "passed": true,
+          "detail": "768/768"
+        },
+        {
+          "name": "dim theme content stays inside viewport",
+          "passed": true
+        },
+        {
+          "name": "dim theme menu trigger fits header",
+          "passed": true
+        },
+        {
+          "name": "dim theme header controls do not overlap",
+          "passed": true
+        },
+        {
+          "name": "dim theme content starts below its header",
+          "passed": true
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        },
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        },
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        },
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        },
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        }
+      ],
+      "currentTab": "connections",
+      "route": "/dashboard/admin?tab=connections"
+    },
+    {
+      "language": "en",
+      "width": 390,
+      "navigation": {
+        "checks": 69,
+        "routes": 10
+      },
+      "drawerChecks": {
+        "checks": 85,
+        "focusableCount": 11
+      },
+      "safeArea": {
+        "checks": 76,
+        "restoredStyle": "padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right);"
+      },
+      "lightScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-navigation-20261015\\browser\\en-390-light.png",
+      "openDrawerScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-navigation-20261015\\browser\\en-390-open-drawer-light.png",
+      "shortDrawerScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-navigation-20261015\\browser\\en-390-short-drawer.png",
+      "themeEvidence": [
+        {
+          "theme": "dark",
+          "contrastRatios": [
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278,
+            7.933323059277419,
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278
+          ],
+          "badgeContrastRatios": [
+            8.006370405995623,
+            8.006370405995623,
+            8.006370405995623,
+            8.327319601911361
+          ],
+          "sidebarColor": "rgb(235, 239, 244)",
+          "background": "rgb(21, 27, 38)",
+          "screenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-navigation-20261015\\browser\\en-390-dark.png"
+        },
+        {
+          "theme": "dim",
+          "contrastRatios": [
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138,
+            7.137025923704538,
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138
+          ],
+          "badgeContrastRatios": [
+            7.322073001092914,
+            7.322073001092914,
+            7.322073001092914,
+            7.580565104765366
+          ],
+          "sidebarColor": "rgb(234, 239, 245)",
+          "background": "rgb(30, 37, 50)",
+          "screenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-navigation-20261015\\browser\\en-390-dim.png"
+        }
+      ],
+      "checks": [
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "all ten existing routes share one ordered menu",
+          "passed": true,
+          "detail": "overview,billing,usage,manual-payments,customer-reports,announcements,connections,webhook-events,channel-health,security"
+        },
+        {
+          "name": "one active navigation item per menu",
+          "passed": true
+        },
+        {
+          "name": "new sidebar has no old card descriptions",
+          "passed": true
+        },
+        {
+          "name": "all navigation targets are at least 44px high",
+          "passed": true,
+          "detail": "44,44,44,44,44,44,44,44,44,44"
+        },
+        {
+          "name": "long navigation labels fit without clipping",
+          "passed": true
+        },
+        {
+          "name": "navigation uses small outline icons",
+          "passed": true
+        },
+        {
+          "name": "grouped menu keeps requested compact labels",
+          "passed": true
+        },
+        {
+          "name": "navigation group order matches the mockup",
+          "passed": true,
+          "detail": "0,32,94,132"
+        },
+        {
+          "name": "summary badges use returned counts",
+          "passed": true
+        },
+        {
+          "name": "tablet and mobile hide the permanent sidebar",
+          "passed": true
+        },
+        {
+          "name": "drawer is a real modal dialog",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "overview keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=overview"
+        },
+        {
+          "name": "overview active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "overview existing panel remains selected",
+          "passed": true,
+          "detail": "overview"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "billing keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=billing"
+        },
+        {
+          "name": "billing active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "billing existing panel remains selected",
+          "passed": true,
+          "detail": "billing"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "usage keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=usage"
+        },
+        {
+          "name": "usage active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "usage existing panel remains selected",
+          "passed": true,
+          "detail": "usage"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "manual-payments keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=manual-payments"
+        },
+        {
+          "name": "manual-payments active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "manual-payments existing panel remains selected",
+          "passed": true,
+          "detail": "manual-payments"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "customer-reports keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=customer-reports"
+        },
+        {
+          "name": "customer-reports active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "customer-reports existing panel remains selected",
+          "passed": true,
+          "detail": "customer-reports"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "announcements keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=announcements"
+        },
+        {
+          "name": "announcements active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "announcements existing panel remains selected",
+          "passed": true,
+          "detail": "announcements"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "connections keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=connections"
+        },
+        {
+          "name": "connections active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "connections existing panel remains selected",
+          "passed": true,
+          "detail": "connections"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "webhook-events keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=webhook-events"
+        },
+        {
+          "name": "webhook-events active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "webhook-events existing panel remains selected",
+          "passed": true,
+          "detail": "webhook-events"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "channel-health keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=channel-health"
+        },
+        {
+          "name": "channel-health active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "channel-health existing panel remains selected",
+          "passed": true,
+          "detail": "channel-health"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "security keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=security"
+        },
+        {
+          "name": "security active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "security existing panel remains selected",
+          "passed": true,
+          "detail": "security"
+        },
+        {
+          "name": "channel-health active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "channel-health existing panel remains selected",
+          "passed": true,
+          "detail": "channel-health"
+        },
+        {
+          "name": "security active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "security existing panel remains selected",
+          "passed": true,
+          "detail": "security"
+        },
+        {
+          "name": "security panel retains existing MFA requirement prop",
+          "passed": true
+        },
+        {
+          "name": "connections active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "connections existing panel remains selected",
+          "passed": true,
+          "detail": "connections"
+        },
+        {
+          "name": "security active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "security existing panel remains selected",
+          "passed": true,
+          "detail": "security"
+        },
+        {
+          "name": "queue badges update dynamically",
+          "passed": true
+        },
+        {
+          "name": "large badges are capped from live values",
+          "passed": true
+        },
+        {
+          "name": "admin panels and navigation only read the mocked summary",
+          "passed": true
+        },
+        {
+          "name": "navigation has no page overflow",
+          "passed": true,
+          "detail": "390/390"
+        },
+        {
+          "name": "navigation content stays inside viewport",
+          "passed": true
+        },
+        {
+          "name": "navigation menu trigger fits header",
+          "passed": true
+        },
+        {
+          "name": "navigation header controls do not overlap",
+          "passed": true
+        },
+        {
+          "name": "navigation content starts below its header",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "drawer uses all four actual safe-area insets",
+          "passed": true
+        },
+        {
+          "name": "synthetic safe area keeps close control reachable",
+          "passed": true
+        },
+        {
+          "name": "synthetic safe area keeps final route reachable",
+          "passed": true,
+          "detail": "731/775/1000"
+        },
+        {
+          "name": "synthetic safe area has no horizontal overflow",
+          "passed": true
+        },
+        {
+          "name": "actual safe-area environment style is restored",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "connections keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=connections"
+        },
+        {
+          "name": "connections active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "connections existing panel remains selected",
+          "passed": true,
+          "detail": "connections"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "native modal focuses within the drawer",
+          "passed": true
+        },
+        {
+          "name": "trigger exposes expanded state",
+          "passed": true
+        },
+        {
+          "name": "body and HTML scroll are locked",
+          "passed": true
+        },
+        {
+          "name": "main pane scroll is locked",
+          "passed": true
+        },
+        {
+          "name": "native modal traps forward Tab",
+          "passed": true,
+          "detail": "<button data-admin-drawer-close=\"true\" type=\"button\" aria-label=\"Close admin menu\" class=\"flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-sla"
+        },
+        {
+          "name": "native modal traps reverse Tab",
+          "passed": true,
+          "detail": "<a href=\"/dashboard/admin?tab=security\" data-admin-tab=\"security\" class=\"flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm leading-5 transition focus-visible:outline-2 "
+        },
+        {
+          "name": "Escape restores trigger focus",
+          "passed": true
+        },
+        {
+          "name": "Escape restores scroll",
+          "passed": true
+        },
+        {
+          "name": "Escape preserves existing panel filters",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "Close button restores trigger focus",
+          "passed": true
+        },
+        {
+          "name": "Close button restores scroll",
+          "passed": true
+        },
+        {
+          "name": "Close button preserves existing panel filters",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "Backdrop restores trigger focus",
+          "passed": true
+        },
+        {
+          "name": "Backdrop restores scroll",
+          "passed": true
+        },
+        {
+          "name": "Backdrop preserves existing panel filters",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "short drawer reaches its final route",
+          "passed": true,
+          "detail": "436/480/480"
+        },
+        {
+          "name": "drawer owns its vertical scrolling",
+          "passed": true
+        },
+        {
+          "name": "desktop resize releases body/main locks",
+          "passed": true
+        },
+        {
+          "name": "resize preserves content filters",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "dark labels remain visible",
+          "passed": true
+        },
+        {
+          "name": "dark navigation text has readable contrast",
+          "passed": true,
+          "detail": "11.21,11.21,11.21,11.21,11.21,11.21,7.93,11.21,11.21,11.21"
+        },
+        {
+          "name": "dark count badges have readable contrast",
+          "passed": true,
+          "detail": "8.01,8.01,8.01,8.33"
+        },
+        {
+          "name": "dark theme has no page overflow",
+          "passed": true,
+          "detail": "390/390"
+        },
+        {
+          "name": "dark theme content stays inside viewport",
+          "passed": true
+        },
+        {
+          "name": "dark theme menu trigger fits header",
+          "passed": true
+        },
+        {
+          "name": "dark theme header controls do not overlap",
+          "passed": true
+        },
+        {
+          "name": "dark theme content starts below its header",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "dim labels remain visible",
+          "passed": true
+        },
+        {
+          "name": "dim navigation text has readable contrast",
+          "passed": true,
+          "detail": "10.29,10.29,10.29,10.29,10.29,10.29,7.14,10.29,10.29,10.29"
+        },
+        {
+          "name": "dim count badges have readable contrast",
+          "passed": true,
+          "detail": "7.32,7.32,7.32,7.58"
+        },
+        {
+          "name": "dim theme has no page overflow",
+          "passed": true,
+          "detail": "390/390"
+        },
+        {
+          "name": "dim theme content stays inside viewport",
+          "passed": true
+        },
+        {
+          "name": "dim theme menu trigger fits header",
+          "passed": true
+        },
+        {
+          "name": "dim theme header controls do not overlap",
+          "passed": true
+        },
+        {
+          "name": "dim theme content starts below its header",
+          "passed": true
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        },
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        },
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        },
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        },
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        }
+      ],
+      "currentTab": "connections",
+      "route": "/dashboard/admin?tab=connections"
+    },
+    {
+      "language": "km",
+      "width": 1440,
+      "navigation": {
+        "checks": 53,
+        "routes": 10
+      },
+      "drawerChecks": null,
+      "safeArea": null,
+      "lightScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-navigation-20261015\\browser\\km-1440-light.png",
+      "openDrawerScreenshot": null,
+      "shortDrawerScreenshot": null,
+      "themeEvidence": [
+        {
+          "theme": "dark",
+          "contrastRatios": [
+            7.933323059277419,
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278
+          ],
+          "badgeContrastRatios": [
+            8.006370405995623,
+            8.006370405995623,
+            8.006370405995623,
+            8.327319601911361
+          ],
+          "sidebarColor": "rgb(246, 248, 250)",
+          "background": "rgb(21, 27, 38)",
+          "screenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-navigation-20261015\\browser\\km-1440-dark.png"
+        },
+        {
+          "theme": "dim",
+          "contrastRatios": [
+            7.137025923704538,
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138
+          ],
+          "badgeContrastRatios": [
+            7.322073001092914,
+            7.322073001092914,
+            7.322073001092914,
+            7.580565104765366
+          ],
+          "sidebarColor": "rgb(242, 245, 249)",
+          "background": "rgb(30, 37, 50)",
+          "screenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-navigation-20261015\\browser\\km-1440-dim.png"
+        }
+      ],
+      "checks": [
+        {
+          "name": "all ten existing routes share one ordered menu",
+          "passed": true,
+          "detail": "overview,billing,usage,manual-payments,customer-reports,announcements,connections,webhook-events,channel-health,security"
+        },
+        {
+          "name": "one active navigation item per menu",
+          "passed": true
+        },
+        {
+          "name": "new sidebar has no old card descriptions",
+          "passed": true
+        },
+        {
+          "name": "all navigation targets are at least 44px high",
+          "passed": true,
+          "detail": "44,44,44,44,56,44,44,44,44,44"
+        },
+        {
+          "name": "long navigation labels fit without clipping",
+          "passed": true
+        },
+        {
+          "name": "navigation uses small outline icons",
+          "passed": true
+        },
+        {
+          "name": "summary badges use returned counts",
+          "passed": true
+        },
+        {
+          "name": "desktop sidebar is 240px",
+          "passed": true,
+          "detail": 240
+        },
+        {
+          "name": "desktop hides menu trigger and drawer",
+          "passed": true
+        },
+        {
+          "name": "overview keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=overview"
+        },
+        {
+          "name": "overview active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "overview existing panel remains selected",
+          "passed": true,
+          "detail": "overview"
+        },
+        {
+          "name": "billing keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=billing"
+        },
+        {
+          "name": "billing active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "billing existing panel remains selected",
+          "passed": true,
+          "detail": "billing"
+        },
+        {
+          "name": "usage keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=usage"
+        },
+        {
+          "name": "usage active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "usage existing panel remains selected",
+          "passed": true,
+          "detail": "usage"
+        },
+        {
+          "name": "manual-payments keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=manual-payments"
+        },
+        {
+          "name": "manual-payments active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "manual-payments existing panel remains selected",
+          "passed": true,
+          "detail": "manual-payments"
+        },
+        {
+          "name": "customer-reports keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=customer-reports"
+        },
+        {
+          "name": "customer-reports active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "customer-reports existing panel remains selected",
+          "passed": true,
+          "detail": "customer-reports"
+        },
+        {
+          "name": "announcements keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=announcements"
+        },
+        {
+          "name": "announcements active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "announcements existing panel remains selected",
+          "passed": true,
+          "detail": "announcements"
+        },
+        {
+          "name": "connections keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=connections"
+        },
+        {
+          "name": "connections active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "connections existing panel remains selected",
+          "passed": true,
+          "detail": "connections"
+        },
+        {
+          "name": "webhook-events keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=webhook-events"
+        },
+        {
+          "name": "webhook-events active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "webhook-events existing panel remains selected",
+          "passed": true,
+          "detail": "webhook-events"
+        },
+        {
+          "name": "channel-health keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=channel-health"
+        },
+        {
+          "name": "channel-health active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "channel-health existing panel remains selected",
+          "passed": true,
+          "detail": "channel-health"
+        },
+        {
+          "name": "security keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=security"
+        },
+        {
+          "name": "security active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "security existing panel remains selected",
+          "passed": true,
+          "detail": "security"
+        },
+        {
+          "name": "channel-health active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "channel-health existing panel remains selected",
+          "passed": true,
+          "detail": "channel-health"
+        },
+        {
+          "name": "security active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "security existing panel remains selected",
+          "passed": true,
+          "detail": "security"
+        },
+        {
+          "name": "security panel retains existing MFA requirement prop",
+          "passed": true
+        },
+        {
+          "name": "connections active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "connections existing panel remains selected",
+          "passed": true,
+          "detail": "connections"
+        },
+        {
+          "name": "security active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "security existing panel remains selected",
+          "passed": true,
+          "detail": "security"
+        },
+        {
+          "name": "queue badges update dynamically",
+          "passed": true
+        },
+        {
+          "name": "large badges are capped from live values",
+          "passed": true
+        },
+        {
+          "name": "admin panels and navigation only read the mocked summary",
+          "passed": true
+        },
+        {
+          "name": "navigation has no page overflow",
+          "passed": true,
+          "detail": "1440/1440"
+        },
+        {
+          "name": "navigation content stays inside viewport",
+          "passed": true
+        },
+        {
+          "name": "dark labels remain visible",
+          "passed": true
+        },
+        {
+          "name": "dark navigation text has readable contrast",
+          "passed": true,
+          "detail": "7.93,11.21,11.21,11.21,11.21,11.21,11.21,11.21,11.21,11.21"
+        },
+        {
+          "name": "dark count badges have readable contrast",
+          "passed": true,
+          "detail": "8.01,8.01,8.01,8.33"
+        },
+        {
+          "name": "dark theme has no page overflow",
+          "passed": true,
+          "detail": "1440/1440"
+        },
+        {
+          "name": "dark theme content stays inside viewport",
+          "passed": true
+        },
+        {
+          "name": "dim labels remain visible",
+          "passed": true
+        },
+        {
+          "name": "dim navigation text has readable contrast",
+          "passed": true,
+          "detail": "7.14,10.29,10.29,10.29,10.29,10.29,10.29,10.29,10.29,10.29"
+        },
+        {
+          "name": "dim count badges have readable contrast",
+          "passed": true,
+          "detail": "7.32,7.32,7.32,7.58"
+        },
+        {
+          "name": "dim theme has no page overflow",
+          "passed": true,
+          "detail": "1440/1440"
+        },
+        {
+          "name": "dim theme content stays inside viewport",
+          "passed": true
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        },
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        },
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        },
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        },
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        }
+      ],
+      "currentTab": "overview",
+      "route": "/dashboard/admin?tab=overview"
+    },
+    {
+      "language": "km",
+      "width": 1024,
+      "navigation": {
+        "checks": 67,
+        "routes": 10
+      },
+      "drawerChecks": {
+        "checks": 83,
+        "focusableCount": 11
+      },
+      "safeArea": {
+        "checks": 74,
+        "restoredStyle": "padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right);"
+      },
+      "lightScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-navigation-20261015\\browser\\km-1024-light.png",
+      "openDrawerScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-navigation-20261015\\browser\\km-1024-open-drawer-light.png",
+      "shortDrawerScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-navigation-20261015\\browser\\km-1024-short-drawer.png",
+      "themeEvidence": [
+        {
+          "theme": "dark",
+          "contrastRatios": [
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278,
+            7.933323059277419,
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278
+          ],
+          "badgeContrastRatios": [
+            8.006370405995623,
+            8.006370405995623,
+            8.006370405995623,
+            8.327319601911361
+          ],
+          "sidebarColor": "rgb(235, 239, 244)",
+          "background": "rgb(21, 27, 38)",
+          "screenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-navigation-20261015\\browser\\km-1024-dark.png"
+        },
+        {
+          "theme": "dim",
+          "contrastRatios": [
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138,
+            7.137025923704538,
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138
+          ],
+          "badgeContrastRatios": [
+            7.322073001092914,
+            7.322073001092914,
+            7.322073001092914,
+            7.580565104765366
+          ],
+          "sidebarColor": "rgb(234, 239, 245)",
+          "background": "rgb(30, 37, 50)",
+          "screenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-navigation-20261015\\browser\\km-1024-dim.png"
+        }
+      ],
+      "checks": [
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "all ten existing routes share one ordered menu",
+          "passed": true,
+          "detail": "overview,billing,usage,manual-payments,customer-reports,announcements,connections,webhook-events,channel-health,security"
+        },
+        {
+          "name": "one active navigation item per menu",
+          "passed": true
+        },
+        {
+          "name": "new sidebar has no old card descriptions",
+          "passed": true
+        },
+        {
+          "name": "all navigation targets are at least 44px high",
+          "passed": true,
+          "detail": "44,44,44,44,44,44,44,44,44,44"
+        },
+        {
+          "name": "long navigation labels fit without clipping",
+          "passed": true
+        },
+        {
+          "name": "navigation uses small outline icons",
+          "passed": true
+        },
+        {
+          "name": "summary badges use returned counts",
+          "passed": true
+        },
+        {
+          "name": "tablet and mobile hide the permanent sidebar",
+          "passed": true
+        },
+        {
+          "name": "drawer is a real modal dialog",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "overview keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=overview"
+        },
+        {
+          "name": "overview active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "overview existing panel remains selected",
+          "passed": true,
+          "detail": "overview"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "billing keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=billing"
+        },
+        {
+          "name": "billing active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "billing existing panel remains selected",
+          "passed": true,
+          "detail": "billing"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "usage keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=usage"
+        },
+        {
+          "name": "usage active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "usage existing panel remains selected",
+          "passed": true,
+          "detail": "usage"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "manual-payments keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=manual-payments"
+        },
+        {
+          "name": "manual-payments active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "manual-payments existing panel remains selected",
+          "passed": true,
+          "detail": "manual-payments"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "customer-reports keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=customer-reports"
+        },
+        {
+          "name": "customer-reports active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "customer-reports existing panel remains selected",
+          "passed": true,
+          "detail": "customer-reports"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "announcements keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=announcements"
+        },
+        {
+          "name": "announcements active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "announcements existing panel remains selected",
+          "passed": true,
+          "detail": "announcements"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "connections keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=connections"
+        },
+        {
+          "name": "connections active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "connections existing panel remains selected",
+          "passed": true,
+          "detail": "connections"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "webhook-events keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=webhook-events"
+        },
+        {
+          "name": "webhook-events active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "webhook-events existing panel remains selected",
+          "passed": true,
+          "detail": "webhook-events"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "channel-health keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=channel-health"
+        },
+        {
+          "name": "channel-health active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "channel-health existing panel remains selected",
+          "passed": true,
+          "detail": "channel-health"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "security keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=security"
+        },
+        {
+          "name": "security active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "security existing panel remains selected",
+          "passed": true,
+          "detail": "security"
+        },
+        {
+          "name": "channel-health active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "channel-health existing panel remains selected",
+          "passed": true,
+          "detail": "channel-health"
+        },
+        {
+          "name": "security active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "security existing panel remains selected",
+          "passed": true,
+          "detail": "security"
+        },
+        {
+          "name": "security panel retains existing MFA requirement prop",
+          "passed": true
+        },
+        {
+          "name": "connections active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "connections existing panel remains selected",
+          "passed": true,
+          "detail": "connections"
+        },
+        {
+          "name": "security active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "security existing panel remains selected",
+          "passed": true,
+          "detail": "security"
+        },
+        {
+          "name": "queue badges update dynamically",
+          "passed": true
+        },
+        {
+          "name": "large badges are capped from live values",
+          "passed": true
+        },
+        {
+          "name": "admin panels and navigation only read the mocked summary",
+          "passed": true
+        },
+        {
+          "name": "navigation has no page overflow",
+          "passed": true,
+          "detail": "1024/1024"
+        },
+        {
+          "name": "navigation content stays inside viewport",
+          "passed": true
+        },
+        {
+          "name": "navigation menu trigger fits header",
+          "passed": true
+        },
+        {
+          "name": "navigation header controls do not overlap",
+          "passed": true
+        },
+        {
+          "name": "navigation content starts below its header",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "drawer uses all four actual safe-area insets",
+          "passed": true
+        },
+        {
+          "name": "synthetic safe area keeps close control reachable",
+          "passed": true
+        },
+        {
+          "name": "synthetic safe area keeps final route reachable",
+          "passed": true,
+          "detail": "731/775/1000"
+        },
+        {
+          "name": "synthetic safe area has no horizontal overflow",
+          "passed": true
+        },
+        {
+          "name": "actual safe-area environment style is restored",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "connections keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=connections"
+        },
+        {
+          "name": "connections active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "connections existing panel remains selected",
+          "passed": true,
+          "detail": "connections"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "native modal focuses within the drawer",
+          "passed": true
+        },
+        {
+          "name": "trigger exposes expanded state",
+          "passed": true
+        },
+        {
+          "name": "body and HTML scroll are locked",
+          "passed": true
+        },
+        {
+          "name": "main pane scroll is locked",
+          "passed": true
+        },
+        {
+          "name": "native modal traps forward Tab",
+          "passed": true,
+          "detail": "<button data-admin-drawer-close=\"true\" type=\"button\" aria-label=\"បិទម៉ឺនុយអ្នកគ្រប់គ្រង\" class=\"flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:"
+        },
+        {
+          "name": "native modal traps reverse Tab",
+          "passed": true,
+          "detail": "<a href=\"/dashboard/admin?tab=security\" data-admin-tab=\"security\" class=\"flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm leading-5 transition focus-visible:outline-2 "
+        },
+        {
+          "name": "Escape restores trigger focus",
+          "passed": true
+        },
+        {
+          "name": "Escape restores scroll",
+          "passed": true
+        },
+        {
+          "name": "Escape preserves existing panel filters",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "Close button restores trigger focus",
+          "passed": true
+        },
+        {
+          "name": "Close button restores scroll",
+          "passed": true
+        },
+        {
+          "name": "Close button preserves existing panel filters",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "Backdrop restores trigger focus",
+          "passed": true
+        },
+        {
+          "name": "Backdrop restores scroll",
+          "passed": true
+        },
+        {
+          "name": "Backdrop preserves existing panel filters",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "short drawer reaches its final route",
+          "passed": true,
+          "detail": "436/480/480"
+        },
+        {
+          "name": "drawer owns its vertical scrolling",
+          "passed": true
+        },
+        {
+          "name": "desktop resize releases body/main locks",
+          "passed": true
+        },
+        {
+          "name": "resize preserves content filters",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "dark labels remain visible",
+          "passed": true
+        },
+        {
+          "name": "dark navigation text has readable contrast",
+          "passed": true,
+          "detail": "11.21,11.21,11.21,11.21,11.21,11.21,7.93,11.21,11.21,11.21"
+        },
+        {
+          "name": "dark count badges have readable contrast",
+          "passed": true,
+          "detail": "8.01,8.01,8.01,8.33"
+        },
+        {
+          "name": "dark theme has no page overflow",
+          "passed": true,
+          "detail": "1024/1024"
+        },
+        {
+          "name": "dark theme content stays inside viewport",
+          "passed": true
+        },
+        {
+          "name": "dark theme menu trigger fits header",
+          "passed": true
+        },
+        {
+          "name": "dark theme header controls do not overlap",
+          "passed": true
+        },
+        {
+          "name": "dark theme content starts below its header",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "dim labels remain visible",
+          "passed": true
+        },
+        {
+          "name": "dim navigation text has readable contrast",
+          "passed": true,
+          "detail": "10.29,10.29,10.29,10.29,10.29,10.29,7.14,10.29,10.29,10.29"
+        },
+        {
+          "name": "dim count badges have readable contrast",
+          "passed": true,
+          "detail": "7.32,7.32,7.32,7.58"
+        },
+        {
+          "name": "dim theme has no page overflow",
+          "passed": true,
+          "detail": "1024/1024"
+        },
+        {
+          "name": "dim theme content stays inside viewport",
+          "passed": true
+        },
+        {
+          "name": "dim theme menu trigger fits header",
+          "passed": true
+        },
+        {
+          "name": "dim theme header controls do not overlap",
+          "passed": true
+        },
+        {
+          "name": "dim theme content starts below its header",
+          "passed": true
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        },
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        },
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        },
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        },
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        }
+      ],
+      "currentTab": "connections",
+      "route": "/dashboard/admin?tab=connections"
+    },
+    {
+      "language": "km",
+      "width": 768,
+      "navigation": {
+        "checks": 67,
+        "routes": 10
+      },
+      "drawerChecks": {
+        "checks": 82,
+        "focusableCount": 11
+      },
+      "safeArea": {
+        "checks": 73,
+        "restoredStyle": "padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right);"
+      },
+      "lightScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-navigation-20261015\\browser\\km-768-light.png",
+      "openDrawerScreenshot": null,
+      "shortDrawerScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-navigation-20261015\\browser\\km-768-short-drawer.png",
+      "themeEvidence": [
+        {
+          "theme": "dark",
+          "contrastRatios": [
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278,
+            7.933323059277419,
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278
+          ],
+          "badgeContrastRatios": [
+            8.006370405995623,
+            8.006370405995623,
+            8.006370405995623,
+            8.327319601911361
+          ],
+          "sidebarColor": "rgb(235, 239, 244)",
+          "background": "rgb(21, 27, 38)",
+          "screenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-navigation-20261015\\browser\\km-768-dark.png"
+        },
+        {
+          "theme": "dim",
+          "contrastRatios": [
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138,
+            7.137025923704538,
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138
+          ],
+          "badgeContrastRatios": [
+            7.322073001092914,
+            7.322073001092914,
+            7.322073001092914,
+            7.580565104765366
+          ],
+          "sidebarColor": "rgb(234, 239, 245)",
+          "background": "rgb(30, 37, 50)",
+          "screenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-navigation-20261015\\browser\\km-768-dim.png"
+        }
+      ],
+      "checks": [
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "all ten existing routes share one ordered menu",
+          "passed": true,
+          "detail": "overview,billing,usage,manual-payments,customer-reports,announcements,connections,webhook-events,channel-health,security"
+        },
+        {
+          "name": "one active navigation item per menu",
+          "passed": true
+        },
+        {
+          "name": "new sidebar has no old card descriptions",
+          "passed": true
+        },
+        {
+          "name": "all navigation targets are at least 44px high",
+          "passed": true,
+          "detail": "44,44,44,44,44,44,44,44,44,44"
+        },
+        {
+          "name": "long navigation labels fit without clipping",
+          "passed": true
+        },
+        {
+          "name": "navigation uses small outline icons",
+          "passed": true
+        },
+        {
+          "name": "summary badges use returned counts",
+          "passed": true
+        },
+        {
+          "name": "tablet and mobile hide the permanent sidebar",
+          "passed": true
+        },
+        {
+          "name": "drawer is a real modal dialog",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "overview keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=overview"
+        },
+        {
+          "name": "overview active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "overview existing panel remains selected",
+          "passed": true,
+          "detail": "overview"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "billing keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=billing"
+        },
+        {
+          "name": "billing active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "billing existing panel remains selected",
+          "passed": true,
+          "detail": "billing"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "usage keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=usage"
+        },
+        {
+          "name": "usage active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "usage existing panel remains selected",
+          "passed": true,
+          "detail": "usage"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "manual-payments keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=manual-payments"
+        },
+        {
+          "name": "manual-payments active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "manual-payments existing panel remains selected",
+          "passed": true,
+          "detail": "manual-payments"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "customer-reports keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=customer-reports"
+        },
+        {
+          "name": "customer-reports active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "customer-reports existing panel remains selected",
+          "passed": true,
+          "detail": "customer-reports"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "announcements keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=announcements"
+        },
+        {
+          "name": "announcements active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "announcements existing panel remains selected",
+          "passed": true,
+          "detail": "announcements"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "connections keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=connections"
+        },
+        {
+          "name": "connections active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "connections existing panel remains selected",
+          "passed": true,
+          "detail": "connections"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "webhook-events keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=webhook-events"
+        },
+        {
+          "name": "webhook-events active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "webhook-events existing panel remains selected",
+          "passed": true,
+          "detail": "webhook-events"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "channel-health keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=channel-health"
+        },
+        {
+          "name": "channel-health active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "channel-health existing panel remains selected",
+          "passed": true,
+          "detail": "channel-health"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "security keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=security"
+        },
+        {
+          "name": "security active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "security existing panel remains selected",
+          "passed": true,
+          "detail": "security"
+        },
+        {
+          "name": "channel-health active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "channel-health existing panel remains selected",
+          "passed": true,
+          "detail": "channel-health"
+        },
+        {
+          "name": "security active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "security existing panel remains selected",
+          "passed": true,
+          "detail": "security"
+        },
+        {
+          "name": "security panel retains existing MFA requirement prop",
+          "passed": true
+        },
+        {
+          "name": "connections active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "connections existing panel remains selected",
+          "passed": true,
+          "detail": "connections"
+        },
+        {
+          "name": "security active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "security existing panel remains selected",
+          "passed": true,
+          "detail": "security"
+        },
+        {
+          "name": "queue badges update dynamically",
+          "passed": true
+        },
+        {
+          "name": "large badges are capped from live values",
+          "passed": true
+        },
+        {
+          "name": "admin panels and navigation only read the mocked summary",
+          "passed": true
+        },
+        {
+          "name": "navigation has no page overflow",
+          "passed": true,
+          "detail": "768/768"
+        },
+        {
+          "name": "navigation content stays inside viewport",
+          "passed": true
+        },
+        {
+          "name": "navigation menu trigger fits header",
+          "passed": true
+        },
+        {
+          "name": "navigation header controls do not overlap",
+          "passed": true
+        },
+        {
+          "name": "navigation content starts below its header",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "drawer uses all four actual safe-area insets",
+          "passed": true
+        },
+        {
+          "name": "synthetic safe area keeps close control reachable",
+          "passed": true
+        },
+        {
+          "name": "synthetic safe area keeps final route reachable",
+          "passed": true,
+          "detail": "731/775/1000"
+        },
+        {
+          "name": "synthetic safe area has no horizontal overflow",
+          "passed": true
+        },
+        {
+          "name": "actual safe-area environment style is restored",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "connections keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=connections"
+        },
+        {
+          "name": "connections active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "connections existing panel remains selected",
+          "passed": true,
+          "detail": "connections"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "native modal focuses within the drawer",
+          "passed": true
+        },
+        {
+          "name": "trigger exposes expanded state",
+          "passed": true
+        },
+        {
+          "name": "body and HTML scroll are locked",
+          "passed": true
+        },
+        {
+          "name": "main pane scroll is locked",
+          "passed": true
+        },
+        {
+          "name": "native modal traps forward Tab",
+          "passed": true,
+          "detail": "<button data-admin-drawer-close=\"true\" type=\"button\" aria-label=\"បិទម៉ឺនុយអ្នកគ្រប់គ្រង\" class=\"flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:"
+        },
+        {
+          "name": "native modal traps reverse Tab",
+          "passed": true,
+          "detail": "<a href=\"/dashboard/admin?tab=security\" data-admin-tab=\"security\" class=\"flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm leading-5 transition focus-visible:outline-2 "
+        },
+        {
+          "name": "Escape restores trigger focus",
+          "passed": true
+        },
+        {
+          "name": "Escape restores scroll",
+          "passed": true
+        },
+        {
+          "name": "Escape preserves existing panel filters",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "Close button restores trigger focus",
+          "passed": true
+        },
+        {
+          "name": "Close button restores scroll",
+          "passed": true
+        },
+        {
+          "name": "Close button preserves existing panel filters",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "Backdrop restores trigger focus",
+          "passed": true
+        },
+        {
+          "name": "Backdrop restores scroll",
+          "passed": true
+        },
+        {
+          "name": "Backdrop preserves existing panel filters",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "short drawer reaches its final route",
+          "passed": true,
+          "detail": "436/480/480"
+        },
+        {
+          "name": "drawer owns its vertical scrolling",
+          "passed": true
+        },
+        {
+          "name": "desktop resize releases body/main locks",
+          "passed": true
+        },
+        {
+          "name": "resize preserves content filters",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "dark labels remain visible",
+          "passed": true
+        },
+        {
+          "name": "dark navigation text has readable contrast",
+          "passed": true,
+          "detail": "11.21,11.21,11.21,11.21,11.21,11.21,7.93,11.21,11.21,11.21"
+        },
+        {
+          "name": "dark count badges have readable contrast",
+          "passed": true,
+          "detail": "8.01,8.01,8.01,8.33"
+        },
+        {
+          "name": "dark theme has no page overflow",
+          "passed": true,
+          "detail": "768/768"
+        },
+        {
+          "name": "dark theme content stays inside viewport",
+          "passed": true
+        },
+        {
+          "name": "dark theme menu trigger fits header",
+          "passed": true
+        },
+        {
+          "name": "dark theme header controls do not overlap",
+          "passed": true
+        },
+        {
+          "name": "dark theme content starts below its header",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "dim labels remain visible",
+          "passed": true
+        },
+        {
+          "name": "dim navigation text has readable contrast",
+          "passed": true,
+          "detail": "10.29,10.29,10.29,10.29,10.29,10.29,7.14,10.29,10.29,10.29"
+        },
+        {
+          "name": "dim count badges have readable contrast",
+          "passed": true,
+          "detail": "7.32,7.32,7.32,7.58"
+        },
+        {
+          "name": "dim theme has no page overflow",
+          "passed": true,
+          "detail": "768/768"
+        },
+        {
+          "name": "dim theme content stays inside viewport",
+          "passed": true
+        },
+        {
+          "name": "dim theme menu trigger fits header",
+          "passed": true
+        },
+        {
+          "name": "dim theme header controls do not overlap",
+          "passed": true
+        },
+        {
+          "name": "dim theme content starts below its header",
+          "passed": true
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        },
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        },
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        },
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        },
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        }
+      ],
+      "currentTab": "connections",
+      "route": "/dashboard/admin?tab=connections"
+    },
+    {
+      "language": "km",
+      "width": 390,
+      "navigation": {
+        "checks": 67,
+        "routes": 10
+      },
+      "drawerChecks": {
+        "checks": 83,
+        "focusableCount": 11
+      },
+      "safeArea": {
+        "checks": 74,
+        "restoredStyle": "padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right);"
+      },
+      "lightScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-navigation-20261015\\browser\\km-390-light.png",
+      "openDrawerScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-navigation-20261015\\browser\\km-390-open-drawer-light.png",
+      "shortDrawerScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-navigation-20261015\\browser\\km-390-short-drawer.png",
+      "themeEvidence": [
+        {
+          "theme": "dark",
+          "contrastRatios": [
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278,
+            7.933323059277419,
+            11.208794590643278,
+            11.208794590643278,
+            11.208794590643278
+          ],
+          "badgeContrastRatios": [
+            8.006370405995623,
+            8.006370405995623,
+            8.006370405995623,
+            8.327319601911361
+          ],
+          "sidebarColor": "rgb(235, 239, 244)",
+          "background": "rgb(21, 27, 38)",
+          "screenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-navigation-20261015\\browser\\km-390-dark.png"
+        },
+        {
+          "theme": "dim",
+          "contrastRatios": [
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138,
+            7.137025923704538,
+            10.294564351089138,
+            10.294564351089138,
+            10.294564351089138
+          ],
+          "badgeContrastRatios": [
+            7.322073001092914,
+            7.322073001092914,
+            7.322073001092914,
+            7.580565104765366
+          ],
+          "sidebarColor": "rgb(234, 239, 245)",
+          "background": "rgb(30, 37, 50)",
+          "screenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-navigation-20261015\\browser\\km-390-dim.png"
+        }
+      ],
+      "checks": [
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "all ten existing routes share one ordered menu",
+          "passed": true,
+          "detail": "overview,billing,usage,manual-payments,customer-reports,announcements,connections,webhook-events,channel-health,security"
+        },
+        {
+          "name": "one active navigation item per menu",
+          "passed": true
+        },
+        {
+          "name": "new sidebar has no old card descriptions",
+          "passed": true
+        },
+        {
+          "name": "all navigation targets are at least 44px high",
+          "passed": true,
+          "detail": "44,44,44,44,44,44,44,44,44,44"
+        },
+        {
+          "name": "long navigation labels fit without clipping",
+          "passed": true
+        },
+        {
+          "name": "navigation uses small outline icons",
+          "passed": true
+        },
+        {
+          "name": "summary badges use returned counts",
+          "passed": true
+        },
+        {
+          "name": "tablet and mobile hide the permanent sidebar",
+          "passed": true
+        },
+        {
+          "name": "drawer is a real modal dialog",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "overview keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=overview"
+        },
+        {
+          "name": "overview active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "overview existing panel remains selected",
+          "passed": true,
+          "detail": "overview"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "billing keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=billing"
+        },
+        {
+          "name": "billing active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "billing existing panel remains selected",
+          "passed": true,
+          "detail": "billing"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "usage keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=usage"
+        },
+        {
+          "name": "usage active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "usage existing panel remains selected",
+          "passed": true,
+          "detail": "usage"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "manual-payments keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=manual-payments"
+        },
+        {
+          "name": "manual-payments active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "manual-payments existing panel remains selected",
+          "passed": true,
+          "detail": "manual-payments"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "customer-reports keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=customer-reports"
+        },
+        {
+          "name": "customer-reports active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "customer-reports existing panel remains selected",
+          "passed": true,
+          "detail": "customer-reports"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "announcements keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=announcements"
+        },
+        {
+          "name": "announcements active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "announcements existing panel remains selected",
+          "passed": true,
+          "detail": "announcements"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "connections keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=connections"
+        },
+        {
+          "name": "connections active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "connections existing panel remains selected",
+          "passed": true,
+          "detail": "connections"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "webhook-events keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=webhook-events"
+        },
+        {
+          "name": "webhook-events active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "webhook-events existing panel remains selected",
+          "passed": true,
+          "detail": "webhook-events"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "channel-health keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=channel-health"
+        },
+        {
+          "name": "channel-health active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "channel-health existing panel remains selected",
+          "passed": true,
+          "detail": "channel-health"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "security keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=security"
+        },
+        {
+          "name": "security active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "security existing panel remains selected",
+          "passed": true,
+          "detail": "security"
+        },
+        {
+          "name": "channel-health active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "channel-health existing panel remains selected",
+          "passed": true,
+          "detail": "channel-health"
+        },
+        {
+          "name": "security active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "security existing panel remains selected",
+          "passed": true,
+          "detail": "security"
+        },
+        {
+          "name": "security panel retains existing MFA requirement prop",
+          "passed": true
+        },
+        {
+          "name": "connections active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "connections existing panel remains selected",
+          "passed": true,
+          "detail": "connections"
+        },
+        {
+          "name": "security active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "security existing panel remains selected",
+          "passed": true,
+          "detail": "security"
+        },
+        {
+          "name": "queue badges update dynamically",
+          "passed": true
+        },
+        {
+          "name": "large badges are capped from live values",
+          "passed": true
+        },
+        {
+          "name": "admin panels and navigation only read the mocked summary",
+          "passed": true
+        },
+        {
+          "name": "navigation has no page overflow",
+          "passed": true,
+          "detail": "390/390"
+        },
+        {
+          "name": "navigation content stays inside viewport",
+          "passed": true
+        },
+        {
+          "name": "navigation menu trigger fits header",
+          "passed": true
+        },
+        {
+          "name": "navigation header controls do not overlap",
+          "passed": true
+        },
+        {
+          "name": "navigation content starts below its header",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "drawer uses all four actual safe-area insets",
+          "passed": true
+        },
+        {
+          "name": "synthetic safe area keeps close control reachable",
+          "passed": true
+        },
+        {
+          "name": "synthetic safe area keeps final route reachable",
+          "passed": true,
+          "detail": "731/775/1000"
+        },
+        {
+          "name": "synthetic safe area has no horizontal overflow",
+          "passed": true
+        },
+        {
+          "name": "actual safe-area environment style is restored",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "connections keeps existing route href",
+          "passed": true,
+          "detail": "/dashboard/admin?tab=connections"
+        },
+        {
+          "name": "connections active state matches every shared navigation",
+          "passed": true
+        },
+        {
+          "name": "connections existing panel remains selected",
+          "passed": true,
+          "detail": "connections"
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "native modal focuses within the drawer",
+          "passed": true
+        },
+        {
+          "name": "trigger exposes expanded state",
+          "passed": true
+        },
+        {
+          "name": "body and HTML scroll are locked",
+          "passed": true
+        },
+        {
+          "name": "main pane scroll is locked",
+          "passed": true
+        },
+        {
+          "name": "native modal traps forward Tab",
+          "passed": true,
+          "detail": "<button data-admin-drawer-close=\"true\" type=\"button\" aria-label=\"បិទម៉ឺនុយអ្នកគ្រប់គ្រង\" class=\"flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:"
+        },
+        {
+          "name": "native modal traps reverse Tab",
+          "passed": true,
+          "detail": "<a href=\"/dashboard/admin?tab=security\" data-admin-tab=\"security\" class=\"flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm leading-5 transition focus-visible:outline-2 "
+        },
+        {
+          "name": "Escape restores trigger focus",
+          "passed": true
+        },
+        {
+          "name": "Escape restores scroll",
+          "passed": true
+        },
+        {
+          "name": "Escape preserves existing panel filters",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "Close button restores trigger focus",
+          "passed": true
+        },
+        {
+          "name": "Close button restores scroll",
+          "passed": true
+        },
+        {
+          "name": "Close button preserves existing panel filters",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "Backdrop restores trigger focus",
+          "passed": true
+        },
+        {
+          "name": "Backdrop restores scroll",
+          "passed": true
+        },
+        {
+          "name": "Backdrop preserves existing panel filters",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "short drawer reaches its final route",
+          "passed": true,
+          "detail": "436/480/480"
+        },
+        {
+          "name": "drawer owns its vertical scrolling",
+          "passed": true
+        },
+        {
+          "name": "desktop resize releases body/main locks",
+          "passed": true
+        },
+        {
+          "name": "resize preserves content filters",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "dark labels remain visible",
+          "passed": true
+        },
+        {
+          "name": "dark navigation text has readable contrast",
+          "passed": true,
+          "detail": "11.21,11.21,11.21,11.21,11.21,11.21,7.93,11.21,11.21,11.21"
+        },
+        {
+          "name": "dark count badges have readable contrast",
+          "passed": true,
+          "detail": "8.01,8.01,8.01,8.33"
+        },
+        {
+          "name": "dark theme has no page overflow",
+          "passed": true,
+          "detail": "390/390"
+        },
+        {
+          "name": "dark theme content stays inside viewport",
+          "passed": true
+        },
+        {
+          "name": "dark theme menu trigger fits header",
+          "passed": true
+        },
+        {
+          "name": "dark theme header controls do not overlap",
+          "passed": true
+        },
+        {
+          "name": "dark theme content starts below its header",
+          "passed": true
+        },
+        {
+          "name": "mobile menu trigger is visible",
+          "passed": true
+        },
+        {
+          "name": "dim labels remain visible",
+          "passed": true
+        },
+        {
+          "name": "dim navigation text has readable contrast",
+          "passed": true,
+          "detail": "10.29,10.29,10.29,10.29,10.29,10.29,7.14,10.29,10.29,10.29"
+        },
+        {
+          "name": "dim count badges have readable contrast",
+          "passed": true,
+          "detail": "7.32,7.32,7.32,7.58"
+        },
+        {
+          "name": "dim theme has no page overflow",
+          "passed": true,
+          "detail": "390/390"
+        },
+        {
+          "name": "dim theme content stays inside viewport",
+          "passed": true
+        },
+        {
+          "name": "dim theme menu trigger fits header",
+          "passed": true
+        },
+        {
+          "name": "dim theme header controls do not overlap",
+          "passed": true
+        },
+        {
+          "name": "dim theme content starts below its header",
+          "passed": true
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        },
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        },
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        },
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        },
+        {
+          "path": "/api/tenh-admin/summary",
+          "method": "GET",
+          "cache": "no-store"
+        }
+      ],
+      "currentTab": "connections",
+      "route": "/dashboard/admin?tab=connections"
+    }
+  ],
+  "directRoutes": [
+    {
+      "route": "/dashboard/admin?tab=connections",
+      "expected": "connections",
+      "result": {
+        "checks": [
+          {
+            "name": "connections active state matches every shared navigation",
+            "passed": true
+          },
+          {
+            "name": "connections existing panel remains selected",
+            "passed": true,
+            "detail": "connections"
+          }
+        ],
+        "requests": [
+          {
+            "path": "/api/tenh-admin/summary",
+            "method": "GET",
+            "cache": "no-store"
+          },
+          {
+            "path": "/api/tenh-admin/summary",
+            "method": "GET",
+            "cache": "no-store"
+          }
+        ],
+        "language": "en",
+        "currentTab": "connections",
+        "route": "/dashboard/admin?tab=connections"
+      }
+    },
+    {
+      "route": "/dashboard/admin?tab=security",
+      "expected": "security",
+      "result": {
+        "checks": [
+          {
+            "name": "security active state matches every shared navigation",
+            "passed": true
+          },
+          {
+            "name": "security existing panel remains selected",
+            "passed": true,
+            "detail": "security"
+          }
+        ],
+        "requests": [
+          {
+            "path": "/api/tenh-admin/summary",
+            "method": "GET",
+            "cache": "no-store"
+          },
+          {
+            "path": "/api/tenh-admin/summary",
+            "method": "GET",
+            "cache": "no-store"
+          }
+        ],
+        "language": "en",
+        "currentTab": "security",
+        "route": "/dashboard/admin?tab=security"
+      }
+    },
+    {
+      "route": "/dashboard/admin/mfa",
+      "expected": "security",
+      "result": {
+        "checks": [
+          {
+            "name": "security active state matches every shared navigation",
+            "passed": true
+          },
+          {
+            "name": "security existing panel remains selected",
+            "passed": true,
+            "detail": "security"
+          }
+        ],
+        "requests": [
+          {
+            "path": "/api/tenh-admin/summary",
+            "method": "GET",
+            "cache": "no-store"
+          },
+          {
+            "path": "/api/tenh-admin/summary",
+            "method": "GET",
+            "cache": "no-store"
+          }
+        ],
+        "language": "en",
+        "currentTab": "security",
+        "route": "/dashboard/admin/mfa"
+      }
+    }
+  ],
+  "browserErrors": [],
+  "network": [
+    "http://127.0.0.1:56886/dashboard/admin?tab=overview&lang=en",
+    "http://127.0.0.1:56886/bundle.js",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/dashboard/admin?tab=overview&lang=en",
+    "http://127.0.0.1:56886/bundle.js",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/dashboard/admin?tab=overview&lang=en",
+    "http://127.0.0.1:56886/bundle.js",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/dashboard/admin?tab=overview&lang=en",
+    "http://127.0.0.1:56886/bundle.js",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/dashboard/admin?tab=overview&lang=km",
+    "http://127.0.0.1:56886/bundle.js",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/dashboard/admin?tab=overview&lang=km",
+    "http://127.0.0.1:56886/bundle.js",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/dashboard/admin?tab=overview&lang=km",
+    "http://127.0.0.1:56886/bundle.js",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/dashboard/admin?tab=overview&lang=km",
+    "http://127.0.0.1:56886/bundle.js",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/dashboard/admin?tab=connections",
+    "http://127.0.0.1:56886/bundle.js",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/dashboard/admin?tab=security",
+    "http://127.0.0.1:56886/bundle.js",
+    "http://127.0.0.1:56886/favicon.ico",
+    "http://127.0.0.1:56886/dashboard/admin/mfa",
+    "http://127.0.0.1:56886/bundle.js",
+    "http://127.0.0.1:56886/favicon.ico"
+  ],
+  "temp": "C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-admin-navigation-EwVKvS"
+}

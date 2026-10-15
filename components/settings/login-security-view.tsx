@@ -960,52 +960,6 @@ export function LoginSecurityView() {
         />
       </section>
 
-      <section className="flex flex-col gap-4 rounded-[20px] border border-blue-200 bg-gradient-to-r from-blue-50/80 to-violet-50/50 px-5 py-5 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex min-w-0 items-center gap-4">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-[0_8px_24px_rgba(37,99,235,0.22)]">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.9"
-              className="h-7 w-7"
-              aria-hidden="true"
-            >
-              <path
-                d="M12 3 5 6v5c0 4.6 2.9 8.1 7 10 4.1-1.9 7-5.4 7-10V6l-7-3Z"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <path
-                d="m9 12 2 2 4-5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </div>
-
-          <div>
-            <h2 className="font-bold text-slate-950">
-              {t("We take your security seriously", "យើងយកចិត្តទុកដាក់ខ្ពស់ចំពោះសុវត្ថិភាពរបស់អ្នក")}
-            </h2>
-            <p className="mt-1 text-sm text-slate-500">
-              {t("TENH uses industry-standard security measures to keep your data safe and protected.", "TENH ប្រើវិធានការសុវត្ថិភាពតាមស្តង់ដារឧស្សាហកម្ម ដើម្បីរក្សាទិន្នន័យរបស់អ្នកឲ្យមានសុវត្ថិភាព និងការពារ។")}
-            </p>
-          </div>
-        </div>
-
-        <a
-          href="/dashboard/settings/security/learn-more"
-          className="inline-flex shrink-0 items-center gap-2 text-sm font-semibold text-blue-600 hover:text-blue-700"
-        >
-          {t("Learn more about security", "ស្វែងយល់បន្ថែមអំពីសុវត្ថិភាព")}
-          <Icon
-            name="chevron"
-            className="h-4 w-4"
-          />
-        </a>
-      </section>
-
       {passwordState.open ? (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4"

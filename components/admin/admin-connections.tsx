@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import Image from "next/image";
+import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
 
 type TelegramConnection = {
   connectionId: string;
@@ -61,18 +63,6 @@ function looksLikeBotToken(value: string) {
   );
 }
 
-function formatDate(value: string | null) {
-  if (!value) {
-    return "—";
-  }
-
-  const parsed = new Date(value);
-
-  return Number.isFinite(parsed.getTime())
-    ? parsed.toLocaleString()
-    : "—";
-}
-
 function StatusChip({
   label,
   value,
@@ -91,182 +81,137 @@ function StatusChip({
 
   return (
     <span
-      className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${toneClass}`}
+      className={`max-w-full break-words rounded-full px-2 py-0.5 text-[11px] font-semibold ${toneClass}`}
     >
       {label} {value}
     </span>
   );
 }
 
+type ConnectionPage = {
+  scope: string;
+  query: string;
+  items: ReleaseTarget[];
+  hasMore: boolean;
+  nextOffset: number | null;
+};
+
+const normalizeSearch = (value: string) => value.trim().normalize("NFC").toLowerCase();
+const connectionKey = (item: ReleaseTarget) => `${item.kind}:${item.connection.connectionId}`;
+function matchesSearch(item: ReleaseTarget, query: string) {
+  const connection = item.connection;
+  return [connection.accountName, connection.businessName,
+    item.kind === "telegram" ? item.connection.botId : item.connection.pageId]
+    .some(value => value && normalizeSearch(value).includes(query)) ||
+    (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(query) &&
+      [connection.connectionId, connection.businessId].some(value => value.toLowerCase() === query)) ||
+    (item.kind === "telegram" && Boolean(item.connection.botUsername &&
+      normalizeSearch(item.connection.botUsername).replace(/^@/, "").includes(query.replace(/^@/, ""))));
+}
+
 export function AdminConnections() {
+  const isKhmer = useWorkspaceLanguageId() === "km";
+  const t = (en: string, km: string) => isKhmer ? km : en;
   const [query, setQuery] = useState("");
-  const [platform, setPlatform] =
-    useState<PlatformFilter>("all");
-  const [loading, setLoading] =
-    useState(false);
-  const [telegram, setTelegram] = useState<
-    TelegramConnection[]
-  >([]);
-  const [messenger, setMessenger] = useState<
-    MessengerConnection[]
-  >([]);
-  const [error, setError] = useState<
-    string | null
-  >(null);
-  const [notice, setNotice] = useState<
-    string | null
-  >(null);
+  const [platform, setPlatform] = useState<PlatformFilter>("all");
+  const [showReleased, setShowReleased] = useState(false);
+  const [page, setPage] = useState<ConnectionPage | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [revision, setRevision] = useState(0);
+  const [confirmTarget, setConfirmTarget] = useState<ReleaseTarget | null>(null);
+  const [confirmId, setConfirmId] = useState("");
+  const [releasing, setReleasing] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const basePageRef = useRef<ConnectionPage | null>(null);
+  const pageRef = useRef<ConnectionPage | null>(null);
+  const controllerRef = useRef<AbortController | null>(null);
+  const sequenceRef = useRef(0);
+  const search = normalizeSearch(query);
+  const searchIsToken = looksLikeBotToken(query);
+  const scope = `${platform}:${showReleased}`;
 
-  /*
-   * Released connections stay in the database -- every conversation joins its
-   * social_accounts row for the channel it belongs to, so deleting one would
-   * strip old threads of their identity, or take them with it. They are hidden
-   * here instead, because the reason to open this tab is a claim that needs
-   * breaking, not a record of ones already broken.
-   */
-  const [showReleased, setShowReleased] =
-    useState(false);
-
-  const [backfilling, setBackfilling] =
-    useState(false);
-  const [backfillResult, setBackfillResult] =
-    useState<string | null>(null);
-
-  const [confirmTarget, setConfirmTarget] =
-    useState<ReleaseTarget | null>(null);
-  const [confirmId, setConfirmId] =
-    useState("");
-  const [releasing, setReleasing] =
-    useState(false);
-
-  async function load(
-    nextQuery = query,
-    nextPlatform = platform,
-  ) {
+  const loadPage = useCallback(async (
+    offset: number, signal: AbortSignal, sequence: number, nextScope: string,
+    nextQuery: string, nextPlatform: PlatformFilter, includeReleased: boolean,
+  ) => {
     setLoading(true);
     setError(null);
-
     try {
-      const params = new URLSearchParams();
-
-      if (nextQuery.trim()) {
-        params.set(
-          "query",
-          nextQuery.trim(),
-        );
-      }
-
-      if (nextPlatform !== "all") {
-        params.set("platform", nextPlatform);
-      }
-
-      const response = await fetch(
-        `/api/tenh-admin/connections?${params.toString()}`,
-        { cache: "no-store" },
-      );
-
-      const result = (await response.json()) as {
-        success?: boolean;
-        error?: string;
-        telegram?: TelegramConnection[];
-        messenger?: MessengerConnection[];
+      const params = new URLSearchParams({ paged: "true", limit: "50", offset: String(offset) });
+      if (nextQuery) params.set("query", nextQuery);
+      if (nextPlatform !== "all") params.set("platform", nextPlatform);
+      if (includeReleased) params.set("includeReleased", "true");
+      const response = await fetch(`/api/tenh-admin/connections?${params}`, { cache: "no-store", signal });
+      const result = await response.json() as {
+        success?: boolean; error?: string; items?: ReleaseTarget[]; hasMore?: boolean; nextOffset?: number | null;
       };
-
-      if (!response.ok || !result.success) {
-        setTelegram([]);
-        setMessenger([]);
-        setError(
-          result.error ??
-            "Unable to load channel connections.",
-        );
-        return;
+      if (signal.aborted || sequence !== sequenceRef.current) return;
+      if (!response.ok || !result.success || !Array.isArray(result.items)) {
+        if (response.status === 401 || response.status === 403) {
+          basePageRef.current = null;
+          pageRef.current = null;
+          setPage(null);
+          setConfirmTarget(null);
+        }
+        throw new Error(result.error || "Unable to load connections.");
       }
-
-      setTelegram(result.telegram ?? []);
-      setMessenger(result.messenger ?? []);
-    } catch {
-      setTelegram([]);
-      setMessenger([]);
-      setError(
-        "Unable to reach TENH while loading connections.",
-      );
+      const previous = pageRef.current;
+      const items = offset > 0 && previous?.scope === nextScope && previous.query === nextQuery
+        ? [...new Map([...previous.items, ...result.items].map(item => [connectionKey(item), item])).values()]
+        : result.items;
+      const nextPage = { scope: nextScope, query: nextQuery, items, hasMore: result.hasMore === true,
+        nextOffset: result.nextOffset ?? null };
+      pageRef.current = nextPage;
+      if (!nextQuery) basePageRef.current = nextPage;
+      setPage(nextPage);
+    } catch (reason) {
+      if (!signal.aborted && sequence === sequenceRef.current) {
+        setError(reason instanceof Error ? reason.message : "Unable to load connections.");
+      }
     } finally {
-      setLoading(false);
+      if (!signal.aborted && sequence === sequenceRef.current) setLoading(false);
     }
-  }
-
-  /*
-   * Load the full inventory once when the tab opens; every later load is
-   * user-driven. `load` is recreated each render, so it stays out of the
-   * dependency list on purpose -- including it would refetch on every render.
-   */
-  /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
-  useEffect(() => {
-    void load("", "all");
   }, []);
-  /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 
-  /*
-   * Fetch avatars for Facebook contacts who messaged before TENH collected
-   * them. One batch per press: the route paces itself against Meta's rate
-   * limit, which it shares with sending, and a long request that stalls agent
-   * replies would be a poor trade for some profile pictures.
-   */
-  async function runAvatarBackfill() {
-    if (backfilling) {
-      return;
-    }
-
-    setBackfilling(true);
-    setBackfillResult(null);
-
-    try {
-      const response = await fetch(
-        "/api/tenh-admin/facebook-avatar-backfill?limit=50",
-        { method: "POST" },
-      );
-
-      const result =
-        (await response.json()) as {
-          success?: boolean;
-          error?: string;
-          stored?: number;
-          skipped?: number;
-          remaining?: number;
-          reasons?: {
-            reason: string;
-            count: number;
-          }[];
-        };
-
-      if (!response.ok || !result.success) {
-        setBackfillResult(
-          result.error ??
-            "Unable to fetch avatars.",
-        );
-        return;
+  useEffect(() => {
+    const sequence = ++sequenceRef.current;
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    const cached = basePageRef.current;
+    const useCached = cached && ((cached.scope === scope && (!search || !cached.hasMore)) ||
+      (cached.scope === `all:${showReleased}` && !cached.hasMore));
+    const timer = window.setTimeout(() => {
+      if (searchIsToken) {
+        setLoading(false);
+      } else if (useCached) {
+        const nextPage = { ...cached, scope };
+        pageRef.current = nextPage;
+        setPage(nextPage);
+        setError(null);
+        setLoading(false);
+      } else {
+        void loadPage(0, controller.signal, sequence, scope, search, platform, showReleased);
       }
+    }, search && !useCached ? 300 : 0);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [scope, search, searchIsToken, platform, showReleased, revision, loadPage]);
 
-      const topReason =
-        result.reasons?.[0];
+  useEffect(() => {
+    if (confirmTarget) return;
+    const focusSearch = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (event.key !== "/" || event.ctrlKey || event.metaKey || event.altKey ||
+          (target instanceof HTMLElement && (target.isContentEditable || target.closest("input,textarea,select,[role=dialog]")))) return;
+      event.preventDefault();
+      searchRef.current?.focus();
+    };
+    window.addEventListener("keydown", focusSearch);
+    return () => window.removeEventListener("keydown", focusSearch);
+  }, [confirmTarget]);
 
-      setBackfillResult(
-        `Saved ${result.stored ?? 0}, skipped ${
-          result.skipped ?? 0
-        }. ${result.remaining ?? 0} contacts still without a photo.${
-          topReason
-            ? ` Most common reason: ${topReason.reason}`
-            : ""
-        }`,
-      );
-    } catch {
-      setBackfillResult(
-        "Unable to reach TENH while fetching avatars.",
-      );
-    } finally {
-      setBackfilling(false);
-    }
-  }
+  const refresh = () => { basePageRef.current = null; setRevision(value => value + 1); };
 
   async function confirmRelease() {
     if (!confirmTarget) {
@@ -328,7 +273,7 @@ export function AdminConnections() {
 
       setConfirmTarget(null);
       setConfirmId("");
-      void load();
+      refresh();
     } catch {
       setError(
         "Unable to reach TENH while releasing the connection.",
@@ -353,445 +298,129 @@ export function AdminConnections() {
       : (confirmTarget?.connection
           .accountName ?? "this Page");
 
-  const showTelegram =
-    platform !== "messenger";
-  const showMessenger =
-    platform !== "telegram";
-
-  const visibleTelegram = showReleased
-    ? telegram
-    : telegram.filter(
-        (connection) =>
-          connection.blocksReconnect,
-      );
-  const visibleMessenger = showReleased
-    ? messenger
-    : messenger.filter(
-        (connection) =>
-          connection.blocksReconnect,
-      );
-
-  const releasedCount =
-    telegram.length -
-    telegram.filter(
-      (connection) =>
-        connection.blocksReconnect,
-    ).length +
-    (messenger.length -
-      messenger.filter(
-        (connection) =>
-          connection.blocksReconnect,
-      ).length);
+  const useLocalSearch = !searchIsToken && page?.scope === scope && page.query === "" && !page.hasMore;
+  const pageMatches = page?.scope === scope && (page.query === search || useLocalSearch);
+  const visibleItems = pageMatches ? page.items.filter(item =>
+    (platform === "all" || item.kind === platform) && (!search || !useLocalSearch || matchesSearch(item, search))) : [];
+  const pending = loading || (!pageMatches && !error && !searchIsToken);
 
   return (
-    <div className="space-y-4">
-      <section className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-        <h2 className="text-base font-bold text-slate-900">
-          Channel connections
-        </h2>
-        <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
-          Every Messenger Page and Telegram Bot
-          across all workspaces — connected or
-          not. Run diagnostics only lists what is
-          currently active, so a connection
-          causing trouble is often missing there
-          but visible here.
-        </p>
-
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            void load();
-          }}
-          className="mt-4 flex flex-col gap-2 sm:flex-row"
-        >
-          <input
-            value={query}
-            onChange={(event) =>
-              setQuery(event.target.value)
-            }
-            placeholder="Bot ID, Page ID, @username, or channel name — blank shows everything"
-            className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white"
-          />
-
-          <select
-            value={platform}
-            onChange={(event) => {
-              const next = event.target
-                .value as PlatformFilter;
-              setPlatform(next);
-              void load(query, next);
-            }}
-            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-500 focus:bg-white"
-          >
-            <option value="all">
-              All channels
-            </option>
-            <option value="telegram">
-              Telegram
-            </option>
-            <option value="messenger">
-              Messenger
-            </option>
-          </select>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {loading
-              ? "Loading..."
-              : "Search"}
+    <div className="space-y-4" data-channel-connections>
+      <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-base font-bold text-slate-900">
+            {t("Channel connections", "ការតភ្ជាប់ឆានែល")}
+          </h2>
+          <button type="button" data-refresh-connections onClick={refresh} disabled={pending}
+            className="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:opacity-50">
+            <span aria-hidden="true">↻</span>{t("Refresh", "ផ្ទុកឡើងវិញ")}
           </button>
-        </form>
-
-        {error ? (
-          <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {error}
-          </p>
-        ) : null}
-
-        {notice ? (
-          <p className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-            {notice}
-          </p>
-        ) : null}
-
-        {releasedCount > 0 || showReleased ? (
-          <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-slate-600">
-            <input
-              type="checkbox"
-              checked={showReleased}
-              onChange={(event) =>
-                setShowReleased(
-                  event.target.checked,
-                )
-              }
-              className="h-4 w-4 rounded border-slate-300"
-            />
-            Show {releasedCount} already
-            released{" "}
-            <span className="text-slate-400">
-              — kept so their old conversations
-              keep their channel
-            </span>
-          </label>
-        ) : null}
-      </section>
-
-      <section className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-        <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-slate-400">
-          Messenger customer photos
-        </h3>
-
-        <p className="mt-1.5 max-w-3xl text-sm leading-6 text-slate-500">
-          New contacts get their photo the first time they message. This is only
-          for the backlog — customers who wrote before TENH started collecting
-          them. Run it as many times as you like; contacts that already have a
-          photo are skipped, and it paces itself so agent replies are never held
-          up.
-        </p>
-
-        <div className="mt-3 flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            disabled={backfilling}
-            onClick={() =>
-              void runAvatarBackfill()
-            }
-            className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {backfilling
-              ? "Fetching..."
-              : "Fetch next 50 photos"}
-          </button>
-
-          {backfillResult ? (
-            <p className="text-sm text-slate-600">
-              {backfillResult}
-            </p>
-          ) : null}
         </div>
+
+        <div className="mt-4 flex min-w-0 flex-col gap-2 sm:flex-row">
+          <form role="search" onSubmit={event => event.preventDefault()} className="relative min-w-0 flex-1">
+            <span className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-sm text-slate-400" aria-hidden="true">⌕</span>
+            <input ref={searchRef} type="search" value={query}
+              onChange={event => { setQuery(event.target.value); setError(null); }}
+              onKeyDown={event => { if (event.key === "Escape") { setQuery(""); setError(null); } }}
+              placeholder={t("Search page or bot…", "ស្វែងរក Page ឬ Bot…")}
+              aria-label={t("Search page or bot", "ស្វែងរក Page ឬ Bot")}
+              autoComplete="off" spellCheck={false}
+              className="h-10 w-full min-w-0 rounded-xl border border-slate-200 bg-white pl-10 pr-12 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-100 [&::-webkit-search-cancel-button]:appearance-none"
+            />
+            {query ? (
+              <button type="button" onClick={() => { setQuery(""); setError(null); searchRef.current?.focus(); }}
+                aria-label={t("Clear search", "សម្អាតការស្វែងរក")}
+                className="absolute inset-y-0 right-2 flex items-center rounded-lg px-2 text-sm font-semibold text-slate-400 transition hover:text-slate-700 focus-visible:outline-2 focus-visible:outline-blue-500">×</button>
+            ) : (
+              <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center" aria-hidden="true">
+                <kbd className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-400">/</kbd>
+              </span>
+            )}
+          </form>
+          <select value={platform} aria-label={t("Channel", "ឆានែល")}
+            onChange={event => { setPlatform(event.target.value as PlatformFilter); setError(null); }}
+            className="h-10 max-w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100">
+            <option value="all">{t("All channels", "ឆានែលទាំងអស់")}</option>
+            <option value="telegram">Telegram</option>
+            <option value="messenger">Messenger</option>
+          </select>
+        </div>
+        <label className="mt-3 inline-flex cursor-pointer items-center gap-2 text-sm text-slate-600">
+          <input type="checkbox" checked={showReleased}
+            onChange={event => { setShowReleased(event.target.checked); setError(null); }}
+            className="h-4 w-4 rounded border-slate-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500" />
+          {t("Show released", "បង្ហាញការតភ្ជាប់ដែលបានលែង")}
+        </label>
+
+        {searchIsToken ? <p role="alert" className="mt-3 text-sm text-red-700">{t("Enter a name or ID, not a token.", "បញ្ចូលឈ្មោះ ឬលេខសម្គាល់ មិនមែន Token ទេ។")}</p> : null}
+        {error ? (
+          <div role="alert" className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            <p>{error}</p>
+            <button type="button" onClick={refresh} className="rounded px-2 py-1 font-semibold underline focus-visible:outline-2 focus-visible:outline-red-600">{t("Retry", "ព្យាយាមម្ដងទៀត")}</button>
+          </div>
+        ) : null}
+        {notice ? <p role="status" className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{notice}</p> : null}
+
+        <div role="list" aria-label={t("Connected Pages and Bots", "Page និង Bot ដែលបានភ្ជាប់")} aria-busy={pending} className="mt-4 space-y-2">
+          {visibleItems.map(item => {
+            const connection = item.connection;
+            const bot = item.kind === "telegram";
+            return (
+              <article key={connectionKey(item)} role="listitem" data-connection-id={connection.connectionId}
+                className="min-w-0 rounded-xl border border-slate-200 bg-white p-3">
+                <div className="flex min-w-0 flex-wrap items-start gap-2 sm:flex-nowrap">
+                  <Image unoptimized src={bot ? "/images/channels/telegram.png" : "/images/channels/messenger.png"}
+                    alt={bot ? "Telegram" : "Messenger"} width={20} height={20} className="mt-0.5 h-5 w-5 shrink-0 rounded" />
+                  <div className="min-w-0 flex-1 basis-[160px]">
+                    <h3 className="break-words text-sm font-semibold text-slate-900">
+                      {connection.accountName || (bot ? item.connection.botUsername : null) || (bot ? "Telegram Bot" : "Facebook Page")}
+                      {bot && item.connection.botUsername ? <span className="ml-1 break-all text-xs font-normal text-slate-500">(@{item.connection.botUsername.replace(/^@/, "")})</span> : null}
+                    </h3>
+                    <p className="mt-0.5 break-words text-xs text-slate-500">{connection.businessName}</p>
+                    <p className="mt-0.5 break-all font-mono text-[11px] text-slate-400">
+                      {bot ? item.connection.botId : item.connection.pageId}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      <StatusChip label="Token" value={connection.tokenStatus ?? "none"}
+                        tone={connection.tokenStatus === (bot ? "verified" : "valid") ? "good" : "neutral"} />
+                      {bot ? <StatusChip label="Webhook" value={item.connection.webhookStatus ?? "none"}
+                        tone={item.connection.webhookStatus === "active" ? "good" : "neutral"} /> : null}
+                      <StatusChip label={t("Active", "សកម្ម")} value={connection.isActive ? t("yes", "បាទ") : t("no", "ទេ")}
+                        tone={connection.isActive ? "good" : "neutral"} />
+                    </div>
+                    {!bot && item.connection.tokenError ? <p className="mt-2 break-words text-xs text-red-600">{item.connection.tokenError}</p> : null}
+                  </div>
+                  {connection.blocksReconnect ? (
+                    <button type="button" data-release-connection
+                      onClick={() => { setConfirmTarget(item); setConfirmId(""); setError(null); setNotice(null); }}
+                      className="shrink-0 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500">
+                      {bot ? t("Release Bot", "លែង Bot") : t("Release Page", "លែង Page")}
+                    </button>
+                  ) : null}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+        {pending ? <p role="status" className="mt-3 text-sm text-slate-500">{t("Loading…", "កំពុងផ្ទុក…")}</p> :
+          !error && !searchIsToken && visibleItems.length === 0 ? <p role="status" className="mt-4 rounded-xl bg-slate-50 px-3 py-3 text-sm text-slate-600">{search ? t("No results", "គ្មានលទ្ធផល") : t("No connections", "គ្មានការតភ្ជាប់")}</p> : null}
+        {pageMatches && page.hasMore && page.nextOffset !== null ? (
+          <button type="button" data-load-more disabled={pending}
+            onClick={() => {
+              const controller = controllerRef.current;
+              if (controller && !controller.signal.aborted) void loadPage(page.nextOffset!, controller.signal, sequenceRef.current, scope, search, platform, showReleased);
+            }}
+            className="mt-4 w-full rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:opacity-50">
+            {t("Load more", "ផ្ទុកបន្ថែម")}
+          </button>
+        ) : null}
       </section>
-
-      {showTelegram ? (
-        <section className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-          <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-slate-400">
-            Telegram · {visibleTelegram.length}
-          </h3>
-
-          <p className="mt-1.5 max-w-3xl text-sm leading-6 text-slate-500">
-            A Bot can be claimed by only one
-            workspace. Release frees the claim so
-            an Owner who has moved to a new
-            subscription can connect the same Bot
-            again. It clears the token, the
-            webhook and the claim — it does{" "}
-            <span className="font-semibold text-slate-700">
-              not
-            </span>{" "}
-            delete the connection or its
-            conversation history, which stays
-            with the old workspace. Only Bots
-            still holding a claim show a Release
-            button.
-          </p>
-
-          {visibleTelegram.length === 0 ? (
-            <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
-              {loading
-                ? "Loading..."
-                : showReleased
-                  ? "No Telegram connection matches."
-                  : "No Telegram Bot is holding a claim."}
-            </p>
-          ) : (
-            <div className="mt-3 space-y-2">
-              {visibleTelegram.map((connection) => (
-                <div
-                  key={
-                    connection.connectionId
-                  }
-                  className={`rounded-2xl border p-3 ${
-                    connection.blocksReconnect
-                      ? "border-amber-200 bg-amber-50/60"
-                      : "border-slate-200 bg-white"
-                  }`}
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-semibold text-slate-900">
-                        {connection.accountName ??
-                          connection.botUsername ??
-                          "Telegram Bot"}
-                        {connection.botUsername ? (
-                          <span className="ml-1 text-xs font-normal text-slate-400">
-                            (@
-                            {
-                              connection.botUsername
-                            }
-                            )
-                          </span>
-                        ) : null}
-                      </p>
-                      <p className="mt-0.5 text-sm text-slate-600">
-                        {
-                          connection.businessName
-                        }
-                      </p>
-                      <p className="mt-0.5 font-mono text-xs text-slate-400">
-                        bot{" "}
-                        {connection.botId ??
-                          "unknown"}
-                      </p>
-                    </div>
-
-                    {connection.blocksReconnect ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setConfirmTarget({
-                            kind: "telegram",
-                            connection,
-                          });
-                          setConfirmId("");
-                          setError(null);
-                          setNotice(null);
-                        }}
-                        className="shrink-0 rounded-xl border border-red-200 bg-white px-3 py-1.5 text-sm font-semibold text-red-600 transition hover:bg-red-50"
-                      >
-                        Release Bot
-                      </button>
-                    ) : null}
-                  </div>
-
-                  <div className="mt-2.5 flex flex-wrap gap-1.5">
-                    <StatusChip
-                      label="token"
-                      value={
-                        connection.tokenStatus ??
-                        "none"
-                      }
-                      tone={
-                        connection.tokenStatus ===
-                        "verified"
-                          ? "good"
-                          : "neutral"
-                      }
-                    />
-                    <StatusChip
-                      label="webhook"
-                      value={
-                        connection.webhookStatus ??
-                        "none"
-                      }
-                      tone={
-                        connection.webhookStatus ===
-                        "active"
-                          ? "good"
-                          : "neutral"
-                      }
-                    />
-                    <StatusChip
-                      label="active"
-                      value={
-                        connection.isActive
-                          ? "yes"
-                          : "no"
-                      }
-                      tone={
-                        connection.isActive
-                          ? "good"
-                          : "neutral"
-                      }
-                    />
-                    <StatusChip
-                      label="connected"
-                      value={formatDate(
-                        connection.connectedAt,
-                      )}
-                    />
-                  </div>
-
-                  {connection.webhookUrl ? (
-                    <p className="mt-2 truncate font-mono text-xs text-slate-400">
-                      {connection.webhookUrl}
-                    </p>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-      ) : null}
-
-      {showMessenger ? (
-        <section className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-          <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-slate-400">
-            Messenger · {visibleMessenger.length}
-          </h3>
-
-          <p className="mt-1.5 max-w-3xl text-sm leading-6 text-slate-500">
-            A Page works the same way, except a
-            Page keeps its claim until it is
-            deliberately disconnected — being
-            deactivated is not enough. Release
-            clears the tokens and gives the claim
-            up, leaving the connection and its
-            history with the old workspace.
-          </p>
-
-          {visibleMessenger.length === 0 ? (
-            <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
-              {loading
-                ? "Loading..."
-                : showReleased
-                  ? "No Messenger Page matches."
-                  : "No Messenger Page is holding a claim."}
-            </p>
-          ) : (
-            <div className="mt-3 space-y-2">
-              {visibleMessenger.map((connection) => (
-                <div
-                  key={
-                    connection.connectionId
-                  }
-                  className={`rounded-2xl border p-3 ${
-                    connection.blocksReconnect
-                      ? "border-amber-200 bg-amber-50/60"
-                      : "border-slate-200 bg-white"
-                  }`}
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-semibold text-slate-900">
-                        {connection.accountName ??
-                          "Facebook Page"}
-                      </p>
-                      <p className="mt-0.5 text-sm text-slate-600">
-                        {
-                          connection.businessName
-                        }
-                      </p>
-                      <p className="mt-0.5 font-mono text-xs text-slate-400">
-                        page{" "}
-                        {connection.pageId ??
-                          "unknown"}
-                      </p>
-                    </div>
-
-                    {connection.blocksReconnect ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setConfirmTarget({
-                            kind: "messenger",
-                            connection,
-                          });
-                          setConfirmId("");
-                          setError(null);
-                          setNotice(null);
-                        }}
-                        className="shrink-0 rounded-xl border border-red-200 bg-white px-3 py-1.5 text-sm font-semibold text-red-600 transition hover:bg-red-50"
-                      >
-                        Release Page
-                      </button>
-                    ) : null}
-                  </div>
-
-                  <div className="mt-2.5 flex flex-wrap gap-1.5">
-                    <StatusChip
-                      label="token"
-                      value={
-                        connection.tokenStatus ??
-                        "none"
-                      }
-                      tone={
-                        connection.tokenStatus ===
-                        "valid"
-                          ? "good"
-                          : "neutral"
-                      }
-                    />
-                    <StatusChip
-                      label="active"
-                      value={
-                        connection.isActive
-                          ? "yes"
-                          : "no"
-                      }
-                      tone={
-                        connection.isActive
-                          ? "good"
-                          : "neutral"
-                      }
-                    />
-                    <StatusChip
-                      label="added"
-                      value={formatDate(
-                        connection.createdAt,
-                      )}
-                    />
-                  </div>
-
-                  {connection.tokenError ? (
-                    <p className="mt-2 text-xs text-red-600">
-                      Stored error:{" "}
-                      {connection.tokenError}
-                    </p>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-      ) : null}
 
       {confirmTarget ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-          <div className="w-full max-w-md rounded-3xl bg-white p-5 shadow-xl">
-            <h3 className="text-base font-bold text-slate-900">
+          <div role="dialog" aria-modal="true" aria-labelledby="release-connection-title" className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-3xl bg-white p-5 shadow-xl">
+            <h3 id="release-connection-title" className="text-base font-bold text-slate-900">
               {confirmTarget.kind === "telegram"
                 ? "Release this Bot?"
                 : "Release this Page?"}

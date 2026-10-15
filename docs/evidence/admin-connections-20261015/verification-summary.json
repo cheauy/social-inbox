@@ -1,0 +1,58 @@
+{
+  "scope": "TENH CHAT admin Channel connections UI and read-only search",
+  "changedApplicationFiles": [
+    "components/admin/admin-connections.tsx",
+    "app/api/tenh-admin/connections/route.ts"
+  ],
+  "regressionFiles": [
+    "tests/admin-connections-search.test.cjs",
+    "tests/admin-connections-browser.cjs",
+    "tests/fixtures/admin-connections-browser.entry.cjs"
+  ],
+  "serverTests": {
+    "passed": 8,
+    "failed": 0,
+    "skipped": 0
+  },
+  "browser": {
+    "passed": true,
+    "cases": 6,
+    "assertions": 364,
+    "languages": [
+      "en",
+      "km"
+    ],
+    "widths": [
+      1280,
+      768,
+      390
+    ],
+    "runtimeErrors": 0,
+    "requestedPaths": [
+      "/fixture.html",
+      "/bundle.js",
+      "/favicon.ico",
+      "/images/channels/messenger.png",
+      "/images/channels/telegram.png"
+    ],
+    "customerPhotoOrBackfillRequests": 0
+  },
+  "checks": {
+    "typescript": "passed",
+    "productionBuild": "passed",
+    "changedFilesEslint": "passed",
+    "whitespace": "passed",
+    "legacyGetBodyUnchanged": true,
+    "mutationHelpersAndPostUnchanged": true,
+    "unrelatedExistingDirtyPathsUnchanged": 14
+  },
+  "limits": [
+    "Browser API/release responses and database/auth queries are isolated mocks.",
+    "Hosted authenticated admin/PostgREST join execution and physical devices were not tested.",
+    "Offset pages use stable ordering and ID deduplication; concurrent inventory inserts/deletions can shift offsets. Refresh reconciles the current dataset."
+  ],
+  "deployment": "not performed",
+  "commitsOrPushes": "not performed",
+  "migrations": "none required or performed",
+  "privateRecordsOrImagesChanged": false
+}

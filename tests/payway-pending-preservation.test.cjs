@@ -3,14 +3,15 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { loader, database } = require('./tenh-seven/harness.cjs');
 
-function app(pending, permission = true, verification = null) {
+function app(pending, permission = true, verification = null, guardReady = true) {
   const now = Date.now(), effects = [];
-  const db = database({ billing_transactions: pending, manual_payment_requests: [], business_subscriptions: [{
+  const db = database({ billing_transactions: pending, manual_payment_requests: [], manual_payment_uploads: [], business_subscriptions: [{
     business_id: 'b1', status: 'active', plan_code: 'mini', billing_cycle: 'monthly',
     member_limit: 1, channel_limit: 3, pricing_snapshot: {},
     current_period_start: new Date(now - 15 * 86400000).toISOString(),
     current_period_end: new Date(now + 15 * 86400000).toISOString(),
   }] });
+  db.rpc = async (name) => { assert.equal(name, 'tenh_payment_application_guards_ready'); return { data: guardReady, error: null }; };
   const load = loader({
     '@/lib/supabase/admin': { supabaseAdmin: db },
     '@/lib/auth/get-current-member': { getCurrentMember: async () => ({ success: true,
@@ -90,10 +91,26 @@ test('unresolved manual payment blocks PayWay checkout before provider effects',
  assert.deepEqual(instance.effects,[]);assert.equal(JSON.stringify(instance.db.tables),before);
 });
 
-for(const verification of [null,{found:true,paymentState:'recovery_required'}])test('verification failure or conflict never closes or supersedes an existing checkout: '+Boolean(verification),async()=>{
- const instance=app([{id:'v2',provider:'payway',provider_transaction_id:'synthetic-v2',business_id:'b1',status:'pending',metadata:{checkout_contract_version:2}}],true,verification);
+test('versioned pending attempt resumes its original identity without provider effects or replacement',async()=>{
+ const instance=app([{id:'v2',provider:'payway',provider_transaction_id:'synthetic-v2',business_id:'b1',status:'pending',metadata:{checkout_contract_version:2}}]);
  const before=JSON.stringify(instance.db.tables),response=await instance.post();
- assert.equal(response.status,409);assert.equal((await response.json()).code,'TENH_BILLING_RECOVERY_REQUIRED');
- assert.deepEqual(instance.effects,['verify']);assert.equal(JSON.stringify(instance.db.tables),before);
+ const body=await response.json();
+ assert.equal(response.status,409);assert.equal(body.code,'TENH_PAYWAY_CHECKOUT_IN_PROGRESS');
+ assert.equal(body.transactionId,'synthetic-v2');assert.equal(body.businessId,'b1');
+ assert.deepEqual(instance.effects,[]);assert.equal(JSON.stringify(instance.db.tables),before);
  assert.ok(instance.db.history.every(e=>e.op==='read'));
+});
+
+test('new checkout fails closed before creating an attempt when application guards are unavailable',async()=>{
+ const instance=app([],true,null,false),before=JSON.stringify(instance.db.tables),response=await instance.post();
+ assert.equal(response.status,503);assert.equal((await response.json()).code,'TENH_BILLING_APPLICATION_MIGRATION_REQUIRED');
+ assert.equal(JSON.stringify(instance.db.tables),before);assert.deepEqual(instance.effects,[]);
+});
+
+test('prepared manual proof ticket blocks PayWay and identifies the original manual attempt',async()=>{
+ const instance=app([]);instance.db.tables.manual_payment_uploads=[{id:'original-manual',business_id:'b1',state:'prepared'}];
+ const before=JSON.stringify(instance.db.tables),response=await instance.post(),body=await response.json();
+ assert.equal(response.status,409);assert.equal(body.code,'TENH_BILLING_PURCHASE_PENDING');
+ assert.equal(body.manualRequestId,'original-manual');assert.equal(body.businessId,'b1');
+ assert.equal(JSON.stringify(instance.db.tables),before);assert.deepEqual(instance.effects,[]);
 });

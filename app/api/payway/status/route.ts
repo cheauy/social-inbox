@@ -5,6 +5,7 @@ import { getCurrentMember, TENH_ACTIVE_BUSINESS_COOKIE } from "@/lib/auth/get-cu
 import { memberHasPermission } from "@/lib/auth/require-permission";
 import { verifyAndFinalizePayWayTransaction } from "@/lib/payway/finalize-payment";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,22 +34,24 @@ async function findPayWayInvoiceId(
 
 export async function GET(request: NextRequest) {
   try {
-    const authResult = await getCurrentMember();
-
-    if (!authResult.success) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: authResult.error,
-        },
-        { status: authResult.status },
-      );
+    const preserveWorkspace = request.nextUrl.searchParams.get("preserve_workspace") === "1";
+    let userId: string;
+    if (preserveWorkspace) {
+      const client = await createClient();
+      const { data: { user }, error } = await client.auth.getUser();
+      if (error || !user) return NextResponse.json({ success: false, error: "Sign in to verify this payment." }, { status: 401 });
+      userId = user.id;
+    } else {
+      const authResult = await getCurrentMember();
+      if (!authResult.success) return NextResponse.json({ success: false, error: authResult.error }, { status: authResult.status });
+      userId = authResult.user.id;
     }
 
     const transactionId =
       request.nextUrl.searchParams.get("tran_id")?.trim() || "";
+    const expectedBusiness = request.nextUrl.searchParams.get("purchase_business");
 
-    if (!transactionId) {
+    if (!transactionId || (expectedBusiness !== null && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(expectedBusiness))) {
       return NextResponse.json(
         {
           success: false,
@@ -70,7 +73,7 @@ export async function GET(request: NextRequest) {
       throw new Error(transactionError.message);
     }
 
-    if (!transaction) {
+    if (!transaction || (expectedBusiness !== null && transaction.business_id !== expectedBusiness)) {
       return NextResponse.json(
         {
           success: false,
@@ -84,7 +87,7 @@ export async function GET(request: NextRequest) {
       .from("team_members")
       .select("id,role")
       .eq("business_id", transaction.business_id)
-      .eq("user_id", authResult.user.id)
+      .eq("user_id", userId)
       .eq("is_active", true)
       // See get-inbox-resource-access: a re-invited member can hold two
       // active rows, and maybeSingle() turns that into a 500.
@@ -103,14 +106,13 @@ export async function GET(request: NextRequest) {
     }
 
     if (transaction.status === "approved") {
-      const cookieStore = await cookies();
-      cookieStore.set(TENH_ACTIVE_BUSINESS_COOKIE, transaction.business_id, {
-        httpOnly: true,
-        sameSite: "lax",
-        secure: process.env.NODE_ENV === "production",
-        path: "/",
-        maxAge: 60 * 60 * 24 * 365,
-      });
+      if (!preserveWorkspace) {
+        const cookieStore = await cookies();
+        cookieStore.set(TENH_ACTIVE_BUSINESS_COOKIE, transaction.business_id, {
+          httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production",
+          path: "/", maxAge: 60 * 60 * 24 * 365,
+        });
+      }
       const invoiceId = await findPayWayInvoiceId(
         transaction.business_id,
         transaction.id,
@@ -119,6 +121,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         success: true,
         transactionId,
+        businessId: transaction.business_id,
         paymentState: "approved",
         providerStatus: transaction.provider_status,
         invoiceId,
@@ -129,8 +132,11 @@ export async function GET(request: NextRequest) {
       transactionId,
       "browser-status",
     );
+    if ("businessId" in result && result.businessId && result.businessId !== transaction.business_id) {
+      throw new Error("Payment workspace did not match the saved attempt.");
+    }
 
-    if (result.paymentState === "approved" && "businessId" in result && result.businessId) {
+    if (!preserveWorkspace && result.paymentState === "approved" && "businessId" in result && result.businessId) {
       const cookieStore = await cookies();
       cookieStore.set(TENH_ACTIVE_BUSINESS_COOKIE, result.businessId, {
         httpOnly: true,
@@ -151,6 +157,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      businessId: transaction.business_id,
       transactionId,
       paymentState: result.paymentState,
       providerStatus:
@@ -178,3 +185,6 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+// Browser verification is explicit; native clients retain the existing GET contract.
+export const POST = GET;

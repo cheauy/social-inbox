@@ -211,6 +211,56 @@ function describeMessenger(
   };
 }
 
+async function pagedConnections(request: NextRequest) {
+  const params = request.nextUrl.searchParams;
+  const query = (params.get("query") ?? "").trim().normalize("NFC").toLowerCase();
+  const requestedPlatform = params.get("platform");
+  const platform = requestedPlatform === "telegram" || requestedPlatform === "messenger" ? requestedPlatform : "all";
+  const limit = Number(params.get("limit") ?? 50);
+  const offset = Number(params.get("offset") ?? 0);
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100 || !Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(offset + limit)) {
+    return noStoreJson({ success: false, error: "Invalid connection page." }, 400);
+  }
+  const includeReleased = params.get("includeReleased") === "true";
+  const columns = [...new Set(`${SELECT_COLUMNS},${MESSENGER_COLUMNS},platform`.split(","))].join(",");
+  try {
+    let builder = supabaseAdmin.from("social_accounts")
+      .select(`${columns},business:businesses(name)${query ? ",business_match:businesses()" : ""}`)
+      .in("platform", platform === "telegram" ? ["telegram"] : platform === "messenger" ? ["facebook"] : ["telegram", "facebook"]);
+    if (!includeReleased) {
+      builder = builder.or("and(platform.eq.telegram,telegram_token_status.eq.verified),and(platform.eq.facebook,or(facebook_token_status.neq.disconnected,facebook_token_status.is.null))");
+    }
+    if (query) {
+      // PostgREST rewrites '*' in LIKE patterns; an escaped regex preserves a literal asterisk.
+      const operator = query.includes("*") ? "imatch" : "ilike";
+      const pattern = (value: string) => operator === "imatch"
+        ? value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+        : `%${value.replace(/[\\%_]/g, "\\$&")}%`;
+      const filterValue = (value: string) => `"${pattern(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+      builder = builder.filter("business_match.name", operator, pattern(query)).or([
+        `account_name.${operator}.${filterValue(query)}`,
+        `platform_account_id.${operator}.${filterValue(query)}`,
+        `and(platform.eq.telegram,telegram_bot_username.${operator}.${filterValue(query.replace(/^@/, ""))})`,
+        "business_match.not.is.null",
+        ...(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(query) ? [`id.eq.${query}`, `business_id.eq.${query}`] : []),
+      ].join(","));
+    }
+    const { data, error } = await builder.order("created_at", { ascending: true, nullsFirst: false })
+      .order("id", { ascending: true }).range(offset, offset + limit);
+    if (error) throw error;
+    type PagedConnectionRow = ConnectionRow & MessengerRow & { platform: string; business: { name: string | null } | null };
+    const rows = (data ?? []) as unknown as PagedConnectionRow[];
+    const hasMore = rows.length > limit;
+    const items = rows.slice(0, limit).map(row => row.platform === "telegram"
+      ? { kind: "telegram" as const, connection: describe(row, row.business?.name ?? undefined) }
+      : { kind: "messenger" as const, connection: describeMessenger(row, row.business?.name ?? undefined) });
+    return noStoreJson({ success: true, query, platform, items, hasMore, nextOffset: hasMore ? offset + limit : null });
+  } catch (error) {
+    console.error("[TENH Admin] Paged connection search failed:", error instanceof Error ? error.message : "Database query failed.");
+    return noStoreJson({ success: false, error: "Unable to load channel connections." }, 500);
+  }
+}
+
 export async function GET(
   request: NextRequest,
 ) {
@@ -225,6 +275,8 @@ export async function GET(
       admin.status,
     );
   }
+
+  if (request.nextUrl.searchParams.get("paged") === "true") return pagedConnections(request);
 
   const rawQuery =
     request.nextUrl.searchParams

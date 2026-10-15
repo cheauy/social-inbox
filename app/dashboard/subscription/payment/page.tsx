@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { SubscriptionPaymentView } from "@/components/subscription/subscription-payment-view";
+import { PaymentAttemptView } from "@/components/subscription/payment-attempt-view";
 import { getCurrentMember } from "@/lib/auth/get-current-member";
 import { memberHasPermission } from "@/lib/auth/require-permission";
 import {
@@ -31,6 +32,7 @@ type PaymentPageProps = {
     upgrade?: string | string[];
     payway?: string | string[];
     tran_id?: string | string[];
+    manual_request?: string | string[];
     purchase_business?: string | string[];
   }>;
 };
@@ -49,84 +51,22 @@ export default async function SubscriptionPaymentPage({ searchParams }: PaymentP
   const extensionBillingCycle = single(params.extension).trim() || "none";
   const purchaseBusinessId = single(params.purchase_business).trim();
 
-  const authResult = await getCurrentMember();
-  if (!authResult.success) redirect("/login");
-
+  const manualRequestId = single(params.manual_request).trim();
   const returnTransactionId = single(params.tran_id).trim();
-  if (returnTransactionId) {
-    const { data: transaction, error: transactionError } = await supabaseAdmin
-      .from("billing_transactions")
-      .select("business_id,plan_code,billing_cycle,amount,currency,target_channel_limit,target_member_limit,pricing_snapshot,renew_same")
-      .eq("provider", "payway")
-      .eq("provider_transaction_id", returnTransactionId)
-      .maybeSingle();
-
-    if (transactionError || !transaction) redirect("/dashboard/subscription?payment_return=unavailable");
-
-    const { data: transactionMember, error: memberError } = await supabaseAdmin
-      .from("team_members")
-      .select("id,role")
-      .eq("business_id", transaction.business_id)
-      .eq("user_id", authResult.user.id)
-      .eq("is_active", true)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (memberError || !transactionMember ||
-        !(await memberHasPermission(transactionMember, "billing", "manage"))) {
-      redirect("/dashboard/subscription?plan_change_blocked=billing-permission");
-    }
-
-    const savedCycle = getBillingCycleDefinition(transaction.billing_cycle);
-    const savedAmount = Number(transaction.amount);
-    const savedTotalCents = Math.round(savedAmount * 100);
-    const savedPlan = transaction.plan_code;
-    const snapshot = transaction.pricing_snapshot &&
-      typeof transaction.pricing_snapshot === "object" &&
-      !Array.isArray(transaction.pricing_snapshot)
-      ? transaction.pricing_snapshot as Record<string, unknown>
-      : {};
-    const snapshotNumber = (key: string) =>
-      typeof snapshot[key] === "number" ? snapshot[key] as number : null;
-    const snapshotString = (key: string) =>
-      typeof snapshot[key] === "string" ? snapshot[key] as string : null;
-    if (!savedCycle || (savedPlan !== "custom" && !isPaidPlan(savedPlan)) || transaction.currency !== "USD" ||
-        !Number.isFinite(savedAmount) || savedAmount <= 0 ||
-        Math.abs(savedAmount * 100 - savedTotalCents) > 0.000001 ||
-        (savedPlan === "custom" && !normalizeCustomCapacity(
-          transaction.target_channel_limit, transaction.target_member_limit))) {
-      redirect("/dashboard/subscription?payment_return=unavailable");
-    }
-
-    // Render the authorized saved purchase before all new-checkout eligibility,
-    // lifecycle synchronization and quoting. The status endpoint separately
-    // verifies the payment; browser return parameters never grant approval.
+  if (manualRequestId || returnTransactionId) {
+    // The status endpoint authorizes the saved attempt independently of the selected workspace.
     return (
       <div className="h-full overflow-y-auto">
-        <SubscriptionPaymentView
-          planCode={savedPlan as PlanCode}
-          billingCycle={savedCycle.id as BillingCycle}
-          initialTransactionId={returnTransactionId}
-          initialPayWayReturn="returned"
-          savedTransactionTotalCents={savedTotalCents}
-          transactionReturnOnly
-          purchaseBusinessId={transaction.business_id}
-          customConnections={transaction.target_channel_limit}
-          customUsers={transaction.target_member_limit}
-          renewSame={transaction.renew_same === true}
-          customUpgrade={snapshot.purchase_type === "custom-upgrade"}
-          customUpgradeCurrentConnections={snapshotNumber("current_channel_limit")}
-          customUpgradeCurrentUsers={snapshotNumber("current_member_limit")}
-          customUpgradeCurrentBillingCycle={snapshotString("current_billing_cycle")}
-          customUpgradeRemainingDays={snapshotNumber("remaining_days")}
-          customUpgradeExtensionMonths={snapshotNumber("extension_months")}
-          customUpgradeExtensionBillingCycle={snapshotString("extension_billing_cycle")}
-          customUpgradeCurrentPeriodEnd={snapshotString("current_period_end")}
-          customUpgradeNewPeriodEnd={snapshotString("new_period_end")}
+        <PaymentAttemptView
+          kind={manualRequestId ? "manual" : "payway"}
+          attemptId={manualRequestId || returnTransactionId}
         />
       </div>
     );
   }
+
+  const authResult = await getCurrentMember();
+  if (!authResult.success) redirect("/login");
 
   if (!cycle) redirect("/dashboard/subscription");
 
@@ -160,6 +100,26 @@ export default async function SubscriptionPaymentPage({ searchParams }: PaymentP
   if (renewSame && billingMember.role !== "owner") {
     redirect("/dashboard/subscription?plan_change_blocked=owner-only");
   }
+
+  const [manualAttempt, payWayAttempt] = await Promise.all([
+    supabaseAdmin.from("manual_payment_requests").select("id")
+      .eq("business_id", targetBusinessId).eq("status", "submitted")
+      .order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    supabaseAdmin.from("billing_transactions").select("id,provider_transaction_id")
+      .eq("business_id", targetBusinessId).eq("provider", "payway")
+      .in("status", ["draft", "pending", "submitted"])
+      .order("created_at", { ascending: false }).limit(1).maybeSingle(),
+  ]);
+  if (manualAttempt.error || payWayAttempt.error) {
+    throw new Error("Unable to check existing payment attempts.");
+  }
+  if (manualAttempt.data?.id) {
+    redirect(`/dashboard/subscription/payment?manual_request=${encodeURIComponent(manualAttempt.data.id)}`);
+  }
+  if (payWayAttempt.data?.provider_transaction_id) {
+    redirect(`/dashboard/subscription/payment?tran_id=${encodeURIComponent(payWayAttempt.data.provider_transaction_id)}`);
+  }
+  if (payWayAttempt.data) throw new Error("This payment attempt needs review.");
 
   try {
     await syncBusinessSubscriptionLifecycle(targetBusinessId);
@@ -207,6 +167,7 @@ export default async function SubscriptionPaymentPage({ searchParams }: PaymentP
       previous?.status === "cancelled" ||
       (previous?.status === "active" &&
         Number.isFinite(previousPeriodEnd) &&
+        // eslint-disable-next-line react-hooks/purity -- Server eligibility compares the saved expiry with request time.
         previousPeriodEnd <= Date.now());
 
     if (

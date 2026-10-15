@@ -16,6 +16,7 @@ const click=async(label,scope='document')=>{await evaluate('(()=>{const b=[...'+
 const telegram=async()=>{await evaluate('document.querySelectorAll("nav[aria-label] button")[1].click()');await wait('document.querySelector("[data-telegram-bots]") && !document.querySelector("[data-telegram-bots] > [role=status]")');};
 const menu=async name=>{await evaluate('document.querySelector('+JSON.stringify('button[aria-label="Actions for '+name+'"]')+').click()');await wait('document.querySelector("[role=menu]")');};
 const choose=async(name,label)=>{await menu(name);await click(label,'document.querySelector("[role=menu]")');};
+const openBot=async()=>{await click('Add Connection');await wait('document.querySelector("section[role=dialog]")');await click('Continue','document.querySelector("section[role=dialog]")');await wait(dialog);};
 const setToken=async value=>{await evaluate('(()=>{const i=document.querySelector("input[type=password]");Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(i,'+JSON.stringify(value)+');i.dispatchEvent(new Event("input",{bubbles:true}));})()');await pause(50);};
 const writes=()=>evaluate('window.fixtureRequests.filter(r=>r.method!=="GET")');
 const resize=async(width,height)=>{await command('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:false});await pause(80);};
@@ -89,11 +90,11 @@ check('Bot disconnect failure stays inside dialog',(await text()).includes('Isol
 await evaluate('window.fixtureFail=false');await click('Disconnect',dialog);await wait('!document.querySelector("dialog[open]")');
 check('disconnect removes only selected bot',!(await text()).includes('Second Fixture Bot')&&(await text()).includes('TENH Shop Assistant'));
 
-await click('Continue');await wait(dialog);
+await openBot();await wait(dialog);
 check('Continue opens exactly one centered connection modal',await evaluate('document.querySelectorAll("dialog[open]").length===1')&&(await text()).includes('Connect another Telegram bot'));
 check('opening does not connect or reveal inline token',await evaluate('document.querySelectorAll("input[type=password]").length===1 && !!'+dialog+'.querySelector("input[type=password]")')&&(await writes()).every(r=>!(r.method==='POST'&&r.url==='/api/telegram/connection')));
 check('empty token cannot submit',await evaluate('[...'+dialog+'.querySelectorAll("button")].find(b=>b.textContent.trim()==="Connect").disabled'));
-await evaluate('[...document.querySelectorAll("[data-telegram-bots] button")].find(b=>b.textContent.trim()==="Continue").click()');
+check('no duplicate Telegram connection card on the page',await evaluate('![...document.querySelectorAll("[data-telegram-bots] button")].some(b=>b.textContent.trim()==="Continue")&&!document.querySelector("[data-telegram-bots]").innerText.includes("Connect another bot to this workspace.")'));
 check('repeated Continue creates no second modal',await evaluate('document.querySelectorAll("dialog[open]").length===1'));
 await setToken('bad');await click('Connect',dialog);await wait(dialog+'.querySelector("[role=alert]")');
 check('invalid token stays local with visible validation',(await text()).includes('Enter a valid Telegram Bot token')&&(await writes()).every(r=>!(r.method==='POST'&&r.url==='/api/telegram/connection')));
@@ -104,11 +105,11 @@ check('Tab stays trapped in native dialog',await evaluate(dialog+'.contains(docu
 await command('Input.dispatchKeyEvent',{type:'keyDown',key:'Tab',code:'Tab',modifiers:8});
 check('Shift Tab stays trapped in native dialog',await evaluate(dialog+'.contains(document.activeElement)'));
 await command('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape'});await wait('!document.querySelector("dialog[open]")');
-check('Escape returns focus to Continue',await evaluate('document.activeElement.textContent.trim()==="Continue"'));
-await click('Continue');await wait(dialog);check('reopening clears token',await evaluate('document.querySelector("input[type=password]").value===""'));
+check('Escape returns focus to Add Connection',await evaluate('document.activeElement.textContent.includes("Add Connection")'));
+await openBot();await wait(dialog);check('reopening clears token',await evaluate('document.querySelector("input[type=password]").value===""'));
 await setToken(await evaluate('window.fixtureSyntheticToken'));await evaluate('window.fixtureConnectFailure=true');await click('Connect',dialog);await wait(dialog+'.querySelector("[role=alert]")');
 check('failed connection error remains in modal',(await text()).includes('Isolated connection failure')&&await evaluate('document.querySelector("input[type=password]").value===window.fixtureSyntheticToken'));
-await click('Cancel',dialog);await click('Continue');await wait(dialog);
+await click('Cancel',dialog);await openBot();await wait(dialog);
 check('Cancel clears token',await evaluate('document.querySelector("input[type=password]").value===""'));
 await setToken(await evaluate('window.fixtureSyntheticToken'));await evaluate('window.fixtureConnectFailure=false;window.fixturePendingConnect=true');
 const beforeConnect=(await writes()).filter(r=>r.method==='POST'&&r.url==='/api/telegram/connection').length;
@@ -119,29 +120,29 @@ await command('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape
 for(const [name,width,height]of [['desktop',1440,900],['tablet',820,1000],['mobile',390,844],['mobile-short',360,360]]){await resize(width,height);await checkLayout(name+' connection');await screenshot('connection-'+name);}
 await evaluate('window.fixtureReleaseConnect()');await wait('!document.querySelector("dialog[open]")');await wait('document.body.innerText.includes("New Fixture Bot")');
 check('confirmed connection updates list without page reload',await evaluate('window.fixtureReady&&window.fixtureRequests.length>10'));
-check('successful connection returns focus to Continue',await evaluate('document.activeElement.textContent.trim()==="Continue"'));
+check('successful connection returns focus to Add Connection',await evaluate('document.activeElement.textContent.includes("Add Connection")'));
 check('token stays out of URL and persistent storage',await evaluate('!location.href.includes(window.fixtureSyntheticToken)&&![...Object.values(localStorage),...Object.values(sessionStorage)].some(v=>v.includes(window.fixtureSyntheticToken))'));
-await click('Continue');await wait(dialog);check('success cleared token',await evaluate('document.querySelector("input[type=password]").value===""'));await click('Cancel',dialog);
+await openBot();await wait(dialog);check('success cleared token',await evaluate('document.querySelector("input[type=password]").value===""'));await click('Cancel',dialog);
 
 await navigate('long');await telegram();await resize(390,640);
-await evaluate('document.querySelector("main").scrollTop=180');const scrollBefore=await evaluate('document.querySelector("main").scrollTop');
-await click('Continue');await wait(dialog);await setToken(await evaluate('window.fixtureSyntheticToken'));await click('Connect',dialog);await wait('!document.querySelector("dialog[open]")');
+await evaluate('document.querySelector("main").scrollTop=180');
+await openBot();await wait(dialog);const scrollBefore=await evaluate('document.querySelector("main").scrollTop');await setToken(await evaluate('window.fixtureSyntheticToken'));await click('Connect',dialog);await wait('!document.querySelector("dialog[open]")');
 check('successful connection preserves list scroll position',Math.abs(await evaluate('document.querySelector("main").scrollTop')-scrollBefore)<2);
-await navigate();await telegram();await click('Continue');await wait(dialog);await setToken(await evaluate('window.fixtureSyntheticToken'));await evaluate('window.fixtureLostResponse=true');await click('Connect',dialog);await wait('!document.querySelector("dialog[open]")');
+await navigate();await telegram();await openBot();await wait(dialog);await setToken(await evaluate('window.fixtureSyntheticToken'));await evaluate('window.fixtureLostResponse=true');await click('Connect',dialog);await wait('!document.querySelector("dialog[open]")');
 check('lost response reconciles confirmed server success before retry',(await text()).includes('Bot connection confirmed'));
 
-await navigate();await telegram();await click('Continue');await wait(dialog);await setToken(await evaluate('window.fixtureSyntheticToken'));
-await evaluate('dispatchEvent(new PopStateEvent("popstate"))');await wait('!document.querySelector("dialog[open]")');await click('Continue');await wait(dialog);check('history navigation clears stale modal token',await evaluate('document.querySelector("input[type=password]").value===""'));await click('Cancel',dialog);
+await navigate();await telegram();await openBot();await wait(dialog);await setToken(await evaluate('window.fixtureSyntheticToken'));
+await evaluate('dispatchEvent(new PopStateEvent("popstate"))');await wait('!document.querySelector("dialog[open]")');await openBot();await wait(dialog);check('history navigation clears stale modal token',await evaluate('document.querySelector("input[type=password]").value===""'));await click('Cancel',dialog);
 await click('Add Connection');await wait('document.querySelector("section[role=dialog]")');await click('Continue','document.querySelector("section[role=dialog]")');await wait(dialog);
 check('connection-selector Continue opens only token modal',await evaluate('document.querySelectorAll("dialog[open],section[role=dialog]").length===1'));
-await click('Cancel',dialog);check('selector flow returns focus to stable Continue',await evaluate('document.activeElement.textContent.trim()==="Continue"'));
-await click('Continue');await wait(dialog);await setToken(await evaluate('window.fixtureSyntheticToken'));await evaluate('window.fixturePendingConnect=true');await click('Connect',dialog);await wait('window.fixtureReleaseConnect');
+await click('Cancel',dialog);check('selector flow returns focus to Add Connection',await evaluate('document.activeElement.textContent.includes("Add Connection")'));
+await openBot();await wait(dialog);await setToken(await evaluate('window.fixtureSyntheticToken'));await evaluate('window.fixturePendingConnect=true');await click('Connect',dialog);await wait('window.fixtureReleaseConnect');
 await evaluate('window.fixtureOtherWorkspace=true;dispatchEvent(new CustomEvent("tenh:active-workspace-ui-change",{detail:{businessId:"other-workspace"}}))');await wait('!document.querySelector("dialog[open]")');
 check('workspace switch clears modal and token',await evaluate('!document.querySelector("input[type=password]")'));
 await evaluate('window.fixtureReleaseConnect()');await pause(200);
 check('late success cannot reopen old workspace modal or bot list',await evaluate('!document.querySelector("dialog[open]")&&!document.body.innerText.includes("New Fixture Bot")'));
 
-await navigate();await telegram();await click('Continue');await wait(dialog);await setToken(await evaluate('window.fixtureSyntheticToken'));
+await navigate();await telegram();await openBot();await wait(dialog);await setToken(await evaluate('window.fixtureSyntheticToken'));
 await evaluate('dispatchEvent(new StorageEvent("storage",{key:"tenh-active-workspace-ui",newValue:"other-workspace"}))');await wait('!document.querySelector("dialog[open]")');
 check('cross-tab workspace switch also clears stale token',await evaluate('!document.querySelector("input[type=password]")'));
 await navigate('view-only');check('Facebook Agents get no management menu',await evaluate('!document.querySelector("button[aria-haspopup=menu]")'));await telegram();check('Telegram Agents get no menu or Continue',await evaluate('!document.querySelector("button[aria-haspopup=menu]")&&![...document.querySelectorAll("button")].some(b=>b.textContent.trim()==="Continue")'));
@@ -149,8 +150,8 @@ await navigate('no-access');check('denied page reads no integration data',(await
 await navigate('locked');check('locked subscription has no add flow',await evaluate('![...document.querySelectorAll("button")].some(b=>b.textContent.includes("Add Connection"))'));await telegram();check('locked Telegram cannot add bots',await evaluate('![...document.querySelectorAll("button")].some(b=>b.textContent.trim()==="Continue")'));
 await navigate('empty');check('empty Facebook connection entry remains',await evaluate('Boolean(document.querySelector("form[action=\\"/api/facebook/oauth/pages\\"]"))'));
 for(const index of [2,3,4]){await evaluate('document.querySelectorAll("nav[aria-label] button")['+index+'].click()');check('unrelated planned channel '+index+' stays unavailable',(await text()).includes('Not available yet'));}
-await navigate('default&language=km');await telegram();check('Khmer labels render',await evaluate('document.body.innerText.includes("បន្ត")'));await click('បន្ត');await wait(dialog);await checkLayout('Khmer mobile');await screenshot('connection-mobile-khmer');
-await click('បោះបង់',dialog);await navigate();await telegram();await click('Continue');await wait(dialog);
+await navigate('default&language=km');await telegram();check('Khmer Add Connection remains available',await evaluate('document.body.innerText.includes("បន្ថែមការតភ្ជាប់")'));await click('បន្ថែមការតភ្ជាប់');await wait('document.querySelector("section[role=dialog]")');await click('បន្ត','document.querySelector("section[role=dialog]")');await wait(dialog);await checkLayout('Khmer mobile');await screenshot('connection-mobile-khmer');
+await click('បោះបង់',dialog);await navigate();await telegram();await openBot();await wait(dialog);
 await evaluate('document.documentElement.dataset.tenhWorkspaceTheme="dark"');await pause(250);await checkLayout('dark mobile');await screenshot('connection-mobile-dark');
 check('dialog follows the existing workspace dark palette',await evaluate('getComputedStyle('+dialog+').backgroundColor==="rgb(21, 27, 38)"'));
 await evaluate('document.documentElement.dataset.tenhWorkspaceTheme="dim"');await pause(250);await checkLayout('dim mobile');await screenshot('connection-mobile-dim');

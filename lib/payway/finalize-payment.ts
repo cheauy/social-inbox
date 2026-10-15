@@ -220,6 +220,10 @@ export async function verifyAndFinalizePayWayTransaction(
   if (billingTransaction.currency.trim().toUpperCase() !== "USD") {
     conflictReason = "SIGNED_BILLING_CURRENCY_MISMATCH";
   }
+  if (!conflictReason) {
+    const guard = await supabaseAdmin.rpc("tenh_payment_application_guards_ready", {});
+    if (guard.error || guard.data !== true) conflictReason = "PAYMENT_APPLICATION_GUARD_NOT_READY";
+  }
 
   if (conflictReason) {
     const { data: recovery, error: recoveryError } = await supabaseAdmin.rpc(
@@ -271,6 +275,8 @@ export async function verifyAndFinalizePayWayTransaction(
 
   if (
     !activationRow ||
+    (Array.isArray(activation) && activation.length !== 1) ||
+    activationRow.business_id !== billingTransaction.business_id ||
     activationRow.plan_code !== billingTransaction.plan_code ||
     activationRow.subscription_status !== "active"
   ) {

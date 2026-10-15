@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 import { IntegrationActionMenu } from "@/components/integrations/integration-action-menu";
 import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
@@ -60,6 +60,7 @@ type Props = {
   onConnectionChanged?: (summary: { active: number; total: number }) => void;
   openAddBotSignal?: number;
   businessId: string;
+  returnFocusRef?: RefObject<HTMLButtonElement | null>;
 };
 
 type Working = "connect" | "activate" | "disable" | "disconnect" | null;
@@ -75,7 +76,7 @@ function botLabel(connection: TelegramConnection) {
   return connection.username ? `@${connection.username}` : connection.botName ?? "Telegram Bot";
 }
 
-export function TelegramChannelPanel({ canAddConnections, onConnectionChanged, openAddBotSignal = 0, businessId }: Props) {
+export function TelegramChannelPanel({ canAddConnections, onConnectionChanged, openAddBotSignal = 0, businessId, returnFocusRef }: Props) {
   const isKhmer = useWorkspaceLanguageId() === "km";
   const text = (en: string, km: string) => isKhmer ? km : en;
   const [loading, setLoading] = useState(true);
@@ -90,7 +91,6 @@ export function TelegramChannelPanel({ canAddConnections, onConnectionChanged, o
   const [connectError, setConnectError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const continueRef = useRef<HTMLButtonElement>(null);
   const busy = useRef(false);
   const generation = useRef(0);
   const mounted = useRef(false);
@@ -240,10 +240,6 @@ export function TelegramChannelPanel({ canAddConnections, onConnectionChanged, o
     <div className="flex flex-wrap items-center justify-between gap-3">
       <h2 className="text-lg font-bold text-slate-950">{text("Telegram bots", "Telegram Bots")}</h2>
     </div>
-    {canManage && canAddConnections ? <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-4">
-      <div className="min-w-0"><h3 className="font-semibold text-slate-950">Telegram Bot</h3><p className="mt-1 text-sm text-slate-500">{text("Connect another bot to this workspace.", "ភ្ជាប់ Bot មួយទៀតទៅកន្លែងធ្វើការនេះ។")}</p></div>
-      <button ref={continueRef} type="button" disabled={Boolean(working)} onClick={() => { if (!busy.current) { setConnectError(null); setErrorCode(null); setShowAddBot(true); } }} className="min-h-11 shrink-0 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">{text("Continue", "បន្ត")}</button>
-    </div> : null}
     {error && !pendingAction ? <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</p> : null}
     {notice ? <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{notice}</p> : null}
     {working === "connect" && !showAddBot ? <p role="status" className="p-3 text-sm text-slate-600">{text("The connection request is still processing. Please wait before trying again.", "សំណើភ្ជាប់កំពុងដំណើរការ។ សូមរង់ចាំ មុនសាកល្បងម្តងទៀត។")}</p> : null}
@@ -275,7 +271,7 @@ export function TelegramChannelPanel({ canAddConnections, onConnectionChanged, o
       description={text("Create the bot in @BotFather, copy the Bot Token, then paste it here.", "បង្កើត Bot នៅក្នុង @BotFather ចម្លង Bot Token រួចបិទភ្ជាប់នៅទីនេះ។")}
       confirmLabel={text("Connect", "ភ្ជាប់")} cancelLabel={text("Cancel", "បោះបង់")} closeLabel={text("Close Telegram bot connection", "បិទការភ្ជាប់ Telegram Bot")}
       loadingLabel={text("Connecting…", "កំពុងភ្ជាប់…")} loading={working === "connect"} confirmDisabled={!token.trim()}
-      error={connectError} returnFocusRef={continueRef} onCancel={dismiss} onConfirm={() => void connectTelegram()}>
+      error={connectError} returnFocusRef={returnFocusRef} onCancel={dismiss} onConfirm={() => void connectTelegram()}>
       <form className="mt-4" onSubmit={event => { event.preventDefault(); void connectTelegram(); }}>
         <label htmlFor="telegram-bot-token" className="block text-sm font-semibold text-slate-700">Bot Token</label>
         <input id="telegram-bot-token" type="password" value={token} disabled={working === "connect"} onChange={event => setToken(event.target.value)} autoComplete="off" spellCheck={false} autoCapitalize="none" placeholder="123456789:AA..." aria-invalid={Boolean(connectError)} className="mt-2 min-h-12 w-full min-w-0 rounded-xl border border-slate-300 bg-white px-4 py-3 text-base text-slate-950 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:opacity-60" />

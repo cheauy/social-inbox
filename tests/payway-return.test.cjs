@@ -1,93 +1,125 @@
-/* eslint-disable @typescript-eslint/no-require-imports -- CommonJS node:test or draft-generator harness. */
+/* eslint-disable @typescript-eslint/no-require-imports -- CommonJS route harness. */
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { loader, database } = require('./tenh-seven/harness.cjs');
 
-function returnHarness({ status = 'pending', authorized = true, permission = true, transactionPatch = {} } = {}) {
-  const db = database({
-    billing_transactions: [{
-      provider: 'payway', provider_transaction_id: 'saved-transaction',
-      business_id: 'paid-workspace', plan_code: 'custom', billing_cycle: 'monthly',
-      amount: '35.00', currency: 'USD', status,
-      target_channel_limit: 5, target_member_limit: 3, renew_same: false,
-      pricing_snapshot: {
-        purchase_type: 'custom-upgrade', extension_billing_cycle: 'monthly',
-        extension_months: 1, current_billing_cycle: '12-months',
-        current_period_end: '2027-01-01T00:00:00.000Z',
-        new_period_end: '2027-02-01T00:00:00.000Z',
-      },
-      ...transactionPatch,
-    }],
-    team_members: authorized ? [{ id: 'member', role: 'owner', business_id: 'paid-workspace', user_id: 'user', is_active: true }] : [],
-    // The subscription can already have activated, expired, changed capacity,
-    // or scheduled cancellation; a return must never inspect/requote it.
-    business_subscriptions: [{ business_id: 'paid-workspace', status: 'expired',
-      plan_code: 'custom', billing_cycle: 'monthly', channel_limit: 30,
-      member_limit: 100, cancel_at_period_end: true,
-      pricing_snapshot: { purchase_type: 'custom-upgrade', extension_months: 1 } }],
-  });
-  const noNewCheckout = () => { throw new Error('Return attempted new-checkout logic'); };
-  const PaymentView = () => {};
+function returnHarness() {
+  const effects = [];
+  function PaymentAttemptView() {}
+  function SubscriptionPaymentView() {}
+  const unexpected = label => () => { effects.push(label); throw new Error(`Unexpected ${label}`); };
   const load = loader({
     'react/jsx-runtime': { jsx: (type, props) => ({ type, props }) },
     'next/navigation': { redirect: url => { throw new Error(`REDIRECT:${url}`); } },
-    '@/components/subscription/subscription-payment-view': { SubscriptionPaymentView: PaymentView },
-    '@/lib/supabase/admin': { supabaseAdmin: db },
-    '@/lib/auth/get-current-member': { getCurrentMember: async () => ({ success: true, user: { id: 'user' }, member: { id: 'current-member', business_id: 'other-workspace', role: 'owner' } }) },
-    '@/lib/auth/require-permission': { memberHasPermission: async () => permission },
-    '@/lib/subscription/custom-upgrade': { buildCustomUpgradeQuote: noNewCheckout },
-    '@/lib/subscription/sync-subscription-lifecycle': { syncBusinessSubscriptionLifecycle: noNewCheckout },
-    '@/lib/subscription/plan-change-security': {
-      isPaidPlan: value => ['mini', 'standard', 'pro'].includes(value),
-      loadPlanChangeState: noNewCheckout, getPlanPurchaseEligibility: noNewCheckout,
-    },
+    '@/components/subscription/payment-attempt-view': { PaymentAttemptView },
+    '@/components/subscription/subscription-payment-view': { SubscriptionPaymentView },
+    '@/lib/supabase/admin': { supabaseAdmin: { from: unexpected('database lookup') } },
+    '@/lib/auth/get-current-member': { getCurrentMember: unexpected('selected-workspace auth') },
+    '@/lib/auth/require-permission': { memberHasPermission: unexpected('checkout permission') },
+    '@/lib/subscription/custom-upgrade': { buildCustomUpgradeQuote: unexpected('new quote') },
+    '@/lib/subscription/sync-subscription-lifecycle': { syncBusinessSubscriptionLifecycle: unexpected('lifecycle mutation') },
   });
-  return {
-    db,
-    page: load('app/dashboard/subscription/payment/page.tsx').default,
-    params: { tran_id: 'saved-transaction', payway: 'approved',
-      // Tampered / missing URL presentation never replaces saved purchase data.
-      plan: 'pro', cycle: 'invalid', users: '100', connections: '30',
-      purchase_business: 'unauthorized-query-workspace' },
-  };
+  return { effects, PaymentAttemptView, page: load('app/dashboard/subscription/payment/page.tsx').default };
 }
 
-for (const status of ['pending', 'approved']) {
-  test(`${status} return displays saved annual-plus-one-month purchase despite changed subscription`, async () => {
-    const app = returnHarness({ status });
-    const result = await app.page({ searchParams: Promise.resolve(app.params) });
-    const props = result.props.children.props;
-    assert.equal(props.planCode, 'custom');
-    assert.equal(props.billingCycle, 'monthly');
-    assert.equal(props.savedTransactionTotalCents, 3500);
-    assert.equal(props.customConnections, 5);
-    assert.equal(props.customUsers, 3);
-    assert.equal(props.customUpgradeExtensionMonths, 1);
-    assert.equal(props.customUpgradeExtensionBillingCycle, 'monthly');
-    assert.equal(props.purchaseBusinessId, 'paid-workspace');
-    assert.equal(props.initialTransactionId, 'saved-transaction');
-    assert.equal(props.initialPayWayReturn, 'returned');
-    assert.equal(props.transactionReturnOnly, true);
-    assert.equal(app.db.history.filter(x => x.table === 'business_subscriptions').length, 0);
-    assert.ok(app.db.history.every(x => x.op === 'read'));
+for (const [query, kind, attemptId] of [
+  [{ tran_id: 'saved-transaction' }, 'payway', 'saved-transaction'],
+  [{ manual_request: '00000000-0000-4000-8000-000000000001' }, 'manual', '00000000-0000-4000-8000-000000000001'],
+]) {
+  test(`exact ${kind} status delegates saved data and independent authorization before checkout`, async () => {
+    const app = returnHarness();
+    const result = await app.page({ searchParams: Promise.resolve({
+      ...query, payway: 'approved', plan: 'pro', cycle: 'invalid', users: '100', connections: '30',
+      purchase_business: 'unrelated-workspace',
+    }) });
+    const view = result.props.children;
+    assert.equal(view.type, app.PaymentAttemptView);
+    assert.deepEqual(Object.keys(view.props).sort(), ['attemptId', 'kind']);
+    assert.equal(view.props.kind, kind);
+    assert.equal(view.props.attemptId, attemptId);
+    assert.deepEqual(app.effects, []);
   });
 }
 
-for (const options of [{ authorized: false }, { permission: false }]) {
-  test(`unauthorized return is rejected (${JSON.stringify(options)})`, async () => {
-    const app = returnHarness(options);
-    await assert.rejects(() => app.page({ searchParams: Promise.resolve(app.params) }), /REDIRECT:.*billing-permission/);
-  });
-}
-
-test('unknown transaction return is rejected without attempting new checkout', async () => {
-  const app = returnHarness();
-  await assert.rejects(() => app.page({ searchParams: Promise.resolve({ tran_id: 'unknown' }) }), /REDIRECT:.*payment_return=unavailable/);
+test('missing and malformed exact attempt identifiers still reach the non-disclosing status endpoint', async () => {
+  for (const params of [{ tran_id: 'unknown' }, { manual_request: 'not-a-uuid' }]) {
+    const app = returnHarness();
+    assert.equal((await app.page({ searchParams: Promise.resolve(params) })).props.children.type, app.PaymentAttemptView);
+    assert.deepEqual(app.effects, []);
+  }
 });
 
-test('fixed-plan return displays its saved upgrade charge rather than current catalog price', async () => {
-  const app = returnHarness({ transactionPatch: { plan_code: 'standard', amount: '12.00', pricing_snapshot: { purchase_type: 'upgrade' } } });
-  const result = await app.page({ searchParams: Promise.resolve(app.params) });
-  assert.equal(result.props.children.props.savedTransactionTotalCents, 1200);
-  assert.equal(result.props.children.props.planCode, 'standard');
+test('duplicate exact query values use the first value and manual request identity is deterministic', async () => {
+  const app = returnHarness();
+  const result = await app.page({ searchParams: Promise.resolve({ manual_request: ['manual-first', 'manual-second'], tran_id: 'other-attempt' }) });
+  assert.equal(result.props.children.props.kind, 'manual');
+  assert.equal(result.props.children.props.attemptId, 'manual-first');
+  assert.deepEqual(app.effects, []);
+});
+
+test('an approval query without an exact identifier cannot bypass ordinary checkout authorization', async () => {
+  const app = returnHarness();
+  await assert.rejects(() => app.page({ searchParams: Promise.resolve({ payway: 'approved', manual: 'approved', plan: 'mini', cycle: 'monthly' }) }), /Unexpected selected-workspace auth/);
+  assert.deepEqual(app.effects, ['selected-workspace auth']);
+});
+
+function checkoutHarness({ manual = [], payway = [], permission = true, authorized = true } = {}) {
+  const effects = [];
+  const db = database({
+    manual_payment_requests: manual, billing_transactions: payway,
+    team_members: authorized ? [{ id: 'target-member', role: 'owner', business_id: 'target-workspace', user_id: 'user', is_active: true }] : [],
+  });
+  const load = loader({
+    'next/navigation': { redirect: url => { throw new Error(`REDIRECT:${url}`); } },
+    '@/components/subscription/payment-attempt-view': { PaymentAttemptView() {} },
+    '@/components/subscription/subscription-payment-view': { SubscriptionPaymentView() {} },
+    '@/lib/supabase/admin': { supabaseAdmin: db },
+    '@/lib/auth/get-current-member': { getCurrentMember: async () => ({ success: true, user: { id: 'user' }, member: { id: 'current-member', business_id: 'current-workspace', role: 'owner' } }) },
+    '@/lib/auth/require-permission': { memberHasPermission: async () => permission },
+    '@/lib/subscription/sync-subscription-lifecycle': { syncBusinessSubscriptionLifecycle: async () => { effects.push('lifecycle'); } },
+    '@/lib/subscription/plan-change-security': {
+      isPaidPlan: value => ['mini', 'standard', 'pro'].includes(value),
+      loadPlanChangeState: async () => { throw new Error('REACHED_NEW_CHECKOUT'); },
+      getPlanPurchaseEligibility: () => { throw new Error('Unexpected quote'); },
+    },
+  });
+  return { db, effects, page: load('app/dashboard/subscription/payment/page.tsx').default,
+    params: { plan: 'mini', cycle: 'monthly', purchase_business: 'target-workspace' } };
+}
+
+for (const [kind, rows, destination] of [
+  ['manual', { manual: [{ id: 'saved-request', business_id: 'target-workspace', status: 'submitted' }] }, 'manual_request=saved-request'],
+  ['payway', { payway: [{ provider: 'payway', provider_transaction_id: 'saved-transaction', business_id: 'target-workspace', status: 'pending' }] }, 'tran_id=saved-transaction'],
+]) {
+  test(`old checkout restores unresolved ${kind} in the authorized target before lifecycle or repricing`, async () => {
+    const app = checkoutHarness(rows);
+    await assert.rejects(() => app.page({ searchParams: Promise.resolve(app.params) }), error => error.message === `REDIRECT:/dashboard/subscription/payment?${destination}`);
+    assert.deepEqual(app.effects, []);
+    assert.ok(app.db.history.every(entry => entry.op === 'read'));
+  });
+}
+
+test('historical terminal attempts and another workspace pending attempt cannot replace a new checkout', async () => {
+  const app = checkoutHarness({
+    manual: [{ id: 'approved', business_id: 'target-workspace', status: 'approved' }, { id: 'rejected', business_id: 'target-workspace', status: 'rejected' }, { id: 'other', business_id: 'current-workspace', status: 'submitted' }],
+    payway: [{ provider: 'payway', provider_transaction_id: 'cancelled', business_id: 'target-workspace', status: 'cancelled' }],
+  });
+  await assert.rejects(() => app.page({ searchParams: Promise.resolve(app.params) }), /REACHED_NEW_CHECKOUT/);
+  assert.deepEqual(app.effects, ['lifecycle']);
+});
+
+test('new-checkout denial precedes payment lookups and lookup failure cannot reopen checkout forms', async () => {
+  for (const options of [{ permission: false }, { authorized: false }]) {
+    const app = checkoutHarness(options);
+    await assert.rejects(() => app.page({ searchParams: Promise.resolve(app.params) }), /REDIRECT:.*billing-permission/);
+    assert.ok(app.db.history.every(entry => entry.table === 'team_members'));
+    assert.deepEqual(app.effects, []);
+  }
+  const app = checkoutHarness();
+  app.db.failures.push({ table: 'manual_payment_requests' });
+  await assert.rejects(() => app.page({ searchParams: Promise.resolve(app.params) }), /Unable to check existing payment attempts/);
+  assert.deepEqual(app.effects, []);
+  const missingReference = checkoutHarness({ payway: [{ id: 'incomplete', provider: 'payway', business_id: 'target-workspace', status: 'pending', provider_transaction_id: null }] });
+  await assert.rejects(() => missingReference.page({ searchParams: Promise.resolve(missingReference.params) }), /payment attempt needs review/);
+  assert.deepEqual(missingReference.effects, []);
 });

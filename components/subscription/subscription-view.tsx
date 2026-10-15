@@ -10,10 +10,8 @@ import {
 } from "react";
 
 import Link from "next/link";
-import Script from "next/script";
 import { useSearchParams } from "next/navigation";
 
-import { createClient } from "@/lib/supabase/client";
 import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
 
 import {
@@ -75,41 +73,6 @@ type SubscriptionResponse = {
   };
 };
 
-type PayWayPaymentState =
-  | "idle"
-  | "waiting"
-  | "approved"
-  | "pending"
-  | "declined"
-  | "cancelled"
-  | "failed";
-
-type CheckoutMethod = "payway" | "manual";
-
-type ManualPaymentConfig = {
-  enabled: boolean;
-  bankName: string;
-  accountName: string;
-  accountNumber: string;
-  qrImageUrl: string | null;
-  supportText: string | null;
-};
-
-type ManualPaymentRequest = {
-  id: string;
-  planCode: string;
-  billingCycle: string;
-  amount: number;
-  currency: string;
-  status: "submitted" | "approved" | "rejected" | "cancelled";
-  transferReference: string | null;
-  proofFileName: string;
-  reviewNote: string | null;
-  reviewedAt: string | null;
-  approvedAt: string | null;
-  createdAt: string;
-};
-
 type PlanChangeMode =
   | "active-paid"
   | "subscribe"
@@ -134,15 +97,6 @@ type PlanAction =
   | "buy-new"
   | "subscribe"
   | "blocked";
-
-declare global {
-  interface Window {
-    TenhAbaPaywayBridge?: {
-      isReady: () => boolean;
-      checkout: () => void;
-    };
-  }
-}
 
 function formatDate(value: string | null, isKhmer = false) {
   if (!value) {
@@ -456,35 +410,6 @@ export function SubscriptionView() {
     useState<string | null>(null);
   const [planChangeNotice, setPlanChangeNotice] =
     useState<string | null>(null);
-  const [checkoutLoading, setCheckoutLoading] =
-    useState(false);
-  const [checkoutError, setCheckoutError] =
-    useState<string | null>(null);
-  const [payWayPluginReady, setPayWayPluginReady] =
-    useState(false);
-  const [payWayTransactionId, setPayWayTransactionId] =
-    useState<string | null>(null);
-  const [payWayPaymentState, setPayWayPaymentState] =
-    useState<PayWayPaymentState>("idle");
-  const [payWayStatusText, setPayWayStatusText] =
-    useState<string | null>(null);
-  const [checkoutMethod, setCheckoutMethod] =
-    useState<CheckoutMethod>("payway");
-  const [manualPaymentConfig, setManualPaymentConfig] =
-    useState<ManualPaymentConfig | null>(null);
-  const [manualPaymentRequest, setManualPaymentRequest] =
-    useState<ManualPaymentRequest | null>(null);
-  const [manualPaymentLoading, setManualPaymentLoading] =
-    useState(true);
-  const [manualPaymentSubmitting, setManualPaymentSubmitting] =
-    useState(false);
-  const [manualPaymentError, setManualPaymentError] =
-    useState<string | null>(null);
-  const [manualCustomerNote, setManualCustomerNote] =
-    useState("");
-  const [manualProof, setManualProof] =
-    useState<File | null>(null);
-
   const refreshPlanChangeState =
     useCallback(async () => {
       setPlanChangeLoading(true);
@@ -535,58 +460,9 @@ export function SubscriptionView() {
     }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Initial async security-state load for the overview.
     void refreshPlanChangeState();
   }, [refreshPlanChangeState]);
-
-  useEffect(() => {
-    let cancelled = false;
-    let timer: number | null = null;
-    let attempts = 0;
-
-    function detectPayWayPlugin() {
-      if (cancelled) {
-        return;
-      }
-
-      const ready =
-        window.TenhAbaPaywayBridge?.isReady() === true;
-
-      if (ready) {
-        setPayWayPluginReady(true);
-        setCheckoutError((current) =>
-          current?.startsWith("Unable to load PayWay secure checkout")
-            ? null
-            : current,
-        );
-        return;
-      }
-
-      attempts += 1;
-
-      if (attempts < 120) {
-        timer = window.setTimeout(
-          detectPayWayPlugin,
-          250,
-        );
-        return;
-      }
-
-      setPayWayPluginReady(false);
-      setCheckoutError(
-        "Unable to initialize PayWay secure checkout. Refresh the page and try again.",
-      );
-    }
-
-    timer = window.setTimeout(detectPayWayPlugin, 100);
-
-    return () => {
-      cancelled = true;
-
-      if (timer !== null) {
-        window.clearTimeout(timer);
-      }
-    };
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -645,266 +521,15 @@ export function SubscriptionView() {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
+    const manualRequestId = searchParams.get("manual_request")?.trim();
+    const transactionId = searchParams.get("tran_id")?.trim();
+    if (!manualRequestId && !transactionId) return;
 
-    async function loadManualPayment() {
-      setManualPaymentLoading(true);
-      setManualPaymentError(null);
-
-      try {
-        const response = await fetch(
-          "/api/manual-payments",
-          { cache: "no-store" },
-        );
-
-        const result = (await response.json()) as {
-          success?: boolean;
-          error?: string;
-          config?: ManualPaymentConfig;
-          request?: ManualPaymentRequest | null;
-        };
-
-        if (!response.ok || !result.success) {
-          throw new Error(
-            result.error ??
-              "Unable to load manual payment information.",
-          );
-        }
-
-        if (!cancelled) {
-          const latestRequest = result.request ?? null;
-
-          setManualPaymentConfig(result.config ?? null);
-          setManualPaymentRequest(latestRequest);
-
-          if (
-            latestRequest &&
-            (latestRequest.status === "submitted" ||
-              latestRequest.status === "rejected")
-          ) {
-            setCheckoutMethod("manual");
-
-            if (
-              plans.some(
-                (plan) => plan.id === latestRequest.planCode,
-              )
-            ) {
-              setSelectedPlan(
-                latestRequest.planCode as PlanCode,
-              );
-            }
-
-            if (
-              cycles.some(
-                (item) => item.id === latestRequest.billingCycle,
-              )
-            ) {
-              setCycle(
-                latestRequest.billingCycle as BillingCycle,
-              );
-            }
-          }
-        }
-      } catch (manualLoadError) {
-        if (!cancelled) {
-          setManualPaymentConfig(null);
-          setManualPaymentError(
-            manualLoadError instanceof Error
-              ? manualLoadError.message
-              : "Unable to load manual payment information.",
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setManualPaymentLoading(false);
-        }
-      }
-    }
-
-    void loadManualPayment();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (manualPaymentRequest?.status !== "submitted") {
-      return;
-    }
-
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-
-    async function refreshManualStatus() {
-      try {
-        const response = await fetch(
-          "/api/manual-payments",
-          { cache: "no-store" },
-        );
-        const result = (await response.json()) as {
-          success?: boolean;
-          request?: ManualPaymentRequest | null;
-        };
-
-        if (
-          !cancelled &&
-          response.ok &&
-          result.success &&
-          result.request
-        ) {
-          setManualPaymentRequest(result.request);
-
-          if (result.request.status === "approved") {
-            window.setTimeout(() => {
-              window.location.assign(
-                "/dashboard/subscription?manual=approved",
-              );
-            }, 800);
-            return;
-          }
-        }
-      } catch {
-        // Keep the submitted state visible; a later poll can recover.
-      }
-
-      if (!cancelled) {
-        timer = setTimeout(refreshManualStatus, 5000);
-      }
-    }
-
-    timer = setTimeout(refreshManualStatus, 5000);
-
-    return () => {
-      cancelled = true;
-      if (timer) {
-        clearTimeout(timer);
-      }
-    };
-  }, [manualPaymentRequest?.status]);
-
-  useEffect(() => {
-    const transactionFromReturn =
-      searchParams.get("tran_id")?.trim() || null;
-    const payWayReturn = searchParams.get("payway");
-
-    if (
-      transactionFromReturn &&
-      (payWayReturn === "returned" || payWayReturn === "approved")
-    ) {
-      setPayWayTransactionId(transactionFromReturn);
-      setPayWayPaymentState(
-        payWayReturn === "approved" ? "approved" : "waiting",
-      );
-    }
+    const params = new URLSearchParams(manualRequestId
+      ? { manual_request: manualRequestId }
+      : { tran_id: transactionId! });
+    window.location.replace(`/dashboard/subscription/payment?${params}`);
   }, [searchParams]);
-
-  useEffect(() => {
-    if (
-      !payWayTransactionId ||
-      payWayPaymentState === "approved" ||
-      payWayPaymentState === "declined" ||
-      payWayPaymentState === "cancelled" ||
-      payWayPaymentState === "failed"
-    ) {
-      return;
-    }
-
-    // Snapshot the non-null transaction ID for this effect run.
-    // TypeScript cannot safely keep the state-variable narrowing inside
-    // the nested async callback, so use this local string instead.
-    const transactionId = payWayTransactionId;
-
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    let attempts = 0;
-
-    async function verifyPayment() {
-      attempts += 1;
-
-      try {
-        const response = await fetch(
-          `/api/payway/status?tran_id=${encodeURIComponent(transactionId)}`,
-          { cache: "no-store" },
-        );
-
-        const text = await response.text();
-        let result: {
-          success?: boolean;
-          error?: string;
-          paymentState?: PayWayPaymentState;
-          providerStatus?: string | null;
-        } = {};
-
-        if (text.trim()) {
-          result = JSON.parse(text) as typeof result;
-        }
-
-        if (!response.ok || !result.success) {
-          throw new Error(
-            result.error ?? "Unable to verify PayWay payment.",
-          );
-        }
-
-        if (cancelled) {
-          return;
-        }
-
-        const nextState = result.paymentState ?? "pending";
-        setPayWayPaymentState(nextState);
-        setPayWayStatusText(result.providerStatus ?? null);
-
-        if (nextState === "approved") {
-          setCheckoutError(null);
-          window.setTimeout(() => {
-            window.location.assign(
-              `/dashboard/subscription?payway=approved&tran_id=${encodeURIComponent(transactionId)}`,
-            );
-          }, 900);
-          return;
-        }
-
-        if (
-          nextState === "declined" ||
-          nextState === "cancelled" ||
-          nextState === "failed"
-        ) {
-          return;
-        }
-
-        if (attempts < 100) {
-          timer = setTimeout(verifyPayment, 3000);
-        } else {
-          setPayWayStatusText(
-            "Payment is still awaiting confirmation. Keep this page open or return later; TENH can verify the same transaction again.",
-          );
-        }
-      } catch (verifyError) {
-        if (cancelled) {
-          return;
-        }
-
-        setPayWayStatusText(
-          verifyError instanceof Error
-            ? verifyError.message
-            : "Unable to verify payment right now.",
-        );
-
-        if (attempts < 100) {
-          timer = setTimeout(verifyPayment, 5000);
-        }
-      }
-    }
-
-    void verifyPayment();
-
-    return () => {
-      cancelled = true;
-      if (timer) {
-        clearTimeout(timer);
-      }
-    };
-  }, [payWayPaymentState, payWayTransactionId]);
 
   const selectedCycle = useMemo(
     () =>
@@ -932,12 +557,6 @@ export function SubscriptionView() {
         )
       : null;
 
-  const payWayReturnState =
-    searchParams.get("payway");
-  const payWayReturnTransaction =
-    searchParams.get("tran_id");
-  const manualReturnState =
-    searchParams.get("manual");
   const planChangeBlockedReason =
     searchParams.get("plan_change_blocked");
 
@@ -1013,13 +632,6 @@ export function SubscriptionView() {
     }
   }
 
-  function resetPreparedPayment() {
-    setPayWayTransactionId(null);
-    setPayWayPaymentState("idle");
-    setPayWayStatusText(null);
-    setCheckoutError(null);
-  }
-
   function openUsageManager(
     tab: "connections" | "members",
   ) {
@@ -1064,295 +676,6 @@ export function SubscriptionView() {
       },
       [],
     );
-
-  function getPlanPriceCents(
-    planCode: PlanCode,
-  ) {
-    return (
-      calculatePlanTotalCents(
-        planCode,
-        cycle,
-      ) ?? 0
-    );
-  }
-
-  async function startPayWayCheckout() {
-    if (!selectedPlan) {
-      setCheckoutError(
-        "Choose a plan before continuing to payment.",
-      );
-      return;
-    }
-
-    const payWayBridge =
-      window.TenhAbaPaywayBridge;
-
-    if (
-      !payWayPluginReady ||
-      !payWayBridge?.isReady()
-    ) {
-      setPayWayPluginReady(false);
-      setCheckoutError(
-        "PayWay secure checkout is still loading. Please try again in a moment.",
-      );
-      return;
-    }
-
-    setCheckoutLoading(true);
-    setCheckoutError(null);
-    setPayWayStatusText(null);
-    resetPreparedPayment();
-
-    try {
-      const response = await fetch(
-        "/api/payway/checkout",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            planCode: selectedPlan,
-            billingCycle: cycle,
-            paymentMethod: "abapay_khqr",
-          }),
-        },
-      );
-
-      const text = await response.text();
-      let result: {
-        success?: boolean;
-        error?: string;
-        checkoutUrl?: string;
-        transactionId?: string;
-        fields?: Record<string, string>;
-      } = {};
-
-      if (text.trim()) {
-        try {
-          result = JSON.parse(text) as typeof result;
-        } catch {
-          throw new Error(
-            `Checkout API returned invalid JSON (HTTP ${response.status}).`,
-          );
-        }
-      }
-
-      if (
-        !response.ok ||
-        !result.success ||
-        !result.checkoutUrl ||
-        !result.transactionId ||
-        !result.fields
-      ) {
-        throw new Error(
-          result.error ?? "Unable to start ABA PayWay checkout.",
-        );
-      }
-
-      document.getElementById("aba_merchant_request")?.remove();
-
-      const form = document.createElement("form");
-      form.method = "POST";
-      form.enctype = "multipart/form-data";
-      form.action = result.checkoutUrl;
-      form.target = "aba_webservice";
-      form.id = "aba_merchant_request";
-      form.style.display = "none";
-
-      Object.entries(result.fields).forEach(([name, value]) => {
-        const input = document.createElement("input");
-        input.type = "hidden";
-        input.name = name;
-        input.value = value;
-        form.appendChild(input);
-      });
-
-      document.body.appendChild(form);
-
-      setPayWayTransactionId(result.transactionId);
-      setPayWayPaymentState("waiting");
-      setPayWayStatusText(
-        "Complete payment in the ABA PayWay secure checkout. TENH will verify the transaction automatically.",
-      );
-
-      payWayBridge.checkout();
-    } catch (checkoutFailure) {
-      setCheckoutError(
-        checkoutFailure instanceof Error
-          ? checkoutFailure.message
-          : "Unable to start ABA PayWay checkout.",
-      );
-    } finally {
-      setCheckoutLoading(false);
-    }
-  }
-
-  async function submitManualPayment() {
-    if (!selectedPlan) {
-      setManualPaymentError(
-        "Choose a plan before submitting payment proof.",
-      );
-      return;
-    }
-
-    if (!manualPaymentConfig?.enabled) {
-      setManualPaymentError(
-        "Manual payment is not available right now.",
-      );
-      return;
-    }
-
-    if (manualPaymentRequest?.status === "submitted") {
-      setManualPaymentError(
-        "Your previous manual payment is already waiting for review.",
-      );
-      return;
-    }
-
-    if (!manualProof) {
-      setManualPaymentError(
-        "Upload your bank transfer receipt/payment proof.",
-      );
-      return;
-    }
-
-    setManualPaymentSubmitting(true);
-    setManualPaymentError(null);
-
-    let uploaded:
-      | {
-          bucket: string;
-          path: string;
-        }
-      | null = null;
-
-    try {
-      /*
-       * Upload the proof directly to the private Supabase bucket using a
-       * one-time signed URL. This avoids sending a large receipt through the
-       * Next.js/Vercel function body while keeping the service-role key secret.
-       */
-      const prepareResponse = await fetch(
-        "/api/manual-payments",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            action: "prepare-upload",
-            planCode: selectedPlan,
-            billingCycle: cycle,
-            fileName: manualProof.name,
-            mimeType: manualProof.type,
-            sizeBytes: manualProof.size,
-          }),
-        },
-      );
-
-      const prepareResult = (await prepareResponse.json()) as {
-        success?: boolean;
-        error?: string;
-        requestId?: string;
-        upload?: {
-          bucket: string;
-          path: string;
-          token: string;
-        };
-      };
-
-      if (
-        !prepareResponse.ok ||
-        !prepareResult.success ||
-        !prepareResult.requestId ||
-        !prepareResult.upload
-      ) {
-        throw new Error(
-          prepareResult.error ??
-            "Unable to prepare the payment proof upload.",
-        );
-      }
-
-      const supabase = createClient();
-      const { bucket, path, token } = prepareResult.upload;
-
-      const { error: uploadError } = await supabase.storage
-        .from(bucket)
-        .uploadToSignedUrl(
-          path,
-          token,
-          manualProof,
-          {
-            contentType: manualProof.type,
-          },
-        );
-
-      if (uploadError) {
-        throw new Error(uploadError.message);
-      }
-
-      uploaded = { bucket, path };
-
-      const finalizeResponse = await fetch(
-        "/api/manual-payments",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            action: "finalize-upload",
-            requestId: prepareResult.requestId,
-            planCode: selectedPlan,
-            billingCycle: cycle,
-            customerNote:
-              manualCustomerNote.trim(),
-            fileName: manualProof.name,
-            mimeType: manualProof.type,
-            sizeBytes: manualProof.size,
-            storagePath: path,
-          }),
-        },
-      );
-
-      const result = (await finalizeResponse.json()) as {
-        success?: boolean;
-        error?: string;
-        request?: ManualPaymentRequest;
-      };
-
-      if (
-        !finalizeResponse.ok ||
-        !result.success ||
-        !result.request
-      ) {
-        throw new Error(
-          result.error ??
-            "Unable to submit manual payment proof.",
-        );
-      }
-
-      setManualPaymentRequest(result.request);
-      setManualCustomerNote("");
-      setManualProof(null);
-    } catch (submitError) {
-      setManualPaymentError(
-        submitError instanceof Error
-          ? submitError.message
-          : "Unable to submit manual payment proof.",
-      );
-
-      /*
-       * A failed finalize can leave an uploaded proof orphaned. The server
-       * removes it on database-insert failure. Network interruption after the
-       * upload may leave one private object, which can be cleaned periodically.
-       */
-      void uploaded;
-    } finally {
-      setManualPaymentSubmitting(false);
-    }
-  }
 
   const currentPlanLabel = isTrialPlan
     ? t("Free Trial", "សាកល្បងឥតគិតថ្លៃ")
@@ -1411,57 +734,6 @@ export function SubscriptionView() {
 
   return (
     <div className="mx-auto w-full min-w-0 max-w-[1500px] px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
-      <Script
-        id="tenh-payway-classic-bridge"
-        strategy="afterInteractive"
-      >
-        {`
-          window.TenhAbaPaywayBridge = {
-            isReady: function () {
-              try {
-                return (
-                  typeof AbaPayway !== "undefined" &&
-                  AbaPayway &&
-                  typeof AbaPayway.checkout === "function"
-                );
-              } catch (error) {
-                return false;
-              }
-            },
-            checkout: function () {
-              if (
-                typeof AbaPayway === "undefined" ||
-                !AbaPayway ||
-                typeof AbaPayway.checkout !== "function"
-              ) {
-                throw new Error(
-                  "ABA PayWay checkout plugin is not ready.",
-                );
-              }
-
-              return AbaPayway.checkout();
-            },
-          };
-        `}
-      </Script>
-      <Script
-        id="tenh-payway-checkout-plugin"
-        src="https://checkout.payway.com.kh/plugins/checkout2-0.js"
-        strategy="afterInteractive"
-        onReady={() => {
-          if (
-            window.TenhAbaPaywayBridge?.isReady()
-          ) {
-            setPayWayPluginReady(true);
-          }
-        }}
-        onError={() => {
-          setPayWayPluginReady(false);
-          setCheckoutError(
-            "Unable to load PayWay secure checkout. Refresh the page and try again.",
-          );
-        }}
-      />
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-600">
@@ -1500,30 +772,6 @@ export function SubscriptionView() {
       {error ? (
         <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">
           {error}
-        </div>
-      ) : null}
-
-      {payWayReturnState === "approved" ? (
-        <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-sm font-medium text-emerald-800">
-          {t("Payment verified successfully", "បានផ្ទៀងផ្ទាត់ការទូទាត់ដោយជោគជ័យ")}{payWayReturnTransaction ? ` · ${t("Transaction", "ប្រតិបត្តិការ")} ${payWayReturnTransaction}` : ""}. {t("Your TENH workspace subscription is active.", "ការជាវកន្លែងធ្វើការ TENH របស់អ្នកសកម្មហើយ។")}
-        </div>
-      ) : payWayReturnState === "cancelled" ? (
-        <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
-          {t("ABA PayWay checkout was cancelled and the pending transaction was closed. No TENH plan change has been applied.", "ការទូទាត់ ABA PayWay ត្រូវបានលុបចោល ហើយប្រតិបត្តិការដែលកំពុងរង់ចាំត្រូវបានបិទ។ មិនមានការផ្លាស់ប្តូរគម្រោង TENH ត្រូវបានអនុវត្តទេ។")}
-        </div>
-      ) : payWayReturnState === "cancel_failed" ? (
-        <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-800">
-          {t("TENH could not confirm that ABA closed the pending transaction. No subscription change was applied. Please check the transaction before starting another payment.", "TENH មិនអាចបញ្ជាក់ថា ABA បានបិទប្រតិបត្តិការដែលកំពុងរង់ចាំបានទេ។ មិនមានការផ្លាស់ប្តូរការជាវត្រូវបានអនុវត្តទេ។ សូមពិនិត្យប្រតិបត្តិការមុនពេលចាប់ផ្តើមការទូទាត់ថ្មី។")}
-        </div>
-      ) : payWayReturnState === "returned" ? (
-        <div className="mt-6 rounded-2xl border border-blue-200 bg-blue-50 p-5 text-sm text-blue-800">
-          {t("Returned from ABA PayWay", "បានត្រឡប់ពី ABA PayWay")}{payWayReturnTransaction ? ` · ${t("Transaction", "ប្រតិបត្តិការ")} ${payWayReturnTransaction}` : ""}. {t("TENH is verifying the payment with PayWay before changing workspace access.", "TENH កំពុងផ្ទៀងផ្ទាត់ការទូទាត់ជាមួយ PayWay មុនពេលផ្លាស់ប្តូរសិទ្ធិចូលប្រើកន្លែងធ្វើការ។")}
-        </div>
-      ) : null}
-
-      {manualReturnState === "approved" ? (
-        <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-sm font-medium text-emerald-800">
-          {t("Manual payment approved. Your TENH workspace subscription is active.", "ការទូទាត់ដោយដៃត្រូវបានអនុម័ត។ ការជាវកន្លែងធ្វើការ TENH របស់អ្នកសកម្មហើយ។")}
         </div>
       ) : null}
 

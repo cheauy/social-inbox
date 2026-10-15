@@ -1,0 +1,11 @@
+﻿C:/Users/TUF/AppData/Local/Headroom/headroom/bin/rtk.exe : AssertionError [ERR_ASSERTION]: Fixture mounted
+At line:2 char:1
++ C:/Users/TUF/AppData/Local/Headroom/headroom/bin/rtk.exe node tests/a ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (AssertionError ...Fixture mounted:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+false !== true
+
+    at run (C:\Users\TUF\social-inbox\tests\admin-connections-browser.cjs:84:12)

@@ -1,9 +1,12 @@
 "use client";
 
 import Script from "next/script";
+import { useRouter } from "next/navigation";
+import { PaymentAttemptView, paymentAttemptUrl } from "./payment-attempt-view";
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -245,7 +248,18 @@ function payWayStateLabel(
   }
 }
 
-export function SubscriptionPaymentView({
+export function SubscriptionPaymentView(props: SubscriptionPaymentViewProps) {
+  const [sessionEpoch, setSessionEpoch] = useState(0);
+  useEffect(() => {
+    const { data } = createClient().auth.onAuthStateChange(event => {
+      if (event !== "INITIAL_SESSION" && event !== "TOKEN_REFRESHED") setSessionEpoch(value => value + 1);
+    });
+    return () => data.subscription.unsubscribe();
+  }, []);
+  return <PaymentCheckout key={`${sessionEpoch}:${JSON.stringify(props)}`} {...props} />;
+}
+
+function PaymentCheckout({
   planCode,
   billingCycle,
   initialPayWayReturn = null,
@@ -432,9 +446,24 @@ export function SubscriptionPaymentView({
       ? summaryUsersAfter - summaryUsersBefore
       : null;
 
+  const router = useRouter();
   const manualPaymentEndpoint = purchaseBusinessId
-    ? `/api/manual-payments?purchase_business=${encodeURIComponent(purchaseBusinessId)}`
-    : "/api/manual-payments";
+    ? `/api/manual-payments?mode=checkout&purchase_business=${encodeURIComponent(purchaseBusinessId)}`
+    : "/api/manual-payments?mode=checkout";
+  const [statusAttempt, setStatusAttempt] = useState<{ kind: "manual" | "payway"; id: string } | null>(
+    initialTransactionId ? { kind: "payway", id: initialTransactionId } : null,
+  );
+  const submitting = useRef(false);
+  const manualAttemptId = useRef<string | null>(null);
+  const alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+
+  function enterAttempt(kind: "manual" | "payway", id: string) {
+    if (!alive.current) return;
+    setStatusAttempt({ kind, id });
+    // Navigation failure cannot undo a saved payment or expose payment controls again.
+    try { router.replace(paymentAttemptUrl(kind, id, purchaseBusinessId)); } catch { /* The status remains mounted. */ }
+  }
 
   const [checkoutMethod, setCheckoutMethod] =
     useState<CheckoutMethod>("payway");
@@ -469,6 +498,7 @@ export function SubscriptionPaymentView({
     useState(false);
   const [manualPaymentError, setManualPaymentError] =
     useState<string | null>(null);
+  const [manualLoadError, setManualLoadError] = useState<string | null>(null);
   const [manualCustomerNote, setManualCustomerNote] =
     useState("");
   const [manualProof, setManualProof] =
@@ -477,6 +507,7 @@ export function SubscriptionPaymentView({
     useState(false);
 
   useEffect(() => {
+    if (statusAttempt) return;
     let cancelled = false;
     let timer: number | null = null;
     let attempts = 0;
@@ -515,19 +546,21 @@ export function SubscriptionPaymentView({
         window.clearTimeout(timer);
       }
     };
-  }, []);
+  }, [statusAttempt]);
 
   useEffect(() => {
+    if (statusAttempt) return;
     let cancelled = false;
+    const controller = new AbortController();
 
     async function loadManualPayment() {
       setManualPaymentLoading(true);
-      setManualPaymentError(null);
+      setManualLoadError(null);
 
       try {
         const response = await fetch(
           manualPaymentEndpoint,
-          { cache: "no-store" },
+          { cache: "no-store", signal: controller.signal },
         );
 
         const result = (await response.json()) as {
@@ -535,9 +568,11 @@ export function SubscriptionPaymentView({
           error?: string;
           config?: ManualPaymentConfig;
           request?: ManualPaymentRequest | null;
+          businessId?: string;
+          preparedAttempt?: { id: string; businessId: string; canResume: boolean } | null;
         };
 
-        if (!response.ok || !result.success) {
+        if (!response.ok || !result.success || !result.businessId || (purchaseBusinessId && result.businessId !== purchaseBusinessId)) {
           throw new Error(
             result.error ??
               t("Unable to load manual payment information.", "មិនអាចផ្ទុកព័ត៌មានការទូទាត់តាមធនាគារដោយដៃបានទេ។"),
@@ -550,13 +585,16 @@ export function SubscriptionPaymentView({
           setManualPaymentRequest(latestRequest);
 
           if (latestRequest?.status === "submitted") {
-            setCheckoutMethod("manual");
+            enterAttempt("manual", latestRequest.id);
+          } else if (result.preparedAttempt && result.preparedAttempt.businessId === result.businessId) {
+            if (!result.preparedAttempt.canResume) throw new Error(t("An unfinished payment needs its requester's review.", "សំណើទូទាត់មិនទាន់រួច ត្រូវការអ្នកស្នើពិនិត្យ។"));
+            enterAttempt("manual", result.preparedAttempt.id);
           }
         }
       } catch (error) {
         if (!cancelled) {
           setManualPaymentConfig(null);
-          setManualPaymentError(
+          setManualLoadError(
             error instanceof Error
               ? error.message
               : t("Unable to load manual payment information.", "មិនអាចផ្ទុកព័ត៌មានការទូទាត់តាមធនាគារដោយដៃបានទេ។"),
@@ -573,166 +611,14 @@ export function SubscriptionPaymentView({
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [manualPaymentEndpoint]);
-
-  useEffect(() => {
-    if (manualPaymentRequest?.status !== "submitted") {
-      return;
-    }
-
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-
-    async function refreshManualStatus() {
-      try {
-        const response = await fetch(
-          manualPaymentEndpoint,
-          { cache: "no-store" },
-        );
-        const result = (await response.json()) as {
-          success?: boolean;
-          request?: ManualPaymentRequest | null;
-        };
-
-        if (
-          !cancelled &&
-          response.ok &&
-          result.success &&
-          result.request
-        ) {
-          setManualPaymentRequest(result.request);
-
-          if (result.request.status === "approved") {
-            window.setTimeout(() => {
-              window.location.assign(
-                "/dashboard/subscription?manual=approved",
-              );
-            }, 800);
-            return;
-          }
-        }
-      } catch {
-        // A later poll can recover.
-      }
-
-      if (!cancelled) {
-        timer = setTimeout(refreshManualStatus, 5000);
-      }
-    }
-
-    timer = setTimeout(refreshManualStatus, 5000);
-
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-    };
-  }, [manualPaymentEndpoint, manualPaymentRequest?.status]);
-
-  useEffect(() => {
-    if (
-      !payWayTransactionId ||
-      payWayPaymentState === "approved" ||
-      payWayPaymentState === "recovery_required" ||
-      payWayPaymentState === "declined" ||
-      payWayPaymentState === "cancelled" ||
-      payWayPaymentState === "failed"
-    ) {
-      return;
-    }
-
-    const transactionId = payWayTransactionId;
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    let attempts = 0;
-
-    async function verifyPayment() {
-      attempts += 1;
-
-      try {
-        const response = await fetch(
-          `/api/payway/status?tran_id=${encodeURIComponent(transactionId)}`,
-          { cache: "no-store" },
-        );
-
-        const text = await response.text();
-        let result: {
-          success?: boolean;
-          error?: string;
-          paymentState?: PayWayPaymentState;
-          providerStatus?: string | null;
-          invoiceId?: string | null;
-        } = {};
-
-        if (text.trim()) {
-          result = JSON.parse(text) as typeof result;
-        }
-
-        if (!response.ok || !result.success) {
-          throw new Error(
-            result.error ?? t("Unable to verify PayWay payment.", "មិនអាចផ្ទៀងផ្ទាត់ការទូទាត់ PayWay បានទេ។"),
-          );
-        }
-
-        if (cancelled) return;
-
-        const nextState = result.paymentState ?? "pending";
-        setPayWayPaymentState(nextState);
-        setPayWayStatusText(result.providerStatus ?? null);
-
-        if (nextState === "approved") {
-          setCheckoutError(null);
-          setPayWayInvoiceId(result.invoiceId ?? null);
-          setPayWayStatusText(
-            t(
-              "Payment approved. Choose Download receipt, Close, or Continue.",
-              "ការទូទាត់ត្រូវបានអនុម័ត។ សូមជ្រើសរើស ទាញយកបង្កាន់ដៃ បិទ ឬបន្ត។",
-            ),
-          );
-          return;
-        }
-
-        if (
-          nextState === "declined" ||
-          nextState === "recovery_required" ||
-          nextState === "cancelled" ||
-          nextState === "failed"
-        ) {
-          return;
-        }
-
-        if (attempts < 100) {
-          timer = setTimeout(verifyPayment, 3000);
-        } else {
-          setPayWayStatusText(
-            "Payment is still awaiting confirmation. Keep this page open or return later; TENH can verify the same transaction again.",
-          );
-        }
-      } catch (error) {
-        if (cancelled) return;
-
-        setPayWayStatusText(
-          error instanceof Error
-            ? error.message
-            : t("Unable to verify payment right now.", "មិនអាចផ្ទៀងផ្ទាត់ការទូទាត់នៅពេលនេះបានទេ។"),
-        );
-
-        if (attempts < 100) {
-          timer = setTimeout(verifyPayment, 5000);
-        }
-      }
-    }
-
-    void verifyPayment();
-
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-    };
-  }, [payWayPaymentState, payWayTransactionId]);
+  // Navigation is only a side effect of an identity-checked discovery response.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [manualPaymentEndpoint, statusAttempt]);
 
   async function startPayWayCheckout() {
-    if (transactionReturnOnly) return;
+    if (transactionReturnOnly || submitting.current || statusAttempt || manualPaymentLoading || manualLoadError) return;
     const payWayBridge = window.TenhAbaPaywayBridge;
 
     if (
@@ -746,6 +632,7 @@ export function SubscriptionPaymentView({
       return;
     }
 
+    submitting.current = true;
     setCheckoutLoading(true);
     setCheckoutError(null);
     setPayWayStatusText(null);
@@ -790,6 +677,7 @@ export function SubscriptionPaymentView({
         error?: string;
         checkoutUrl?: string;
         transactionId?: string;
+        manualRequestId?: string;
         fields?: Record<string, string>;
       } = {};
 
@@ -810,6 +698,14 @@ export function SubscriptionPaymentView({
         !result.transactionId ||
         !result.fields
       ) {
+        if (result.transactionId) {
+          enterAttempt("payway", result.transactionId);
+          return;
+        }
+        if (result.manualRequestId) {
+          enterAttempt("manual", result.manualRequestId);
+          return;
+        }
         throw new Error(
           result.error ?? t("Unable to start ABA PayWay checkout.", "មិនអាចចាប់ផ្តើមការទូទាត់ ABA PayWay បានទេ។"),
         );
@@ -837,7 +733,9 @@ export function SubscriptionPaymentView({
 
       document.body.appendChild(form);
 
+      if (!alive.current) return;
       setPayWayTransactionId(result.transactionId);
+      enterAttempt("payway", result.transactionId);
       setPayWayPaymentState("waiting");
       setPayWayStatusText(
         t("Complete payment in the ABA PayWay secure checkout. TENH will verify the transaction automatically.", "សូមបញ្ចប់ការទូទាត់ក្នុង ABA PayWay។ TENH នឹងផ្ទៀងផ្ទាត់ប្រតិបត្តិការដោយស្វ័យប្រវត្តិ។"),
@@ -845,18 +743,22 @@ export function SubscriptionPaymentView({
 
       payWayBridge.checkout();
     } catch (error) {
+      if (!alive.current) return;
+      // Reopening checks saved transactions before another checkout can be attempted.
+      setManualLoadError(t("Unable to open payment. Reload to check the saved attempt.", "មិនអាចបើកការទូទាត់។ ផ្ទុកឡើងវិញដើម្បីពិនិត្យសំណើដែលបានរក្សាទុក។"));
       setCheckoutError(
         error instanceof Error
           ? error.message
           : t("Unable to start ABA PayWay checkout.", "មិនអាចចាប់ផ្តើមការទូទាត់ ABA PayWay បានទេ។"),
       );
     } finally {
-      setCheckoutLoading(false);
+      submitting.current = false;
+      if (alive.current) setCheckoutLoading(false);
     }
   }
 
   async function submitManualPayment() {
-    if (transactionReturnOnly) return;
+    if (transactionReturnOnly || submitting.current || statusAttempt || manualPaymentLoading) return;
     if (!manualPaymentConfig?.enabled) {
       setManualPaymentError(
         t("Manual payment is not available right now.", "ការទូទាត់តាមធនាគារដោយដៃមិនអាចប្រើបាននៅពេលនេះទេ។"),
@@ -878,8 +780,15 @@ export function SubscriptionPaymentView({
       return;
     }
 
+    if (manualProof.size <= 0 || manualProof.size > 10 * 1024 * 1024 || !["image/jpeg", "image/png", "image/webp", "application/pdf"].includes(manualProof.type)) {
+      setManualPaymentError(t("Use a JPG, PNG, WebP or PDF up to 10 MB.", "ប្រើ JPG, PNG, WebP ឬ PDF រហូតដល់ 10 MB។"));
+      return;
+    }
+    submitting.current = true;
+    manualAttemptId.current ??= crypto.randomUUID();
     setManualPaymentSubmitting(true);
     setManualPaymentError(null);
+    let mayHavePrepared = true;
 
     try {
       const prepareResponse = await fetch(
@@ -891,6 +800,7 @@ export function SubscriptionPaymentView({
           },
           body: JSON.stringify({
             action: "prepare-upload",
+            requestId: manualAttemptId.current,
             planCode,
             billingCycle,
             ...(purchaseBusinessId ? { purchaseBusinessId } : {}),
@@ -918,11 +828,13 @@ export function SubscriptionPaymentView({
       const prepareResult = (await prepareResponse.json()) as {
         success?: boolean;
         error?: string;
+        code?: string;
         requestId?: string;
+        proofUploaded?: boolean;
         upload?: {
           bucket: string;
           path: string;
-          token: string;
+          token: string | null;
         };
       };
 
@@ -932,29 +844,35 @@ export function SubscriptionPaymentView({
         !prepareResult.requestId ||
         !prepareResult.upload
       ) {
+        // A definite validation rejection did not commit an upload reservation.
+        mayHavePrepared = ![400, 401, 403, 409].includes(prepareResponse.status) && !["TENH_MANUAL_UPLOAD_MIGRATION_REQUIRED", "TENH_BILLING_APPLICATION_MIGRATION_REQUIRED"].includes(prepareResult.code ?? "");
+        if ([401, 403, 409].includes(prepareResponse.status)) setManualLoadError(prepareResult.error ?? t("Check the existing payment before trying again.", "ពិនិត្យការទូទាត់ដែលមាន មុនព្យាយាមម្ដងទៀត។"));
         throw new Error(
           prepareResult.error ??
             t("Unable to prepare the payment proof upload.", "មិនអាចរៀបចំការផ្ទុកភស្តុតាងការទូទាត់បានទេ។"),
         );
       }
 
+      if (prepareResult.requestId !== manualAttemptId.current || !alive.current) throw new Error("Payment attempt changed.");
       const supabase = createClient();
       const { bucket, path, token } = prepareResult.upload;
 
-      const { error: uploadError } = await supabase.storage
+      if (!prepareResult.proofUploaded && !token) throw new Error("Upload link unavailable.");
+      const uploadError = prepareResult.proofUploaded ? null : (await supabase.storage
         .from(bucket)
         .uploadToSignedUrl(
           path,
-          token,
+          token!,
           manualProof,
           {
             contentType: manualProof.type,
           },
-        );
+        )).error;
 
-      if (uploadError) {
+      if (uploadError && !/already exists|duplicate/i.test(uploadError.message)) {
         throw new Error(uploadError.message);
       }
+      if (!alive.current) return;
 
       const finalizeResponse = await fetch(
         "/api/manual-payments",
@@ -1009,17 +927,24 @@ export function SubscriptionPaymentView({
         );
       }
 
+      if (result.request.id !== manualAttemptId.current) throw new Error("Payment attempt changed.");
+      if (!alive.current) return;
       setManualPaymentRequest(result.request);
       setManualCustomerNote("");
       setManualProof(null);
+      enterAttempt("manual", result.request.id);
     } catch (error) {
+      if (!alive.current) return;
+      // A committed-but-lost response is read by exact ID before any retry.
+      if (mayHavePrepared && manualAttemptId.current) enterAttempt("manual", manualAttemptId.current);
       setManualPaymentError(
         error instanceof Error
           ? error.message
           : t("Unable to submit manual payment proof.", "មិនអាចដាក់ស្នើភស្តុតាងការទូទាត់បានទេ។"),
       );
     } finally {
-      setManualPaymentSubmitting(false);
+      submitting.current = false;
+      if (alive.current) setManualPaymentSubmitting(false);
     }
   }
 
@@ -1179,6 +1104,18 @@ export function SubscriptionPaymentView({
   const showPreviousManualApproval =
     manualPaymentRequest?.status === "approved";
 
+  if (statusAttempt) {
+    return <PaymentAttemptView kind={statusAttempt.kind} attemptId={statusAttempt.id} businessId={purchaseBusinessId} />;
+  }
+  if (manualPaymentLoading || manualLoadError) {
+    return <section className="mx-auto max-w-xl p-6" aria-live="polite">
+      <h1 className="text-xl font-bold">{t("Payment status", "ស្ថានភាពការទូទាត់")}</h1>
+      <p className="mt-3 text-sm" role={manualLoadError ? "alert" : "status"}>{manualLoadError ?? t("Checking existing payment…", "កំពុងពិនិត្យការទូទាត់ដែលមាន…")}</p>
+      {manualLoadError ? <button type="button" className="mt-4 min-h-11 rounded-xl border px-4" onClick={() => window.location.reload()}>{t("Try again", "ព្យាយាមម្ដងទៀត")}</button> : null}
+      <a className="mt-4 block text-sm text-blue-700" href="/dashboard/subscription">{t("Back to subscription", "ត្រឡប់ទៅការជាវ")}</a>
+    </section>;
+  }
+
   return (
     <div className="min-h-full bg-white px-4 py-6 sm:px-6 lg:px-8">
       <Script
@@ -1276,7 +1213,7 @@ export function SubscriptionPaymentView({
               ? t("Close", "បិទ")
               : checkoutKind === "upgrade"
                 ? t("Cancel upgrade", "បោះបង់ការអាប់ក្រេដ")
-                : t("Cancel checkout", "បោះបង់ការទូទាត់")}
+                : t("Back to payment", "ត្រឡប់ទៅការទូទាត់")}
           </button>
         </div>
 
@@ -1724,17 +1661,7 @@ export function SubscriptionPaymentView({
                           </p>
                         </div>
                       </div>
-                      <div className="mt-4 rounded-xl border border-amber-100 bg-white/80 p-3">
-                        <p className="break-all font-mono text-xs">
-                          {t("Request", "សំណើ")} {manualPaymentRequest.id}
-                        </p>
-                        <p className="mt-2 text-xs">
-                          {manualPaymentRequest.planCode.toUpperCase()} · {billingCycleText(manualPaymentRequest.billingCycle)} · {new Intl.NumberFormat("en-US", { style: "currency", currency: manualPaymentRequest.currency }).format(manualPaymentRequest.amount)}
-                        </p>
-                        <p className="mt-1 text-xs">
-                          {t("Receipt", "បង្កាន់ដៃ")}: {manualPaymentRequest.proofFileName}
-                        </p>
-                      </div>
+
                     </div>
                   ) : (
                     <div className="space-y-4">

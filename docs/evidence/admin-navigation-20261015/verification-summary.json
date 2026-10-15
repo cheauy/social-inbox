@@ -1,0 +1,95 @@
+{
+  "scope": "TENH CHAT admin navigation presentation and responsive layout only",
+  "applicationFiles": [
+    "components/admin/tenh-admin-workspace.tsx",
+    "app/dashboard/admin/page.tsx"
+  ],
+  "tests": [
+    "tests/admin-navigation.test.cjs",
+    "tests/admin-navigation-browser.cjs",
+    "tests/fixtures/admin-navigation-browser.entry.cjs"
+  ],
+  "navigation": {
+    "groups": [
+      "GENERAL",
+      "BILLING & SUPPORT",
+      "CHANNELS",
+      "SECURITY"
+    ],
+    "orderedIds": [
+      "overview",
+      "billing",
+      "usage",
+      "manual-payments",
+      "customer-reports",
+      "announcements",
+      "connections",
+      "webhook-events",
+      "channel-health",
+      "security"
+    ],
+    "desktopSidebarPx": 240,
+    "drawerBelowPx": 1280,
+    "minimumRowPx": 44,
+    "source": "One shared grouped configuration; original query destinations retained; usePathname/useSearchParams and native pushState sync selection/history."
+  },
+  "checks": {
+    "navigationAndAuthTests": {
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    "browser": {
+      "passed": true,
+      "assertions": 852,
+      "languages": [
+        "en",
+        "km"
+      ],
+      "widths": [
+        390,
+        768,
+        1024,
+        1440
+      ],
+      "viewportCases": 8,
+      "directRouteCases": 3,
+      "themeModes": [
+        "light",
+        "dark",
+        "dim"
+      ],
+      "syntheticSafeAreaInsets": true,
+      "keyboardFocusTrapAndRestore": true,
+      "escapeBackdropNavigationClose": true,
+      "backgroundScrollLock": true,
+      "shortDrawerOwnScroll": true,
+      "backForward": true,
+      "dynamicBadges": true,
+      "runtimeErrors": 0,
+      "screenshots": 34
+    },
+    "changedFilesLint": "passed",
+    "typescript": "passed, including final production build",
+    "productionBuild": "passed",
+    "whitespace": "passed",
+    "badgeCalculationUnchanged": true,
+    "summaryFetchPollAndEventsUnchanged": true,
+    "unrelatedExistingFileHashesUnchanged": 19
+  },
+  "screenshots": {
+    "desktop": "browser/en-1440-light.png",
+    "tablet": "browser/en-1024-open-drawer-light.png",
+    "mobile": "browser/en-390-open-drawer-light.png",
+    "khmerTablet": "browser/km-1024-open-drawer-light.png",
+    "khmerMobile": "browser/km-390-open-drawer-light.png"
+  },
+  "limits": [
+    "Browser uses real workspace/navigation/CSS/native dialog with mocked admin panels, summary responses and Next hook integration.",
+    "Real admin authentication gates are exercised with isolated auth fixtures; live authenticated sessions and actual panel/provider operations were not exercised.",
+    "Safe-area behavior is tested with synthetic insets, not physical notched devices.",
+    "The actual identity-only MFA challenge page remains outside the full admin shell and is unchanged; nested-path active state is tested only where navigation is rendered."
+  ],
+  "schemaCredentialsPaymentProviderChanges": "none",
+  "commitPushDeployment": "not performed"
+}

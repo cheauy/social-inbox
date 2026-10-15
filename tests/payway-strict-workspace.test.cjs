@@ -9,8 +9,9 @@ function harness(selected='removed',patch={}){
     current_period_start:new Date(Date.now()-86400000).toISOString(),current_period_end:new Date(Date.now()+86400000).toISOString(),pricing_snapshot:{}},
     {business_id:'expired',status:'expired',plan_code:'mini',billing_cycle:'monthly',member_limit:1,channel_limit:3,last_paid_amount:12,last_paid_currency:'USD',
     current_period_start:'2026-01-01T00:00:00Z',current_period_end:'2026-02-01T00:00:00Z',pricing_snapshot:{renewal_total_cents:1200}}],
-  manual_payment_requests:[],billing_transactions:[]});
+  manual_payment_requests:[],manual_payment_uploads:[],billing_transactions:[]});
  const memo=new Map(),effects=[];let selectedWorkspace=selected;
+ db.rpc=async name=>{if(name==='tenh_payment_application_guards_ready')return {data:true,error:null};throw new Error('Unexpected RPC '+name);};
  db.storage={from:()=>({createSignedUploadUrl:async path=>{effects.push({upload:path});return {data:{token:'synthetic-token'},error:null};}})};
  const load=loader({
   react:{cache:fn=>fn},'next/headers':{cookies:async()=>({get:()=>selectedWorkspace?{value:selectedWorkspace}:undefined})},
@@ -68,7 +69,8 @@ test('manual renewal for valid expired Owner prepares only a synthetic proof upl
  const response=await h.load('app/api/manual-payments/route.ts').POST(h.request({action:'prepare-upload',planCode:'mini',billingCycle:'monthly',renewSame:true,
   purchaseBusinessId:'expired',fileName:'synthetic.png',mimeType:'image/png',sizeBytes:100,amount:0.01},'/api/manual-payments'));
  assert.equal(response.status,200,await response.clone().text());const body=await response.json();assert.equal(body.trustedAmount,'12.00');
- assert.equal(JSON.stringify(h.db.tables),before);assert.equal(h.effects[0].sync,'expired');assert.match(h.effects[1].upload,/^expired\//);
+ assert.equal(h.db.tables.manual_payment_uploads.length,1);assert.equal(h.db.tables.manual_payment_uploads[0].business_id,'expired');
+ assert.equal(JSON.stringify({...h.db.tables,manual_payment_uploads:[]}),before);assert.equal(h.effects[0].sync,'expired');assert.match(h.effects[1].upload,/^expired\//);
 });
 
 test('valid membership in an expired workspace can authenticate but cannot receive an active-period upgrade quote',async()=>{

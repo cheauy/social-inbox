@@ -2,6 +2,7 @@
 
 import {
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -760,6 +761,7 @@ export function IntegrationWorkspace({
   const [telegramVariant, setTelegramVariant] = useState<TelegramVariant>("bot");
   const [personalOpenRequest, setPersonalOpenRequest] = useState(0);
   const [connectionScopeInvalid, setConnectionScopeInvalid] = useState(false);
+  const addConnectionRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const closeConnections = () => { setAddConnectionOpen(false); setTelegramAddRequest(0); };
@@ -852,6 +854,7 @@ export function IntegrationWorkspace({
 
           {canAddConnections && !connectionScopeInvalid ? (
             <button
+              ref={addConnectionRef}
               type="button"
               disabled={!canManageChannels}
               onClick={() => {
@@ -947,6 +950,7 @@ export function IntegrationWorkspace({
         ) : activePlatform === "telegram" ? (
           <>
             <TelegramChannelPanel
+              returnFocusRef={addConnectionRef}
               businessId={businessId}
               canAddConnections={canAddConnections}
               onConnectionChanged={setTelegramSummary}

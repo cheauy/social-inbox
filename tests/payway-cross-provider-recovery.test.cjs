@@ -41,7 +41,7 @@ for(const recovery of [false,true])test('cancellation verification conflict stop
 
 for(const row of [{subscription_status:'recovery_required',business_id:'b'},{subscription_status:'active',business_id:'other'}])test('manual approval rejects '+row.subscription_status+'/'+row.business_id+' before success audit or notifications',async()=>{
  const db=database({manual_payment_requests:[{id:'request',business_id:'b',status:'submitted',plan_code:'mini',billing_cycle:'monthly',amount:12,currency:'USD'}],business_subscriptions:[{business_id:'b',status:'active',plan_code:'mini',payment_provider:'manual'}]});
- let calls=0,successAudit=0;db.rpc=async(name)=>{assert.equal(name,'tenh_approve_manual_payment');calls++;return {data:[row],error:null};};
+ let calls=0,successAudit=0;db.rpc=async(name)=>{if(name==='tenh_payment_application_guards_ready')return {data:true,error:null};assert.equal(name,'tenh_approve_manual_payment');calls++;return {data:[row],error:null};};
  const load=loader({'@/lib/supabase/admin':{supabaseAdmin:db},
  '@/lib/admin/tenh-admin-auth':{getTenhAdminMutationUser:async()=>({success:true,user:{id:'admin',email:'fixture@example.invalid'}})},
  '@/lib/admin/log-tenh-admin-action':{logTenhAdminAction:async()=>{successAudit++;throw Error('Unexpected success audit');}},

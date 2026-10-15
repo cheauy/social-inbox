@@ -1,0 +1,15 @@
+﻿✔ grouped admin navigation preserves exactly ten existing destinations and their page labels (407.5512ms)
+✔ active admin section follows the actual query route and keeps the MFA route in Security (79.1332ms)
+✔ navigation badges retain the existing queue counters without fabricating badges for other destinations (68.3904ms)
+✔ actual navigation renders unique query destinations and the panel selected by URL rather than stale initial props (181.2261ms)
+✔ actual admin page keeps UUID, email, verified-email and MFA authorization before reading route params (267.4339ms)
+✔ authorized page keeps existing query destinations, first-value resolution and the optional MFA setting (353.2352ms)
+✔ actual MFA challenge page remains identity-gated without requiring the assurance it establishes (99.1611ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1948.8106

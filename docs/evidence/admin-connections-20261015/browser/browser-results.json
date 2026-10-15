@@ -1,0 +1,3227 @@
+{
+  "passed": true,
+  "complete": true,
+  "reports": [
+    {
+      "language": "en",
+      "viewport": "desktop",
+      "width": 1280,
+      "complete": {
+        "checks": 23,
+        "localSearchRequests": 0
+      },
+      "search": {
+        "checks": 43,
+        "requests": 9
+      },
+      "statesAndRelease": {
+        "checks": 61,
+        "mutations": [
+          {
+            "connectionId": "connection-1",
+            "confirmBotId": "900001"
+          }
+        ]
+      },
+      "mixedScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-connections-20261015\\browser\\en-desktop-mixed.png",
+      "searchScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-connections-20261015\\browser\\en-desktop-server-search.png",
+      "checks": [
+        {
+          "name": "mixed inventory uses one row list",
+          "passed": true
+        },
+        {
+          "name": "Telegram and Messenger rows are mixed",
+          "passed": true
+        },
+        {
+          "name": "old platform count sections removed",
+          "passed": true
+        },
+        {
+          "name": "avatar backfill controls removed",
+          "passed": true
+        },
+        {
+          "name": "initial inventory uses opt-in paged read",
+          "passed": true
+        },
+        {
+          "name": "search has localized accessible name",
+          "passed": true
+        },
+        {
+          "name": "mixed list no page overflow",
+          "passed": true,
+          "detail": "1280/1280"
+        },
+        {
+          "name": "mixed list row content fits",
+          "passed": true,
+          "detail": "1196/1196,1196/1196,1196/1196,1196/1196,1196/1196,1196/1196"
+        },
+        {
+          "name": "rows stay compact",
+          "passed": true,
+          "detail": "111,111,111,111,111,111"
+        },
+        {
+          "name": "complete local query   aLPHa  ",
+          "passed": true
+        },
+        {
+          "name": "complete local query @ALPHA_HELP",
+          "passed": true
+        },
+        {
+          "name": "complete local query North Hub",
+          "passed": true
+        },
+        {
+          "name": "complete local query ខ្មែរ",
+          "passed": true
+        },
+        {
+          "name": "complete local query កម្ពុជា",
+          "passed": true
+        },
+        {
+          "name": "complete local query 12345678-1234-4123-8123-123456789abc",
+          "passed": true
+        },
+        {
+          "name": "complete local query 12345678",
+          "passed": true
+        },
+        {
+          "name": "complete local query *",
+          "passed": true
+        },
+        {
+          "name": "complete local query @North",
+          "passed": true
+        },
+        {
+          "name": "local no results is explicit",
+          "passed": true
+        },
+        {
+          "name": "existing platform filter remains available",
+          "passed": true
+        },
+        {
+          "name": "complete platform filter stays within mixed inventory",
+          "passed": true
+        },
+        {
+          "name": "complete local typeahead does not fetch on keystrokes or clear",
+          "passed": true
+        },
+        {
+          "name": "search and row selection do not mutate",
+          "passed": true
+        },
+        {
+          "name": "incomplete inventory exposes paging",
+          "passed": true
+        },
+        {
+          "name": "incomplete search is debounced rather than one request per key",
+          "passed": true,
+          "detail": "[{\"path\":\"/api/tenh-admin/connections\",\"query\":\"beyond\",\"platform\":\"all\",\"offset\":0,\"limit\":50,\"paged\":\"true\",\"method\":\"GET\",\"cache\":\"no-store\",\"aborted\":false}]"
+        },
+        {
+          "name": "server query finds records beyond first 200",
+          "passed": true
+        },
+        {
+          "name": "pasted full Bot token never becomes a GET query",
+          "passed": true
+        },
+        {
+          "name": "pasted token shows a safe local warning",
+          "passed": true
+        },
+        {
+          "name": "clear restores incomplete inventory",
+          "passed": true
+        },
+        {
+          "name": "late older search cannot replace newer results",
+          "passed": true
+        },
+        {
+          "name": "late page cannot append to another query",
+          "passed": true
+        },
+        {
+          "name": "Load more exists before 99",
+          "passed": true
+        },
+        {
+          "name": "99 rows contain no duplicate IDs",
+          "passed": true
+        },
+        {
+          "name": "Load more exists before 148",
+          "passed": true
+        },
+        {
+          "name": "148 rows contain no duplicate IDs",
+          "passed": true
+        },
+        {
+          "name": "Load more exists before 197",
+          "passed": true
+        },
+        {
+          "name": "197 rows contain no duplicate IDs",
+          "passed": true
+        },
+        {
+          "name": "Load more exists before 245",
+          "passed": true
+        },
+        {
+          "name": "245 rows contain no duplicate IDs",
+          "passed": true
+        },
+        {
+          "name": "all pages complete without a Load more control",
+          "passed": true
+        },
+        {
+          "name": "paging and search remain read only",
+          "passed": true
+        },
+        {
+          "name": "server search no page overflow",
+          "passed": true,
+          "detail": "1280/1280"
+        },
+        {
+          "name": "server search row content fits",
+          "passed": true,
+          "detail": "1196/1196"
+        },
+        {
+          "name": "opening release selection does not mutate",
+          "passed": true
+        },
+        {
+          "name": "release requires exact ID confirmation",
+          "passed": true
+        },
+        {
+          "name": "wrong ID cannot release",
+          "passed": true
+        },
+        {
+          "name": "full bot token remains blocked",
+          "passed": true
+        },
+        {
+          "name": "cancel retains selected connection without mutation",
+          "passed": true
+        },
+        {
+          "name": "matching ID enables explicit release",
+          "passed": true
+        },
+        {
+          "name": "release preserves exact existing POST body",
+          "passed": true,
+          "detail": "{\"connectionId\":\"connection-1\",\"confirmBotId\":\"900001\"}"
+        },
+        {
+          "name": "401 refresh is available",
+          "passed": true
+        },
+        {
+          "name": "401 refuses stale inventory",
+          "passed": true
+        },
+        {
+          "name": "403 refresh is available",
+          "passed": true
+        },
+        {
+          "name": "403 refuses stale inventory",
+          "passed": true
+        },
+        {
+          "name": "server error is visible",
+          "passed": true
+        },
+        {
+          "name": "empty inventory has an explicit message",
+          "passed": true
+        },
+        {
+          "name": "loading inventory does not show stale rows",
+          "passed": true
+        },
+        {
+          "name": "no avatar or unrelated API requests",
+          "passed": true
+        },
+        {
+          "name": "only explicit confirmation performs mutation",
+          "passed": true
+        },
+        {
+          "name": "final mixed inventory no page overflow",
+          "passed": true,
+          "detail": "1280/1280"
+        },
+        {
+          "name": "final mixed inventory row content fits",
+          "passed": true,
+          "detail": "1196/1196,1196/1196,1196/1196,1196/1196,1196/1196,1196/1196"
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "beyond",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "slow",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "fast",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 50,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "beyond",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 50,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 99,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 148,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 197,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": null,
+          "method": "POST",
+          "aborted": false
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": false
+        }
+      ],
+      "mutations": [
+        {
+          "connectionId": "connection-1",
+          "confirmBotId": "900001"
+        }
+      ],
+      "unexpectedRequests": []
+    },
+    {
+      "language": "en",
+      "viewport": "tablet",
+      "width": 768,
+      "complete": {
+        "checks": 23,
+        "localSearchRequests": 0
+      },
+      "search": {
+        "checks": 43,
+        "requests": 9
+      },
+      "statesAndRelease": {
+        "checks": 61,
+        "mutations": [
+          {
+            "connectionId": "connection-1",
+            "confirmBotId": "900001"
+          }
+        ]
+      },
+      "mixedScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-connections-20261015\\browser\\en-tablet-mixed.png",
+      "searchScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-connections-20261015\\browser\\en-tablet-server-search.png",
+      "checks": [
+        {
+          "name": "mixed inventory uses one row list",
+          "passed": true
+        },
+        {
+          "name": "Telegram and Messenger rows are mixed",
+          "passed": true
+        },
+        {
+          "name": "old platform count sections removed",
+          "passed": true
+        },
+        {
+          "name": "avatar backfill controls removed",
+          "passed": true
+        },
+        {
+          "name": "initial inventory uses opt-in paged read",
+          "passed": true
+        },
+        {
+          "name": "search has localized accessible name",
+          "passed": true
+        },
+        {
+          "name": "mixed list no page overflow",
+          "passed": true,
+          "detail": "768/768"
+        },
+        {
+          "name": "mixed list row content fits",
+          "passed": true,
+          "detail": "684/684,684/684,684/684,684/684,684/684,684/684"
+        },
+        {
+          "name": "rows stay compact",
+          "passed": true,
+          "detail": "111,111,111,111,111,111"
+        },
+        {
+          "name": "complete local query   aLPHa  ",
+          "passed": true
+        },
+        {
+          "name": "complete local query @ALPHA_HELP",
+          "passed": true
+        },
+        {
+          "name": "complete local query North Hub",
+          "passed": true
+        },
+        {
+          "name": "complete local query ខ្មែរ",
+          "passed": true
+        },
+        {
+          "name": "complete local query កម្ពុជា",
+          "passed": true
+        },
+        {
+          "name": "complete local query 12345678-1234-4123-8123-123456789abc",
+          "passed": true
+        },
+        {
+          "name": "complete local query 12345678",
+          "passed": true
+        },
+        {
+          "name": "complete local query *",
+          "passed": true
+        },
+        {
+          "name": "complete local query @North",
+          "passed": true
+        },
+        {
+          "name": "local no results is explicit",
+          "passed": true
+        },
+        {
+          "name": "existing platform filter remains available",
+          "passed": true
+        },
+        {
+          "name": "complete platform filter stays within mixed inventory",
+          "passed": true
+        },
+        {
+          "name": "complete local typeahead does not fetch on keystrokes or clear",
+          "passed": true
+        },
+        {
+          "name": "search and row selection do not mutate",
+          "passed": true
+        },
+        {
+          "name": "incomplete inventory exposes paging",
+          "passed": true
+        },
+        {
+          "name": "incomplete search is debounced rather than one request per key",
+          "passed": true,
+          "detail": "[{\"path\":\"/api/tenh-admin/connections\",\"query\":\"beyond\",\"platform\":\"all\",\"offset\":0,\"limit\":50,\"paged\":\"true\",\"method\":\"GET\",\"cache\":\"no-store\",\"aborted\":false}]"
+        },
+        {
+          "name": "server query finds records beyond first 200",
+          "passed": true
+        },
+        {
+          "name": "pasted full Bot token never becomes a GET query",
+          "passed": true
+        },
+        {
+          "name": "pasted token shows a safe local warning",
+          "passed": true
+        },
+        {
+          "name": "clear restores incomplete inventory",
+          "passed": true
+        },
+        {
+          "name": "late older search cannot replace newer results",
+          "passed": true
+        },
+        {
+          "name": "late page cannot append to another query",
+          "passed": true
+        },
+        {
+          "name": "Load more exists before 99",
+          "passed": true
+        },
+        {
+          "name": "99 rows contain no duplicate IDs",
+          "passed": true
+        },
+        {
+          "name": "Load more exists before 148",
+          "passed": true
+        },
+        {
+          "name": "148 rows contain no duplicate IDs",
+          "passed": true
+        },
+        {
+          "name": "Load more exists before 197",
+          "passed": true
+        },
+        {
+          "name": "197 rows contain no duplicate IDs",
+          "passed": true
+        },
+        {
+          "name": "Load more exists before 245",
+          "passed": true
+        },
+        {
+          "name": "245 rows contain no duplicate IDs",
+          "passed": true
+        },
+        {
+          "name": "all pages complete without a Load more control",
+          "passed": true
+        },
+        {
+          "name": "paging and search remain read only",
+          "passed": true
+        },
+        {
+          "name": "server search no page overflow",
+          "passed": true,
+          "detail": "768/768"
+        },
+        {
+          "name": "server search row content fits",
+          "passed": true,
+          "detail": "684/684"
+        },
+        {
+          "name": "opening release selection does not mutate",
+          "passed": true
+        },
+        {
+          "name": "release requires exact ID confirmation",
+          "passed": true
+        },
+        {
+          "name": "wrong ID cannot release",
+          "passed": true
+        },
+        {
+          "name": "full bot token remains blocked",
+          "passed": true
+        },
+        {
+          "name": "cancel retains selected connection without mutation",
+          "passed": true
+        },
+        {
+          "name": "matching ID enables explicit release",
+          "passed": true
+        },
+        {
+          "name": "release preserves exact existing POST body",
+          "passed": true,
+          "detail": "{\"connectionId\":\"connection-1\",\"confirmBotId\":\"900001\"}"
+        },
+        {
+          "name": "401 refresh is available",
+          "passed": true
+        },
+        {
+          "name": "401 refuses stale inventory",
+          "passed": true
+        },
+        {
+          "name": "403 refresh is available",
+          "passed": true
+        },
+        {
+          "name": "403 refuses stale inventory",
+          "passed": true
+        },
+        {
+          "name": "server error is visible",
+          "passed": true
+        },
+        {
+          "name": "empty inventory has an explicit message",
+          "passed": true
+        },
+        {
+          "name": "loading inventory does not show stale rows",
+          "passed": true
+        },
+        {
+          "name": "no avatar or unrelated API requests",
+          "passed": true
+        },
+        {
+          "name": "only explicit confirmation performs mutation",
+          "passed": true
+        },
+        {
+          "name": "final mixed inventory no page overflow",
+          "passed": true,
+          "detail": "768/768"
+        },
+        {
+          "name": "final mixed inventory row content fits",
+          "passed": true,
+          "detail": "684/684,684/684,684/684,684/684,684/684,684/684"
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "beyond",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "slow",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "fast",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 50,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "beyond",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 50,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 99,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 148,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 197,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": null,
+          "method": "POST",
+          "aborted": false
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": false
+        }
+      ],
+      "mutations": [
+        {
+          "connectionId": "connection-1",
+          "confirmBotId": "900001"
+        }
+      ],
+      "unexpectedRequests": []
+    },
+    {
+      "language": "en",
+      "viewport": "mobile",
+      "width": 390,
+      "complete": {
+        "checks": 22,
+        "localSearchRequests": 0
+      },
+      "search": {
+        "checks": 42,
+        "requests": 9
+      },
+      "statesAndRelease": {
+        "checks": 60,
+        "mutations": [
+          {
+            "connectionId": "connection-1",
+            "confirmBotId": "900001"
+          }
+        ]
+      },
+      "mixedScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-connections-20261015\\browser\\en-mobile-mixed.png",
+      "searchScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-connections-20261015\\browser\\en-mobile-server-search.png",
+      "checks": [
+        {
+          "name": "mixed inventory uses one row list",
+          "passed": true
+        },
+        {
+          "name": "Telegram and Messenger rows are mixed",
+          "passed": true
+        },
+        {
+          "name": "old platform count sections removed",
+          "passed": true
+        },
+        {
+          "name": "avatar backfill controls removed",
+          "passed": true
+        },
+        {
+          "name": "initial inventory uses opt-in paged read",
+          "passed": true
+        },
+        {
+          "name": "search has localized accessible name",
+          "passed": true
+        },
+        {
+          "name": "mixed list no page overflow",
+          "passed": true,
+          "detail": "375/390"
+        },
+        {
+          "name": "mixed list row content fits",
+          "passed": true,
+          "detail": "315/315,315/315,315/315,315/315,315/315,315/315"
+        },
+        {
+          "name": "complete local query   aLPHa  ",
+          "passed": true
+        },
+        {
+          "name": "complete local query @ALPHA_HELP",
+          "passed": true
+        },
+        {
+          "name": "complete local query North Hub",
+          "passed": true
+        },
+        {
+          "name": "complete local query ខ្មែរ",
+          "passed": true
+        },
+        {
+          "name": "complete local query កម្ពុជា",
+          "passed": true
+        },
+        {
+          "name": "complete local query 12345678-1234-4123-8123-123456789abc",
+          "passed": true
+        },
+        {
+          "name": "complete local query 12345678",
+          "passed": true
+        },
+        {
+          "name": "complete local query *",
+          "passed": true
+        },
+        {
+          "name": "complete local query @North",
+          "passed": true
+        },
+        {
+          "name": "local no results is explicit",
+          "passed": true
+        },
+        {
+          "name": "existing platform filter remains available",
+          "passed": true
+        },
+        {
+          "name": "complete platform filter stays within mixed inventory",
+          "passed": true
+        },
+        {
+          "name": "complete local typeahead does not fetch on keystrokes or clear",
+          "passed": true
+        },
+        {
+          "name": "search and row selection do not mutate",
+          "passed": true
+        },
+        {
+          "name": "incomplete inventory exposes paging",
+          "passed": true
+        },
+        {
+          "name": "incomplete search is debounced rather than one request per key",
+          "passed": true,
+          "detail": "[{\"path\":\"/api/tenh-admin/connections\",\"query\":\"beyond\",\"platform\":\"all\",\"offset\":0,\"limit\":50,\"paged\":\"true\",\"method\":\"GET\",\"cache\":\"no-store\",\"aborted\":false}]"
+        },
+        {
+          "name": "server query finds records beyond first 200",
+          "passed": true
+        },
+        {
+          "name": "pasted full Bot token never becomes a GET query",
+          "passed": true
+        },
+        {
+          "name": "pasted token shows a safe local warning",
+          "passed": true
+        },
+        {
+          "name": "clear restores incomplete inventory",
+          "passed": true
+        },
+        {
+          "name": "late older search cannot replace newer results",
+          "passed": true
+        },
+        {
+          "name": "late page cannot append to another query",
+          "passed": true
+        },
+        {
+          "name": "Load more exists before 99",
+          "passed": true
+        },
+        {
+          "name": "99 rows contain no duplicate IDs",
+          "passed": true
+        },
+        {
+          "name": "Load more exists before 148",
+          "passed": true
+        },
+        {
+          "name": "148 rows contain no duplicate IDs",
+          "passed": true
+        },
+        {
+          "name": "Load more exists before 197",
+          "passed": true
+        },
+        {
+          "name": "197 rows contain no duplicate IDs",
+          "passed": true
+        },
+        {
+          "name": "Load more exists before 245",
+          "passed": true
+        },
+        {
+          "name": "245 rows contain no duplicate IDs",
+          "passed": true
+        },
+        {
+          "name": "all pages complete without a Load more control",
+          "passed": true
+        },
+        {
+          "name": "paging and search remain read only",
+          "passed": true
+        },
+        {
+          "name": "server search no page overflow",
+          "passed": true,
+          "detail": "390/390"
+        },
+        {
+          "name": "server search row content fits",
+          "passed": true,
+          "detail": "330/330"
+        },
+        {
+          "name": "opening release selection does not mutate",
+          "passed": true
+        },
+        {
+          "name": "release requires exact ID confirmation",
+          "passed": true
+        },
+        {
+          "name": "wrong ID cannot release",
+          "passed": true
+        },
+        {
+          "name": "full bot token remains blocked",
+          "passed": true
+        },
+        {
+          "name": "cancel retains selected connection without mutation",
+          "passed": true
+        },
+        {
+          "name": "matching ID enables explicit release",
+          "passed": true
+        },
+        {
+          "name": "release preserves exact existing POST body",
+          "passed": true,
+          "detail": "{\"connectionId\":\"connection-1\",\"confirmBotId\":\"900001\"}"
+        },
+        {
+          "name": "401 refresh is available",
+          "passed": true
+        },
+        {
+          "name": "401 refuses stale inventory",
+          "passed": true
+        },
+        {
+          "name": "403 refresh is available",
+          "passed": true
+        },
+        {
+          "name": "403 refuses stale inventory",
+          "passed": true
+        },
+        {
+          "name": "server error is visible",
+          "passed": true
+        },
+        {
+          "name": "empty inventory has an explicit message",
+          "passed": true
+        },
+        {
+          "name": "loading inventory does not show stale rows",
+          "passed": true
+        },
+        {
+          "name": "no avatar or unrelated API requests",
+          "passed": true
+        },
+        {
+          "name": "only explicit confirmation performs mutation",
+          "passed": true
+        },
+        {
+          "name": "final mixed inventory no page overflow",
+          "passed": true,
+          "detail": "375/390"
+        },
+        {
+          "name": "final mixed inventory row content fits",
+          "passed": true,
+          "detail": "315/315,315/315,315/315,315/315,315/315,315/315"
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "beyond",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "slow",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "fast",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 50,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "beyond",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 50,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 99,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 148,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 197,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": null,
+          "method": "POST",
+          "aborted": false
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": false
+        }
+      ],
+      "mutations": [
+        {
+          "connectionId": "connection-1",
+          "confirmBotId": "900001"
+        }
+      ],
+      "unexpectedRequests": []
+    },
+    {
+      "language": "km",
+      "viewport": "desktop",
+      "width": 1280,
+      "complete": {
+        "checks": 23,
+        "localSearchRequests": 0
+      },
+      "search": {
+        "checks": 43,
+        "requests": 9
+      },
+      "statesAndRelease": {
+        "checks": 61,
+        "mutations": [
+          {
+            "connectionId": "connection-1",
+            "confirmBotId": "900001"
+          }
+        ]
+      },
+      "mixedScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-connections-20261015\\browser\\km-desktop-mixed.png",
+      "searchScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-connections-20261015\\browser\\km-desktop-server-search.png",
+      "checks": [
+        {
+          "name": "mixed inventory uses one row list",
+          "passed": true
+        },
+        {
+          "name": "Telegram and Messenger rows are mixed",
+          "passed": true
+        },
+        {
+          "name": "old platform count sections removed",
+          "passed": true
+        },
+        {
+          "name": "avatar backfill controls removed",
+          "passed": true
+        },
+        {
+          "name": "initial inventory uses opt-in paged read",
+          "passed": true
+        },
+        {
+          "name": "search has localized accessible name",
+          "passed": true
+        },
+        {
+          "name": "mixed list no page overflow",
+          "passed": true,
+          "detail": "1280/1280"
+        },
+        {
+          "name": "mixed list row content fits",
+          "passed": true,
+          "detail": "1196/1196,1196/1196,1196/1196,1196/1196,1196/1196,1196/1196"
+        },
+        {
+          "name": "rows stay compact",
+          "passed": true,
+          "detail": "111,111,111,111,111,111"
+        },
+        {
+          "name": "complete local query   aLPHa  ",
+          "passed": true
+        },
+        {
+          "name": "complete local query @ALPHA_HELP",
+          "passed": true
+        },
+        {
+          "name": "complete local query North Hub",
+          "passed": true
+        },
+        {
+          "name": "complete local query ខ្មែរ",
+          "passed": true
+        },
+        {
+          "name": "complete local query កម្ពុជា",
+          "passed": true
+        },
+        {
+          "name": "complete local query 12345678-1234-4123-8123-123456789abc",
+          "passed": true
+        },
+        {
+          "name": "complete local query 12345678",
+          "passed": true
+        },
+        {
+          "name": "complete local query *",
+          "passed": true
+        },
+        {
+          "name": "complete local query @North",
+          "passed": true
+        },
+        {
+          "name": "local no results is explicit",
+          "passed": true
+        },
+        {
+          "name": "existing platform filter remains available",
+          "passed": true
+        },
+        {
+          "name": "complete platform filter stays within mixed inventory",
+          "passed": true
+        },
+        {
+          "name": "complete local typeahead does not fetch on keystrokes or clear",
+          "passed": true
+        },
+        {
+          "name": "search and row selection do not mutate",
+          "passed": true
+        },
+        {
+          "name": "incomplete inventory exposes paging",
+          "passed": true
+        },
+        {
+          "name": "incomplete search is debounced rather than one request per key",
+          "passed": true,
+          "detail": "[{\"path\":\"/api/tenh-admin/connections\",\"query\":\"beyond\",\"platform\":\"all\",\"offset\":0,\"limit\":50,\"paged\":\"true\",\"method\":\"GET\",\"cache\":\"no-store\",\"aborted\":false}]"
+        },
+        {
+          "name": "server query finds records beyond first 200",
+          "passed": true
+        },
+        {
+          "name": "pasted full Bot token never becomes a GET query",
+          "passed": true
+        },
+        {
+          "name": "pasted token shows a safe local warning",
+          "passed": true
+        },
+        {
+          "name": "clear restores incomplete inventory",
+          "passed": true
+        },
+        {
+          "name": "late older search cannot replace newer results",
+          "passed": true
+        },
+        {
+          "name": "late page cannot append to another query",
+          "passed": true
+        },
+        {
+          "name": "Load more exists before 99",
+          "passed": true
+        },
+        {
+          "name": "99 rows contain no duplicate IDs",
+          "passed": true
+        },
+        {
+          "name": "Load more exists before 148",
+          "passed": true
+        },
+        {
+          "name": "148 rows contain no duplicate IDs",
+          "passed": true
+        },
+        {
+          "name": "Load more exists before 197",
+          "passed": true
+        },
+        {
+          "name": "197 rows contain no duplicate IDs",
+          "passed": true
+        },
+        {
+          "name": "Load more exists before 245",
+          "passed": true
+        },
+        {
+          "name": "245 rows contain no duplicate IDs",
+          "passed": true
+        },
+        {
+          "name": "all pages complete without a Load more control",
+          "passed": true
+        },
+        {
+          "name": "paging and search remain read only",
+          "passed": true
+        },
+        {
+          "name": "server search no page overflow",
+          "passed": true,
+          "detail": "1280/1280"
+        },
+        {
+          "name": "server search row content fits",
+          "passed": true,
+          "detail": "1196/1196"
+        },
+        {
+          "name": "opening release selection does not mutate",
+          "passed": true
+        },
+        {
+          "name": "release requires exact ID confirmation",
+          "passed": true
+        },
+        {
+          "name": "wrong ID cannot release",
+          "passed": true
+        },
+        {
+          "name": "full bot token remains blocked",
+          "passed": true
+        },
+        {
+          "name": "cancel retains selected connection without mutation",
+          "passed": true
+        },
+        {
+          "name": "matching ID enables explicit release",
+          "passed": true
+        },
+        {
+          "name": "release preserves exact existing POST body",
+          "passed": true,
+          "detail": "{\"connectionId\":\"connection-1\",\"confirmBotId\":\"900001\"}"
+        },
+        {
+          "name": "401 refresh is available",
+          "passed": true
+        },
+        {
+          "name": "401 refuses stale inventory",
+          "passed": true
+        },
+        {
+          "name": "403 refresh is available",
+          "passed": true
+        },
+        {
+          "name": "403 refuses stale inventory",
+          "passed": true
+        },
+        {
+          "name": "server error is visible",
+          "passed": true
+        },
+        {
+          "name": "empty inventory has an explicit message",
+          "passed": true
+        },
+        {
+          "name": "loading inventory does not show stale rows",
+          "passed": true
+        },
+        {
+          "name": "no avatar or unrelated API requests",
+          "passed": true
+        },
+        {
+          "name": "only explicit confirmation performs mutation",
+          "passed": true
+        },
+        {
+          "name": "final mixed inventory no page overflow",
+          "passed": true,
+          "detail": "1280/1280"
+        },
+        {
+          "name": "final mixed inventory row content fits",
+          "passed": true,
+          "detail": "1196/1196,1196/1196,1196/1196,1196/1196,1196/1196,1196/1196"
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "beyond",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "slow",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "fast",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 50,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "beyond",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 50,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 99,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 148,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 197,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": null,
+          "method": "POST",
+          "aborted": false
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": false
+        }
+      ],
+      "mutations": [
+        {
+          "connectionId": "connection-1",
+          "confirmBotId": "900001"
+        }
+      ],
+      "unexpectedRequests": []
+    },
+    {
+      "language": "km",
+      "viewport": "tablet",
+      "width": 768,
+      "complete": {
+        "checks": 23,
+        "localSearchRequests": 0
+      },
+      "search": {
+        "checks": 43,
+        "requests": 9
+      },
+      "statesAndRelease": {
+        "checks": 61,
+        "mutations": [
+          {
+            "connectionId": "connection-1",
+            "confirmBotId": "900001"
+          }
+        ]
+      },
+      "mixedScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-connections-20261015\\browser\\km-tablet-mixed.png",
+      "searchScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-connections-20261015\\browser\\km-tablet-server-search.png",
+      "checks": [
+        {
+          "name": "mixed inventory uses one row list",
+          "passed": true
+        },
+        {
+          "name": "Telegram and Messenger rows are mixed",
+          "passed": true
+        },
+        {
+          "name": "old platform count sections removed",
+          "passed": true
+        },
+        {
+          "name": "avatar backfill controls removed",
+          "passed": true
+        },
+        {
+          "name": "initial inventory uses opt-in paged read",
+          "passed": true
+        },
+        {
+          "name": "search has localized accessible name",
+          "passed": true
+        },
+        {
+          "name": "mixed list no page overflow",
+          "passed": true,
+          "detail": "768/768"
+        },
+        {
+          "name": "mixed list row content fits",
+          "passed": true,
+          "detail": "684/684,684/684,684/684,684/684,684/684,684/684"
+        },
+        {
+          "name": "rows stay compact",
+          "passed": true,
+          "detail": "111,111,111,111,111,111"
+        },
+        {
+          "name": "complete local query   aLPHa  ",
+          "passed": true
+        },
+        {
+          "name": "complete local query @ALPHA_HELP",
+          "passed": true
+        },
+        {
+          "name": "complete local query North Hub",
+          "passed": true
+        },
+        {
+          "name": "complete local query ខ្មែរ",
+          "passed": true
+        },
+        {
+          "name": "complete local query កម្ពុជា",
+          "passed": true
+        },
+        {
+          "name": "complete local query 12345678-1234-4123-8123-123456789abc",
+          "passed": true
+        },
+        {
+          "name": "complete local query 12345678",
+          "passed": true
+        },
+        {
+          "name": "complete local query *",
+          "passed": true
+        },
+        {
+          "name": "complete local query @North",
+          "passed": true
+        },
+        {
+          "name": "local no results is explicit",
+          "passed": true
+        },
+        {
+          "name": "existing platform filter remains available",
+          "passed": true
+        },
+        {
+          "name": "complete platform filter stays within mixed inventory",
+          "passed": true
+        },
+        {
+          "name": "complete local typeahead does not fetch on keystrokes or clear",
+          "passed": true
+        },
+        {
+          "name": "search and row selection do not mutate",
+          "passed": true
+        },
+        {
+          "name": "incomplete inventory exposes paging",
+          "passed": true
+        },
+        {
+          "name": "incomplete search is debounced rather than one request per key",
+          "passed": true,
+          "detail": "[{\"path\":\"/api/tenh-admin/connections\",\"query\":\"beyond\",\"platform\":\"all\",\"offset\":0,\"limit\":50,\"paged\":\"true\",\"method\":\"GET\",\"cache\":\"no-store\",\"aborted\":false}]"
+        },
+        {
+          "name": "server query finds records beyond first 200",
+          "passed": true
+        },
+        {
+          "name": "pasted full Bot token never becomes a GET query",
+          "passed": true
+        },
+        {
+          "name": "pasted token shows a safe local warning",
+          "passed": true
+        },
+        {
+          "name": "clear restores incomplete inventory",
+          "passed": true
+        },
+        {
+          "name": "late older search cannot replace newer results",
+          "passed": true
+        },
+        {
+          "name": "late page cannot append to another query",
+          "passed": true
+        },
+        {
+          "name": "Load more exists before 99",
+          "passed": true
+        },
+        {
+          "name": "99 rows contain no duplicate IDs",
+          "passed": true
+        },
+        {
+          "name": "Load more exists before 148",
+          "passed": true
+        },
+        {
+          "name": "148 rows contain no duplicate IDs",
+          "passed": true
+        },
+        {
+          "name": "Load more exists before 197",
+          "passed": true
+        },
+        {
+          "name": "197 rows contain no duplicate IDs",
+          "passed": true
+        },
+        {
+          "name": "Load more exists before 245",
+          "passed": true
+        },
+        {
+          "name": "245 rows contain no duplicate IDs",
+          "passed": true
+        },
+        {
+          "name": "all pages complete without a Load more control",
+          "passed": true
+        },
+        {
+          "name": "paging and search remain read only",
+          "passed": true
+        },
+        {
+          "name": "server search no page overflow",
+          "passed": true,
+          "detail": "768/768"
+        },
+        {
+          "name": "server search row content fits",
+          "passed": true,
+          "detail": "684/684"
+        },
+        {
+          "name": "opening release selection does not mutate",
+          "passed": true
+        },
+        {
+          "name": "release requires exact ID confirmation",
+          "passed": true
+        },
+        {
+          "name": "wrong ID cannot release",
+          "passed": true
+        },
+        {
+          "name": "full bot token remains blocked",
+          "passed": true
+        },
+        {
+          "name": "cancel retains selected connection without mutation",
+          "passed": true
+        },
+        {
+          "name": "matching ID enables explicit release",
+          "passed": true
+        },
+        {
+          "name": "release preserves exact existing POST body",
+          "passed": true,
+          "detail": "{\"connectionId\":\"connection-1\",\"confirmBotId\":\"900001\"}"
+        },
+        {
+          "name": "401 refresh is available",
+          "passed": true
+        },
+        {
+          "name": "401 refuses stale inventory",
+          "passed": true
+        },
+        {
+          "name": "403 refresh is available",
+          "passed": true
+        },
+        {
+          "name": "403 refuses stale inventory",
+          "passed": true
+        },
+        {
+          "name": "server error is visible",
+          "passed": true
+        },
+        {
+          "name": "empty inventory has an explicit message",
+          "passed": true
+        },
+        {
+          "name": "loading inventory does not show stale rows",
+          "passed": true
+        },
+        {
+          "name": "no avatar or unrelated API requests",
+          "passed": true
+        },
+        {
+          "name": "only explicit confirmation performs mutation",
+          "passed": true
+        },
+        {
+          "name": "final mixed inventory no page overflow",
+          "passed": true,
+          "detail": "768/768"
+        },
+        {
+          "name": "final mixed inventory row content fits",
+          "passed": true,
+          "detail": "684/684,684/684,684/684,684/684,684/684,684/684"
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "beyond",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "slow",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "fast",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 50,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "beyond",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 50,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 99,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 148,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 197,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": null,
+          "method": "POST",
+          "aborted": false
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": false
+        }
+      ],
+      "mutations": [
+        {
+          "connectionId": "connection-1",
+          "confirmBotId": "900001"
+        }
+      ],
+      "unexpectedRequests": []
+    },
+    {
+      "language": "km",
+      "viewport": "mobile",
+      "width": 390,
+      "complete": {
+        "checks": 22,
+        "localSearchRequests": 0
+      },
+      "search": {
+        "checks": 42,
+        "requests": 9
+      },
+      "statesAndRelease": {
+        "checks": 60,
+        "mutations": [
+          {
+            "connectionId": "connection-1",
+            "confirmBotId": "900001"
+          }
+        ]
+      },
+      "mixedScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-connections-20261015\\browser\\km-mobile-mixed.png",
+      "searchScreenshot": "C:\\Users\\TUF\\social-inbox\\docs\\evidence\\admin-connections-20261015\\browser\\km-mobile-server-search.png",
+      "checks": [
+        {
+          "name": "mixed inventory uses one row list",
+          "passed": true
+        },
+        {
+          "name": "Telegram and Messenger rows are mixed",
+          "passed": true
+        },
+        {
+          "name": "old platform count sections removed",
+          "passed": true
+        },
+        {
+          "name": "avatar backfill controls removed",
+          "passed": true
+        },
+        {
+          "name": "initial inventory uses opt-in paged read",
+          "passed": true
+        },
+        {
+          "name": "search has localized accessible name",
+          "passed": true
+        },
+        {
+          "name": "mixed list no page overflow",
+          "passed": true,
+          "detail": "375/390"
+        },
+        {
+          "name": "mixed list row content fits",
+          "passed": true,
+          "detail": "315/315,315/315,315/315,315/315,315/315,315/315"
+        },
+        {
+          "name": "complete local query   aLPHa  ",
+          "passed": true
+        },
+        {
+          "name": "complete local query @ALPHA_HELP",
+          "passed": true
+        },
+        {
+          "name": "complete local query North Hub",
+          "passed": true
+        },
+        {
+          "name": "complete local query ខ្មែរ",
+          "passed": true
+        },
+        {
+          "name": "complete local query កម្ពុជា",
+          "passed": true
+        },
+        {
+          "name": "complete local query 12345678-1234-4123-8123-123456789abc",
+          "passed": true
+        },
+        {
+          "name": "complete local query 12345678",
+          "passed": true
+        },
+        {
+          "name": "complete local query *",
+          "passed": true
+        },
+        {
+          "name": "complete local query @North",
+          "passed": true
+        },
+        {
+          "name": "local no results is explicit",
+          "passed": true
+        },
+        {
+          "name": "existing platform filter remains available",
+          "passed": true
+        },
+        {
+          "name": "complete platform filter stays within mixed inventory",
+          "passed": true
+        },
+        {
+          "name": "complete local typeahead does not fetch on keystrokes or clear",
+          "passed": true
+        },
+        {
+          "name": "search and row selection do not mutate",
+          "passed": true
+        },
+        {
+          "name": "incomplete inventory exposes paging",
+          "passed": true
+        },
+        {
+          "name": "incomplete search is debounced rather than one request per key",
+          "passed": true,
+          "detail": "[{\"path\":\"/api/tenh-admin/connections\",\"query\":\"beyond\",\"platform\":\"all\",\"offset\":0,\"limit\":50,\"paged\":\"true\",\"method\":\"GET\",\"cache\":\"no-store\",\"aborted\":false}]"
+        },
+        {
+          "name": "server query finds records beyond first 200",
+          "passed": true
+        },
+        {
+          "name": "pasted full Bot token never becomes a GET query",
+          "passed": true
+        },
+        {
+          "name": "pasted token shows a safe local warning",
+          "passed": true
+        },
+        {
+          "name": "clear restores incomplete inventory",
+          "passed": true
+        },
+        {
+          "name": "late older search cannot replace newer results",
+          "passed": true
+        },
+        {
+          "name": "late page cannot append to another query",
+          "passed": true
+        },
+        {
+          "name": "Load more exists before 99",
+          "passed": true
+        },
+        {
+          "name": "99 rows contain no duplicate IDs",
+          "passed": true
+        },
+        {
+          "name": "Load more exists before 148",
+          "passed": true
+        },
+        {
+          "name": "148 rows contain no duplicate IDs",
+          "passed": true
+        },
+        {
+          "name": "Load more exists before 197",
+          "passed": true
+        },
+        {
+          "name": "197 rows contain no duplicate IDs",
+          "passed": true
+        },
+        {
+          "name": "Load more exists before 245",
+          "passed": true
+        },
+        {
+          "name": "245 rows contain no duplicate IDs",
+          "passed": true
+        },
+        {
+          "name": "all pages complete without a Load more control",
+          "passed": true
+        },
+        {
+          "name": "paging and search remain read only",
+          "passed": true
+        },
+        {
+          "name": "server search no page overflow",
+          "passed": true,
+          "detail": "390/390"
+        },
+        {
+          "name": "server search row content fits",
+          "passed": true,
+          "detail": "330/330"
+        },
+        {
+          "name": "opening release selection does not mutate",
+          "passed": true
+        },
+        {
+          "name": "release requires exact ID confirmation",
+          "passed": true
+        },
+        {
+          "name": "wrong ID cannot release",
+          "passed": true
+        },
+        {
+          "name": "full bot token remains blocked",
+          "passed": true
+        },
+        {
+          "name": "cancel retains selected connection without mutation",
+          "passed": true
+        },
+        {
+          "name": "matching ID enables explicit release",
+          "passed": true
+        },
+        {
+          "name": "release preserves exact existing POST body",
+          "passed": true,
+          "detail": "{\"connectionId\":\"connection-1\",\"confirmBotId\":\"900001\"}"
+        },
+        {
+          "name": "401 refresh is available",
+          "passed": true
+        },
+        {
+          "name": "401 refuses stale inventory",
+          "passed": true
+        },
+        {
+          "name": "403 refresh is available",
+          "passed": true
+        },
+        {
+          "name": "403 refuses stale inventory",
+          "passed": true
+        },
+        {
+          "name": "server error is visible",
+          "passed": true
+        },
+        {
+          "name": "empty inventory has an explicit message",
+          "passed": true
+        },
+        {
+          "name": "loading inventory does not show stale rows",
+          "passed": true
+        },
+        {
+          "name": "no avatar or unrelated API requests",
+          "passed": true
+        },
+        {
+          "name": "only explicit confirmation performs mutation",
+          "passed": true
+        },
+        {
+          "name": "final mixed inventory no page overflow",
+          "passed": true,
+          "detail": "375/390"
+        },
+        {
+          "name": "final mixed inventory row content fits",
+          "passed": true,
+          "detail": "315/315,315/315,315/315,315/315,315/315,315/315"
+        }
+      ],
+      "requests": [
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "beyond",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "slow",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "fast",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 50,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "beyond",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 50,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 99,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 148,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 197,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": null,
+          "method": "POST",
+          "aborted": false
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": true
+        },
+        {
+          "path": "/api/tenh-admin/connections",
+          "query": "",
+          "platform": "all",
+          "offset": 0,
+          "limit": 50,
+          "paged": "true",
+          "method": "GET",
+          "cache": "no-store",
+          "aborted": false
+        }
+      ],
+      "mutations": [
+        {
+          "connectionId": "connection-1",
+          "confirmBotId": "900001"
+        }
+      ],
+      "unexpectedRequests": []
+    }
+  ],
+  "browserErrors": [],
+  "network": [
+    "http://127.0.0.1:65206/fixture.html?lang=en&viewport=desktop",
+    "http://127.0.0.1:65206/bundle.js",
+    "http://127.0.0.1:65206/images/channels/telegram.png",
+    "http://127.0.0.1:65206/images/channels/messenger.png",
+    "http://127.0.0.1:65206/favicon.ico",
+    "http://127.0.0.1:65206/fixture.html?lang=en&viewport=tablet",
+    "http://127.0.0.1:65206/bundle.js",
+    "http://127.0.0.1:65206/images/channels/telegram.png",
+    "http://127.0.0.1:65206/images/channels/messenger.png",
+    "http://127.0.0.1:65206/favicon.ico",
+    "http://127.0.0.1:65206/images/channels/telegram.png",
+    "http://127.0.0.1:65206/fixture.html?lang=en&viewport=mobile",
+    "http://127.0.0.1:65206/bundle.js",
+    "http://127.0.0.1:65206/images/channels/telegram.png",
+    "http://127.0.0.1:65206/images/channels/messenger.png",
+    "http://127.0.0.1:65206/favicon.ico",
+    "http://127.0.0.1:65206/fixture.html?lang=km&viewport=desktop",
+    "http://127.0.0.1:65206/bundle.js",
+    "http://127.0.0.1:65206/images/channels/telegram.png",
+    "http://127.0.0.1:65206/images/channels/messenger.png",
+    "http://127.0.0.1:65206/favicon.ico",
+    "http://127.0.0.1:65206/fixture.html?lang=km&viewport=tablet",
+    "http://127.0.0.1:65206/bundle.js",
+    "http://127.0.0.1:65206/images/channels/telegram.png",
+    "http://127.0.0.1:65206/images/channels/messenger.png",
+    "http://127.0.0.1:65206/favicon.ico",
+    "http://127.0.0.1:65206/fixture.html?lang=km&viewport=mobile",
+    "http://127.0.0.1:65206/bundle.js",
+    "http://127.0.0.1:65206/images/channels/telegram.png",
+    "http://127.0.0.1:65206/images/channels/messenger.png",
+    "http://127.0.0.1:65206/favicon.ico"
+  ],
+  "temp": "C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-admin-connections-6zaEYC"
+}
