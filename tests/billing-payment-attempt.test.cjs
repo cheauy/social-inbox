@@ -22,7 +22,7 @@ function saved(overrides = {}) {
   return { source: 'payway', payment, invoice, subscription, businessName: 'Saved workspace', now };
 }
 function route(seed = saved(), options = {}) {
-  const db = database({ billing_transactions: seed.source === 'payway' ? [seed.payment] : [],
+  const db = database({ payment_cancellations: [], billing_transactions: seed.source === 'payway' ? [seed.payment] : [],
     manual_payment_requests: seed.source === 'manual' ? [seed.payment] : [],
     tenh_billing_invoices: seed.invoice ? [seed.invoice] : [], business_subscriptions: seed.subscription ? [seed.subscription] : [],
     businesses: [{ id: businessId, name: 'Saved workspace' }],

@@ -5,6 +5,7 @@ const {loader,database}=require('./tenh-seven/harness.cjs');
 
 test('leaving a saved historical checkout cannot close it at PayWay or modify its record',async()=>{
  const db=database({billing_transactions:[{id:'saved',business_id:'b',provider:'payway',provider_transaction_id:'saved',status:'pending',metadata:{environment:'sandbox',live_enabled:false}}],team_members:[{id:'owner',business_id:'b',user_id:'u',is_active:true,role:'owner'}]});
+ db.rpc=async()=>({data:{claimed:false,outcome:'reconciliation_required'},error:null});
  const before=JSON.stringify(db.tables);let providerCalls=0;
  const unexpected=()=>{providerCalls++;throw Error('Unexpected provider action');};
  const load=loader({'@/lib/supabase/admin':{supabaseAdmin:db},
@@ -13,7 +14,7 @@ test('leaving a saved historical checkout cannot close it at PayWay or modify it
  '@/lib/auth/require-permission':{memberHasPermission:async()=>true},
  '@/lib/payway/close-transaction':{closePayWayTransaction:unexpected},
  '@/lib/payway/finalize-payment':{verifyAndFinalizePayWayTransaction:unexpected}});
- const response=await load('app/api/payway/cancel-return/route.ts').POST(new Request('https://fixture.example.invalid/api/payway/cancel-return',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({transactionId:'saved'})}));
+ const response=await load('app/api/payway/cancel-return/route.ts').POST(new Request('https://fixture.example.invalid/api/payway/cancel-return',{method:'POST',headers:{'Content-Type':'application/json',Origin:'https://fixture.example.invalid'},body:JSON.stringify({confirmed:true,transactionId:'saved'})}));
  assert.equal(response.status,409);assert.equal(providerCalls,0);assert.equal(JSON.stringify(db.tables),before);
  assert.ok(db.history.every(e=>e.op==='read'));
 });
@@ -30,12 +31,13 @@ test('old pending PayWay payments block unrelated manual targets even behind rec
 
 for(const recovery of [false,true])test('cancellation verification conflict stops before provider close: '+recovery,async()=>{
  const db=database({billing_transactions:[{id:'v2',business_id:'b',provider:'payway',provider_transaction_id:'v2',status:'pending',metadata:{checkout_contract_version:2}}],team_members:[{id:'owner',business_id:'b',user_id:'u',is_active:true,role:'owner'}]});
+ db.rpc=async name=>({data:name==='tenh_request_payment_cancellation'?{claimed:true,outcome:'processing'}:{outcome:'reconciliation_required'},error:null});
  const before=JSON.stringify(db.tables);let closes=0,verifications=0;
  const load=loader({'@/lib/supabase/admin':{supabaseAdmin:db},'next/headers':{cookies:async()=>{throw Error('Unexpected cookie mutation');}},
  '@/lib/auth/get-current-member':{getCurrentMember:async()=>({success:true,user:{id:'u'}})},'@/lib/auth/require-permission':{memberHasPermission:async()=>true},
  '@/lib/payway/close-transaction':{closePayWayTransaction:async()=>{closes++;throw Error('Unexpected closure');}},
  '@/lib/payway/finalize-payment':{verifyAndFinalizePayWayTransaction:async()=>{verifications++;if(recovery)return {paymentState:'recovery_required'};throw Error('Synthetic conflicting approval');}}});
- const response=await load('app/api/payway/cancel-return/route.ts').POST(new Request('https://fixture.example.invalid/api/payway/cancel-return',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({transactionId:'v2'})}));
+ const response=await load('app/api/payway/cancel-return/route.ts').POST(new Request('https://fixture.example.invalid/api/payway/cancel-return',{method:'POST',headers:{'Content-Type':'application/json',Origin:'https://fixture.example.invalid'},body:JSON.stringify({confirmed:true,transactionId:'v2'})}));
  assert.equal(response.status,409);assert.equal(closes,0);assert.equal(verifications,1);assert.equal(JSON.stringify(db.tables),before);assert.ok(db.history.every(e=>e.op==='read'));
 });
 

@@ -34,7 +34,8 @@ for (const [query, kind, attemptId] of [
     }) });
     const view = result.props.children;
     assert.equal(view.type, app.PaymentAttemptView);
-    assert.deepEqual(Object.keys(view.props).sort(), ['attemptId', 'kind']);
+    assert.deepEqual(Object.keys(view.props).sort(), ['attemptId', 'businessId', 'kind']);
+    assert.equal(view.props.businessId, undefined);
     assert.equal(view.props.kind, kind);
     assert.equal(view.props.attemptId, attemptId);
     assert.deepEqual(app.effects, []);

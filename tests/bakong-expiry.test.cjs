@@ -9,15 +9,17 @@ const START = Date.now(), LIFETIME = 900000;
 async function fixture(options = {}) {
   const dom = new JSDOM('<div id="root"></div>', { url: 'https://fixture.invalid/dashboard/subscription/payment' });
   Object.defineProperty(dom.window.document, 'hidden', { configurable: true, value: false });
+  if (options.locks) Object.defineProperty(dom.window.navigator, 'locks', { configurable: true, value: options.locks });
   const previous = {};
   for (const [key, value] of Object.entries({ window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true })) {
     previous[key] = global[key]; global[key] = value;
   }
   let clock = options.elapsed ?? 0, sequence = 0, record = {
     id: ID, businessId: BUSINESS, userId: 'synthetic-user', memberId: 'synthetic-member', workspaceName: 'Synthetic workspace',
+    recipientName: 'SYNTHETIC RECEIVER',
     planCode: 'custom', billingCycle: '12-months', amount: '32.53', currency: 'USD', reference: 'SYNTHETIC', transactionReference: null,
     environment: 'production', state: 'pending', application: 'none', qrImage: 'data:image/png;base64,c3ludGhldGlj',
-    expiresAt: new Date(START + LIFETIME).toISOString(), nextCheckAt: new Date(START + 300000).toISOString(),
+    createdAt: new Date(START).toISOString(), expiresAt: new Date(START + LIFETIME).toISOString(), nextCheckAt: new Date(START + 300000).toISOString(),
     serverTime: new Date(START + clock).toISOString(), invoiceId: null, canCheck: true, automaticChecksRemaining: 3,
     ...options.record,
   };
@@ -33,7 +35,7 @@ async function fixture(options = {}) {
       record.nextCheckAt = new Date(START + clock + 300000).toISOString();
     }
     const result = { ...record, serverTime: new Date(START + clock).toISOString() };
-    return options.response ? options.response(result, method) : Response.json({ success: true, attempt: result });
+    return options.response ? options.response(result, method, init) : Response.json({ success: true, attempt: result });
   };
   const load = loader({
     react: React, 'next/link': ({ href, children, ...props }) => React.createElement('a', { ...props, href }, children),
@@ -56,6 +58,18 @@ async function fixture(options = {}) {
     }
   });
   return { dom, root, record, requests, navigations, timers, render, advance, authListeners,
+    async visibility(hidden) {
+      Object.defineProperty(dom.window.document, 'hidden', { configurable: true, value: hidden });
+      await act(async () => dom.window.document.dispatchEvent(new dom.window.Event('visibilitychange')));
+    },
+    async network(online) {
+      Object.defineProperty(dom.window.navigator, 'onLine', { configurable: true, value: online });
+      await act(async () => dom.window.dispatchEvent(new dom.window.Event(online ? 'online' : 'offline')));
+    },
+    async refresh() {
+      const details = dom.window.document.querySelector('details'); if (details) details.open = true;
+      await act(async () => [...dom.window.document.querySelectorAll('button')].find(button => ['Refresh status', 'Retry activation'].includes(button.textContent)).click());
+    },
     clock: value => { clock = value; },
     setRecord: patch => Object.assign(record, patch),
     async reload(props) { await act(async () => root.render(null)); await render(props); },
@@ -66,6 +80,48 @@ async function fixture(options = {}) {
   };
 }
 
+test('KHQR card uses the saved QR, server receiver and exact amount with actions outside the card', async () => {
+  const f = await fixture();
+  try {
+    await f.render();
+    const card = f.dom.window.document.querySelector('figure[aria-label="KHQR payment card"]');
+    assert.ok(card); assert.match(card.textContent, /SYNTHETIC RECEIVER/);
+    assert.ok(!card.textContent.includes(f.record.workspaceName));
+    const logo = card.querySelector('img[alt="KHQR"]');
+    assert.equal(logo.getAttribute('src'), '/images/khqr.png');
+    assert.equal(Number(logo.getAttribute('width')) / Number(logo.getAttribute('height')), 1248 / 514);
+    const amount = card.querySelector('[aria-label="32.53 USD"]');
+    assert.deepEqual([...amount.children].map(child => child.textContent), ['32.53', 'USD']);
+    const qr = card.querySelector('img[alt="Scan Bakong KHQR to pay"]');
+    assert.equal(qr.getAttribute('src'), f.record.qrImage); assert.ok(qr.parentElement.classList.contains('p-3'));
+    assert.ok(card.querySelector('.border-dashed')); assert.equal(card.querySelector('button, a'), null);
+    assert.equal(f.dom.window.document.querySelector('[class*="animate-spin"]'), null, 'waiting is not active verification');
+    assert.ok(![...f.dom.window.document.querySelectorAll('button')].some(button => /Check payment|Refresh status/.test(button.textContent)));
+    assert.equal(f.requests.filter(request => request.method === 'POST').length, 0);
+  } finally { await f.close(); }
+});
+
+test('automatic inquiry uses POST only after five visible online minutes, not the initial status GET', async () => {
+  const f = await fixture({ record: { nextCheckAt: new Date(START).toISOString() } });
+  try {
+    await f.render(); assert.equal(f.requests.filter(request => request.method === 'POST').length, 0);
+    await f.advance(299999); assert.equal(f.requests.filter(request => request.method === 'POST').length, 0);
+    await f.advance(1); assert.equal(f.requests.filter(request => request.method === 'POST').length, 1);
+    assert.equal(f.record.automaticChecksRemaining, 2);
+  } finally { await f.close(); }
+});
+
+test('visibility refresh reads status without moving the original five-minute verification deadline', async () => {
+  const f = await fixture({ record: { nextCheckAt: new Date(START).toISOString() } });
+  try {
+    await f.render(); await f.advance(240000);
+    await act(async () => f.dom.window.document.dispatchEvent(new f.dom.window.Event('visibilitychange')));
+    assert.ok(f.requests.filter(request => request.method === 'GET').length >= 2);
+    await f.advance(60000); assert.equal(f.requests.filter(request => request.method === 'POST').length, 1);
+    await f.advance(240000); assert.equal(f.requests.filter(request => request.method === 'POST').length, 1);
+  } finally { await f.close(); }
+});
+
 test('QR closes at its saved absolute 15-minute deadline and replaces the route once', async () => {
   const f = await fixture();
   try {
@@ -73,7 +129,8 @@ test('QR closes at its saved absolute 15-minute deadline and replaces the route 
     await f.advance(LIFETIME - 1); assert.ok(f.dom.window.document.querySelector('img')); assert.equal(f.navigations.length, 0);
     await f.advance(1);
     assert.equal(f.dom.window.document.querySelector('img'), null);
-    assert.deepEqual(f.navigations, [`/dashboard/subscription?bakong_closed=${ID}&purchase_business=${BUSINESS}`]);
+    // Expiry closes the checkout and returns to Subscription without an expired-payment panel.
+    assert.deepEqual(f.navigations, ['/dashboard/subscription']);
     await f.advance(10000); assert.equal(f.navigations.length, 1);
     assert.equal(f.record.state, 'pending'); assert.equal(f.record.expiresAt, new Date(START + LIFETIME).toISOString());
   } finally { await f.close(); }
@@ -100,7 +157,7 @@ test('a QR loaded after expiry returns immediately without another payment or pr
 test('two tabs close the same saved QR without creating or extending an obligation', async () => {
   const f = await fixture({ elapsed: LIFETIME - 1000, tabs: 2 });
   try {
-    await f.render(); assert.equal(f.dom.window.document.querySelectorAll('img').length, 2);
+    await f.render(); assert.equal(f.dom.window.document.querySelectorAll('img[alt="Scan Bakong KHQR to pay"]').length, 2);
     await f.advance(1000); assert.equal(f.dom.window.document.querySelectorAll('img').length, 0);
     assert.equal(f.navigations.length, 2); assert.equal(new Set(f.navigations).size, 1);
     assert.ok(f.requests.every(r => r.method === 'GET'));
@@ -121,7 +178,7 @@ test('closed QR on Subscription keeps reconciliation reachable and honors saved 
   try {
     await f.render({ qrClosed: true });
     assert.equal(f.navigations.length, 0); assert.equal(f.dom.window.document.querySelector('img'), null);
-    assert.match(f.dom.window.document.body.textContent, /Do not pay again/);
+    assert.match(f.dom.window.document.body.textContent, /Select a plan again for a new QR/);
     await f.advance(300000); assert.equal(f.requests.filter(r => r.method === 'POST').length, 1);
     await f.advance(300000); assert.equal(f.requests.filter(r => r.method === 'POST').length, 1);
     assert.equal(f.record.state, 'pending');
@@ -144,10 +201,16 @@ test('a pending inquiry racing expiry keeps the saved result available on Subscr
     method === 'POST' ? new Promise(resolve => { release = () => resolve(Response.json({ success: true, attempt: { ...record, state: 'applied', application: 'active', qrImage: null, canCheck: false } })); }) : Response.json({ success: true, attempt: record }) });
   try {
     await f.render();
-    await act(async () => [...f.dom.window.document.querySelectorAll('button')].find(b => b.textContent === 'Check payment').click());
+    await f.refresh();
     assert.equal(typeof release, 'function');
+    assert.match(f.dom.window.document.body.textContent, /Checking payment status/);
+    const spinner = f.dom.window.document.querySelector('[class*="animate-spin"]');
+    assert.ok(spinner); assert.ok(spinner.classList.contains('motion-reduce:animate-none'));
+    const status = spinner.closest('[role="status"]'); assert.equal(status.getAttribute('aria-live'), 'polite');
     await f.advance(1000); assert.equal(f.dom.window.document.querySelector('img'), null); assert.equal(f.navigations.length, 1);
+    assert.equal(f.dom.window.document.querySelector('[class*="animate-spin"]'), null, 'expiry stops the spinner while preserving the in-flight result');
     await act(async () => release()); assert.match(f.dom.window.document.body.textContent, /Subscription active/);
+    assert.equal(f.dom.window.document.querySelector('[class*="animate-spin"]'), null);
     assert.equal(f.requests.filter(r => r.method === 'POST').length, 1);
   } finally { await f.close(); }
 });
@@ -157,7 +220,7 @@ test('a successful inquiry just before expiry takes precedence over the pending 
     Response.json({ success: true, attempt: method === 'POST' ? { ...record, state: 'applied', application: 'active', qrImage: null, canCheck: false } : record }) });
   try {
     await f.render();
-    await act(async () => [...f.dom.window.document.querySelectorAll('button')].find(b => b.textContent === 'Check payment').click());
+    await f.refresh();
     await f.advance(1000); assert.equal(f.navigations.length, 0); assert.match(f.dom.window.document.body.textContent, /Subscription active/);
   } finally { await f.close(); }
 });
@@ -169,7 +232,9 @@ test('an offline or failed inquiry hides the QR at expiry without discarding the
   } });
   try {
     await f.render();
-    await act(async () => [...f.dom.window.document.querySelectorAll('button')].find(b => b.textContent === 'Check payment').click());
+    await f.refresh();
+    assert.match(f.dom.window.document.body.textContent, /Payment status unavailable/);
+    assert.equal(f.dom.window.document.querySelector('[class*="animate-spin"]'), null);
     await f.advance(1000); assert.equal(f.navigations.length, 1); assert.equal(f.record.state, 'pending');
     assert.equal(f.dom.window.document.querySelector('img'), null);
   } finally { await f.close(); }
@@ -192,13 +257,14 @@ test('exhausted shared inquiry allowance shows review, hides QR/checks and never
     assert.match(f.dom.window.document.body.textContent, /verification limit has been reached/);
     assert.match(f.dom.window.document.body.textContent, /Do not pay again/);
     assert.equal(f.dom.window.document.querySelector('img'), null);
-    assert.ok(![...f.dom.window.document.querySelectorAll('button')].some(button => button.textContent.includes('Check payment')));
+    assert.ok(![...f.dom.window.document.querySelectorAll('button')].some(button => button.textContent.includes('Refresh status')));
     await f.advance(300000); assert.equal(f.requests.filter(request => request.method === 'POST').length, 0);
     assert.equal(f.record.state, 'pending');
+    assert.equal(f.dom.window.document.querySelector('[class*="animate-spin"]'), null);
   } finally { await f.close(); }
 });
 
-test('real route wiring preserves the saved workspace on reload and closed status on Subscription', async () => {
+test('Subscription starts with its overview and links to closed payment status without embedding a payment card', async () => {
   const marker = () => null;
   const denied = () => { throw Error('Unexpected checkout/auth/database execution'); };
   const load = loader({
@@ -206,6 +272,7 @@ test('real route wiring preserves the saved workspace on reload and closed statu
     '@/components/subscription/subscription-payment-view': { SubscriptionPaymentView: marker },
     '@/components/subscription/payment-attempt-view': { PaymentAttemptView: marker },
     '@/components/subscription/bakong-payment-view': { BakongPaymentView: marker },
+    '@/components/display/workspace-language-text': { WorkspaceLanguageText: marker },
     '@/lib/auth/get-current-member': { getCurrentMember: denied },
     '@/lib/auth/require-permission': { memberHasPermission: denied },
     '@/lib/supabase/admin': { supabaseAdmin: new Proxy({}, { get: denied }) },
@@ -215,6 +282,14 @@ test('real route wiring preserves the saved workspace on reload and closed statu
   const payment = await load('app/dashboard/subscription/payment/page.tsx').default({ searchParams: Promise.resolve({ bakong_attempt: ID, purchase_business: BUSINESS }) });
   assert.equal(payment.props.children.props.businessId, BUSINESS);
   const subscription = await load('app/dashboard/subscription/page.tsx').default({ searchParams: Promise.resolve({ bakong_closed: ID, purchase_business: BUSINESS }) });
-  const status = React.Children.toArray(subscription.props.children).find(child => child.props.attemptId === ID);
-  assert.ok(status); assert.equal(status.props.businessId, BUSINESS); assert.equal(status.props.qrClosed, true);
+  const children = React.Children.toArray(subscription.props.children);
+  assert.equal(children[0].type, marker, 'Subscription overview is first');
+  assert.ok(!children.some(child => child.props.attemptId || child.props.qrClosed));
+  const href = children[1].props.children.props.href;
+  const params = new URL(href, 'https://fixture.invalid').searchParams;
+  assert.equal(params.get('bakong_attempt'), ID); assert.equal(params.get('purchase_business'), BUSINESS);
+  const saved = await load('app/dashboard/subscription/payment/page.tsx').default({ searchParams: Promise.resolve(Object.fromEntries(params)) });
+  assert.equal(saved.props.children.props.qrClosed, true); assert.equal(saved.props.children.props.businessId, BUSINESS);
+  const invalid = await load('app/dashboard/subscription/page.tsx').default({ searchParams: Promise.resolve({ bakong_closed: 'bad', purchase_business: BUSINESS }) });
+  assert.equal(React.Children.toArray(invalid.props.children).length, 1);
 });

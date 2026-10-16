@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 
 import { SubscriptionPaymentView } from "@/components/subscription/subscription-payment-view";
 import { PaymentAttemptView } from "@/components/subscription/payment-attempt-view";
+import { BakongPaymentView } from "@/components/subscription/bakong-payment-view";
 import { getCurrentMember } from "@/lib/auth/get-current-member";
 import { memberHasPermission } from "@/lib/auth/require-permission";
 import {
@@ -34,6 +35,7 @@ type PaymentPageProps = {
     tran_id?: string | string[];
     manual_request?: string | string[];
     bakong_attempt?: string | string[];
+    bakong_status?: string | string[];
     purchase_business?: string | string[];
   }>;
 };
@@ -55,6 +57,9 @@ export default async function SubscriptionPaymentPage({ searchParams }: PaymentP
   const manualRequestId = single(params.manual_request).trim();
   const returnTransactionId = single(params.tran_id).trim();
   const bakongAttemptId = single(params.bakong_attempt).trim();
+  if (bakongAttemptId && single(params.bakong_status) === "closed") {
+    return <div className="h-full overflow-y-auto"><BakongPaymentView attemptId={bakongAttemptId} businessId={purchaseBusinessId} qrClosed /></div>;
+  }
   if (manualRequestId || returnTransactionId || bakongAttemptId) {
     // The status endpoint authorizes the saved attempt independently of the selected workspace.
     return (

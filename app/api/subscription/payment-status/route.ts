@@ -54,6 +54,13 @@ export async function GET(request: Request) {
       !(await memberHasPermission(membership.data, "billing", "manage"))) {
       return NextResponse.json({ success: false, error: "Payment attempt was not found." }, { status: 404, headers });
     }
+    const cancellation = await supabaseAdmin.from("payment_cancellations").select("outcome")
+      .eq("kind", source).eq("payment_id", manualId ?? transactionId).eq("business_id", payment.business_id).maybeSingle();
+    if (cancellation.error) throw new Error("Cancellation status unavailable.");
+    if (cancellation.data && ["processing", "reconciliation_required", "withdrawn"].includes(cancellation.data.outcome) && payment.status !== "approved") {
+      const attempt = describePaymentAttempt({ source, payment: { ...payment, status: "recovery_required" }, invoice: null, subscription: null, businessName: null });
+      return NextResponse.json({ success: true, attempt }, { headers });
+    }
     if (prepared) {
       const business = await supabaseAdmin.from("businesses").select("name").eq("id", payment.business_id).maybeSingle();
       if (business.error) throw new Error("Payment workspace lookup failed.");

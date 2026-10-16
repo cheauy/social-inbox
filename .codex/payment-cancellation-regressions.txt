@@ -1,0 +1,63 @@
+✔ leaving a saved historical checkout cannot close it at PayWay or modify its record (273.3165ms)
+✔ old pending PayWay payments block unrelated manual targets even behind recent approved purchases (48.4652ms)
+✔ cancellation verification conflict stops before provider close: false (57.2756ms)
+✔ cancellation verification conflict stops before provider close: true (56.6674ms)
+✔ manual approval rejects recovery_required/b before success audit or notifications (99.4939ms)
+✔ manual approval rejects active/other before success audit or notifications (65.0617ms)
+✖ exact payway status delegates saved data and independent authorization before checkout (1168.551ms)
+✖ exact manual status delegates saved data and independent authorization before checkout (225.1584ms)
+✔ missing and malformed exact attempt identifiers still reach the non-disclosing status endpoint (404.3757ms)
+✔ duplicate exact query values use the first value and manual request identity is deterministic (231.0261ms)
+✔ an approval query without an exact identifier cannot bypass ordinary checkout authorization (231.0551ms)
+✔ old checkout restores unresolved manual in the authorized target before lifecycle or repricing (147.2536ms)
+✔ old checkout restores unresolved payway in the authorized target before lifecycle or repricing (166.4233ms)
+✔ historical terminal attempts and another workspace pending attempt cannot replace a new checkout (148.5444ms)
+✔ new-checkout denial precedes payment lookups and lookup failure cannot reopen checkout forms (451.0484ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 13
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3795.4349
+
+✖ failing tests:
+
+test at tests\payway-return.test.cjs:29:3
+✖ exact payway status delegates saved data and independent authorization before checkout (1168.551ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + undefined
+  - 'unrelated-workspace'
+  
+      at TestContext.<anonymous> (C:\Users\TUF\social-inbox\tests\payway-return.test.cjs:38:12)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: 'unrelated-workspace',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests\payway-return.test.cjs:29:3
+✖ exact manual status delegates saved data and independent authorization before checkout (225.1584ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + undefined
+  - 'unrelated-workspace'
+  
+      at TestContext.<anonymous> (C:\Users\TUF\social-inbox\tests\payway-return.test.cjs:38:12)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: 'unrelated-workspace',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

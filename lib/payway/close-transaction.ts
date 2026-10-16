@@ -96,6 +96,7 @@ export async function closePayWayTransaction(transactionId: string) {
   return {
     reqTime,
     response: result,
-    closed: statusCode === "00" || statusCode === "0",
+    closed: (statusCode === "00" || statusCode === "0") &&
+      (!result.status?.tran_id || result.status.tran_id === normalizedTransactionId),
   };
 }

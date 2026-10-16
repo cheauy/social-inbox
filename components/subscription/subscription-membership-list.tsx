@@ -1,8 +1,11 @@
 "use client";
 
-import { readWorkspaces } from "@/lib/workspaces/read-workspaces";
+import { invalidateWorkspaceRead, readWorkspaces } from "@/lib/workspaces/read-workspaces";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { CancelPaymentButton } from "./cancel-payment-button";
+import type { SubscriptionPendingPayment } from "@/lib/billing/subscription-pending-payments";
 
 import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
 
@@ -357,6 +360,7 @@ function SubscriptionTable({
                         <p className="mt-0.5 max-w-[190px] truncate text-xs font-semibold text-slate-600">
                           {item.businessName || item.ownerName}
                         </p>
+                        {subscription && !expired ? <p className="mt-1 text-xs text-slate-600">{t("Current plan", "គម្រោងបច្ចុប្បន្ន")}: {subscription.plan_code.toUpperCase()}</p> : null}
                         <div className="mt-1 flex flex-wrap items-center gap-1.5">
                           {item.role === "owner" ? (
                             <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[9px] font-bold text-blue-700">
@@ -500,39 +504,134 @@ export function SubscriptionMembershipList({
   const [currentBusinessId, setCurrentBusinessId] = useState<string | null>(null);
   const [items, setItems] = useState<WorkspaceItem[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [payments, setPayments] = useState<SubscriptionPendingPayment[]>([]);
+  const [paymentError, setPaymentError] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [now, setNow] = useState(0);
+  const request = useRef(0);
+  const inFlight = useRef(false);
+  const controller = useRef<AbortController | null>(null);
+  const clock = useRef({ time: 0, start: 0 });
   const [filter, setFilter] = useState<"all" | "owned" | "joined">("all");
   const [sort, setSort] = useState<"current" | "name">("current");
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (replace = false) => {
+    if (inFlight.current && !replace) return;
+    controller.current?.abort();
+    const abort = new AbortController();
+    controller.current = abort;
+    const generation = ++request.current;
+    const started = performance.now();
+    inFlight.current = true;
+    setRefreshing(true);
     setError(null);
-
     try {
-      const response = await readWorkspaces();
-      const data = (await response.json()) as WorkspaceResponse;
-
-      if (!response.ok || !data.success) {
-        throw new Error(
-          data.error ?? "Unable to load your subscriptions.",
-        );
+      // Client identity pins the response; the endpoint authorizes every membership.
+      const session = await createClient().auth.getSession();
+      if (abort.signal.aborted || generation !== request.current) return;
+      const userId = session.data.session?.user.id;
+      if (session.error || !userId) { setItems([]); throw new Error("Sign in to view subscriptions."); }
+      const paymentRequest = fetch("/api/subscription/pending-payments", { cache: "no-store", signal: abort.signal }).then(async response => ({ response, data: await response.json() as {
+          success?: boolean; userId?: string; serverTime?: string; items?: SubscriptionPendingPayment[];
+        } }));
+      // Read entitlements after payment state, so a resolved attempt cannot leave an older Active snapshot behind.
+      const workspaceRequest = paymentRequest.catch(() => null).then(() => {
+        invalidateWorkspaceRead();
+        return readWorkspaces(abort.signal);
+      })
+        .then(async response => ({ response, data: await response.json() as WorkspaceResponse }));
+      const [workspaceResult, paymentResult] = await Promise.allSettled([workspaceRequest, paymentRequest]);
+      if (abort.signal.aborted || generation !== request.current) return;
+      if (workspaceResult.status !== "fulfilled" || !workspaceResult.value.response.ok || !workspaceResult.value.data.success) {
+        if (workspaceResult.status === "fulfilled" && [401, 403].includes(workspaceResult.value.response.status)) setItems([]);
+        throw new Error("Unable to load your subscriptions.");
       }
-
+      const data = workspaceResult.value.data;
       setCurrentBusinessId(data.currentBusinessId ?? null);
       setItems(data.workspaces ?? []);
+      if (paymentResult.status !== "fulfilled" || !paymentResult.value.response.ok || !paymentResult.value.data.success ||
+        paymentResult.value.data.userId !== userId || !Array.isArray(paymentResult.value.data.items) ||
+        !Number.isFinite(Date.parse(paymentResult.value.data.serverTime ?? ""))) {
+        if (paymentResult.status === "fulfilled" && [401, 403].includes(paymentResult.value.response.status)) setItems([]);
+        setPayments([]);
+        setPaymentError(true);
+      } else {
+        const saved = paymentResult.value.data;
+        const authorized = new Map((data.workspaces ?? []).filter(item => item.canManageBilling).map(item => [item.businessId, item.memberId]));
+        const unique = new Map<string, SubscriptionPendingPayment>();
+        for (const payment of saved.items ?? []) {
+          if (authorized.get(payment.businessId) !== payment.memberId || !["pending", "submitted", "reconciliation_required"].includes(payment.status) ||
+            !payment.resumeUrl.startsWith("/dashboard/subscription/payment?")) continue;
+          unique.set(`${payment.kind}:${payment.businessId}:${payment.id}`, payment);
+        }
+        clock.current = { time: Date.parse(saved.serverTime!), start: started };
+        setNow(clock.current.time + Math.max(0, performance.now() - started));
+        setPayments([...unique.values()]);
+        setPaymentError(false);
+      }
     } catch (loadError) {
-      setError(
-        loadError instanceof Error
-          ? loadError.message
-          : "Unable to load your subscriptions.",
-      );
+      if (abort.signal.aborted || generation !== request.current) return;
+      setPayments([]);
+      setPaymentError(true);
+      setError(loadError instanceof Error ? loadError.message : "Unable to load your subscriptions.");
     } finally {
-      setLoading(false);
+      if (!abort.signal.aborted && generation === request.current) {
+        inFlight.current = false;
+        setRefreshing(false);
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Initialize an authenticated external-data subscription, including its busy state.
     void load();
+    const recheck = () => { if (!document.hidden && navigator.onLine) { invalidateWorkspaceRead(); void load(); } };
+    const { data } = createClient().auth.onAuthStateChange((event, session) => {
+      if (event === "INITIAL_SESSION" || event === "TOKEN_REFRESHED") return;
+      ++request.current;
+      controller.current?.abort();
+      inFlight.current = false;
+      invalidateWorkspaceRead();
+      setItems([]);
+      setPayments([]);
+      setSelectedBusinessId(null);
+      setCurrentBusinessId(null);
+      if (session?.user) void load(true);
+      else { setLoading(false); setRefreshing(false); }
+    });
+    window.addEventListener("focus", recheck);
+    window.addEventListener("online", recheck);
+    document.addEventListener("visibilitychange", recheck);
+    return () => {
+      controller.current?.abort();
+      inFlight.current = false;
+      data.subscription.unsubscribe();
+      window.removeEventListener("focus", recheck);
+      window.removeEventListener("online", recheck);
+      document.removeEventListener("visibilitychange", recheck);
+    };
   }, [load]);
+
+  useEffect(() => {
+    if (!payments.some(payment => payment.status === "pending" && payment.expiresAt)) return;
+    const timer = setInterval(() => {
+      const time = clock.current.time + Math.max(0, performance.now() - clock.current.start);
+      setNow(time);
+      if (!payments.some(payment => payment.status === "pending" && payment.expiresAt && Date.parse(payment.expiresAt) > time)) clearInterval(timer);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [payments]);
+
+  useEffect(() => {
+    if (!payments.length) return;
+    let polls = 0;
+    // Saved-state reads only, never provider verification. Focus/Refresh remains available after this bounded window.
+    const timer = setInterval(() => {
+      if (polls < 20 && !document.hidden && navigator.onLine && !inFlight.current) { polls += 1; void load(); }
+    }, 30000);
+    return () => clearInterval(timer);
+  }, [payments.length, load]);
 
   function reactivateSubscription(
     item: WorkspaceItem,
@@ -566,6 +665,7 @@ export function SubscriptionMembershipList({
       ) ?? items.find(isVisibleCurrentItem) ?? null;
 
     if (!initial) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Preserve the initial selection callback after asynchronous memberships arrive.
     setSelectedBusinessId(initial.businessId);
     onSelectSubscription?.(
       initial,
@@ -594,6 +694,22 @@ export function SubscriptionMembershipList({
     [items],
   );
 
+  const visiblePayments = useMemo(() => {
+    const workspaces = new Map(items.map(item => [item.businessId, item]));
+    return payments.filter(payment => {
+      const workspace = workspaces.get(payment.businessId);
+      return workspace?.canManageBilling && workspace.memberId === payment.memberId &&
+        (filter === "all" || (filter === "owned" ? workspace.role === "owner" : workspace.role !== "owner")) &&
+        (payment.status !== "pending" || !payment.expiresAt || Date.parse(payment.expiresAt) > now);
+    }).sort((a, b) => {
+      if (sort === "current" && a.businessId !== b.businessId) {
+        if (a.businessId === currentBusinessId) return -1;
+        if (b.businessId === currentBusinessId) return 1;
+      }
+      return (workspaces.get(a.businessId)?.businessName ?? "").localeCompare(workspaces.get(b.businessId)?.businessName ?? "") || a.id.localeCompare(b.id);
+    });
+  }, [payments, items, filter, sort, currentBusinessId, now]);
+
   if (loading) {
     return (
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -612,7 +728,7 @@ export function SubscriptionMembershipList({
 
   return (
     <div className="@container min-w-0 space-y-4">
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <section aria-busy={refreshing} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-5 py-4">
           <div className="flex flex-col gap-3 @min-[900px]:flex-row @min-[900px]:items-center @min-[900px]:justify-between">
             <div>
@@ -623,10 +739,14 @@ export function SubscriptionMembershipList({
                 </h2>
               </div>
               <p className="mt-1 text-xs text-slate-500">
-                {t("All active subscriptions across owned and joined workspaces.", "ការជាវសកម្មទាំងអស់នៅក្នុងកន្លែងធ្វើការដែលអ្នកជាម្ចាស់ និងបានចូលរួម។")}
+                {t("Subscriptions and payments across your workspaces.", "ការជាវ និងការទូទាត់នៅក្នុងកន្លែងធ្វើការរបស់អ្នក។")}
               </p>
             </div>
 
+            <div className="flex flex-wrap items-center gap-2">
+            <button type="button" disabled={refreshing} onClick={() => { invalidateWorkspaceRead(); void load(); }} className="min-h-11 rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-600 focus-visible:outline-2 focus-visible:outline-blue-600 disabled:opacity-50">
+              {refreshing ? t("Refreshing…", "កំពុងផ្ទុក…") : t("Refresh", "ផ្ទុកឡើងវិញ")}
+            </button>
             <label className="flex min-h-11 shrink-0 self-start items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
               <span>{t("Sort by:", "តម្រៀបតាម៖")}</span>
               <select
@@ -638,6 +758,7 @@ export function SubscriptionMembershipList({
                 <option value="name">{t("Workspace name", "ឈ្មោះកន្លែងធ្វើការ")}</option>
               </select>
             </label>
+            </div>
           </div>
 
           <div className="mt-4 inline-flex rounded-lg border border-slate-200 bg-white p-0.5">
@@ -668,6 +789,8 @@ export function SubscriptionMembershipList({
           </div>
         ) : null}
 
+        {paymentError && !error ? <p role="alert" className="mx-5 mt-4 text-sm text-red-700">{t("Unable to load payments. Try Refresh.", "មិនអាចផ្ទុកការទូទាត់។ សូមផ្ទុកឡើងវិញ។")}</p> : null}
+
         <SubscriptionTable
           items={currentItems}
           currentBusinessId={currentBusinessId}
@@ -680,6 +803,38 @@ export function SubscriptionMembershipList({
           isKhmer={isKhmer}
           emptyText={t("No current subscriptions found.", "រកមិនឃើញការជាវបច្ចុប្បន្នទេ។")}
         />
+        {visiblePayments.length ? <ul aria-label={t("Payments", "ការទូទាត់")} className="divide-y divide-slate-100 border-t border-slate-200">
+          {visiblePayments.map(payment => {
+            const workspace = items.find(item => item.businessId === payment.businessId)!;
+            const cycle = TENH_BILLING_CYCLES.find(cycle => cycle.id === payment.billingCycle);
+            const term = isKhmer && cycle ? cycle.months === 12 ? "1 ឆ្នាំ" : `${cycle.months} ខែ` : cycle?.label ?? payment.billingCycle;
+            const remaining = payment.expiresAt ? Math.max(0, Math.ceil((Date.parse(payment.expiresAt) - now) / 1000)) : 0;
+            return <li key={`${payment.kind}:${payment.businessId}:${payment.id}`} className="grid min-w-0 gap-3 px-5 py-4 @min-[640px]:grid-cols-[minmax(0,1fr)_auto] @min-[900px]:grid-cols-[minmax(0,1fr)_auto_auto] @min-[900px]:items-center">
+              <div className="min-w-0 @min-[640px]:col-span-2 @min-[900px]:col-span-3">
+                <div className="flex min-w-0 items-start justify-between gap-3">
+                  <p className="min-w-0 break-words text-sm font-bold text-slate-950">{workspace.businessName}</p>
+                  {payment.status !== "reconciliation_required" ? <CancelPaymentButton kind={payment.kind} paymentId={payment.id} businessId={payment.businessId} submitted={payment.status === "submitted"}
+                    onResult={outcome => {
+                      setPayments(saved => ["cancelled", "checkout_closed", "expired", "paid"].includes(outcome) ? saved.filter(item => !(item.kind === payment.kind && item.id === payment.id)) :
+                        saved.map(item => item.kind === payment.kind && item.id === payment.id ? { ...item, status: "reconciliation_required" } : item));
+                      void load(true);
+                    }} /> : null}
+                </div>
+                <p className="mt-1 break-words text-xs text-slate-600">{t("Requested plan", "គម្រោងដែលបានស្នើ")}: <span className="font-semibold">{payment.planCode.toUpperCase()}</span> · {term}</p>
+                <p className="mt-1 text-sm font-semibold tabular-nums text-slate-800">{payment.amount !== null && payment.currency ? `${payment.currency} ${payment.amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${payment.status === "submitted" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-800"}`}>
+                  {payment.status === "reconciliation_required" ? t("Reconciliation required — do not pay again", "ត្រូវពិនិត្យការទូទាត់ — កុំទូទាត់ម្ដងទៀត") : payment.status === "submitted" ? t("Submitted for review", "បានដាក់ស្នើរង់ចាំពិនិត្យ") : t("Pending payment", "រង់ចាំការទូទាត់")}
+                </span>
+                {payment.status === "pending" && payment.expiresAt ? <time dateTime={payment.expiresAt} aria-label={t("Payment time remaining", "ពេលទូទាត់នៅសល់")} className="text-sm font-semibold tabular-nums text-slate-600">{String(Math.floor(remaining / 60)).padStart(2, "0")}:{String(remaining % 60).padStart(2, "0")}</time> : null}
+              </div>
+              <a href={payment.resumeUrl} className="inline-flex min-h-11 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-bold text-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 @min-[640px]:col-span-2 @min-[900px]:col-span-1">
+                {payment.status !== "pending" ? t("View status", "មើលស្ថានភាព") : t("Continue payment", "បន្តការទូទាត់")}
+              </a>
+            </li>;
+          })}
+        </ul> : null}
       </section>
 
       {expiredItems.length > 0 ? (

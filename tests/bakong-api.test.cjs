@@ -35,7 +35,8 @@ function postgresClient(db) {
 }
 
 async function fixture(environment = 'sandbox', accountType = 'merchant') {
-  const ctx = await database(), seeded = await ctx.trial(), userId = randomUUID(), memberId = randomUUID();
+  const ctx = await database();
+  const seeded = await ctx.trial(), userId = randomUUID(), memberId = randomUUID();
   await ctx.db.query("insert into team_members(id,user_id,business_id,role,is_active) values($1,$2,$3,'owner',true)", [memberId,userId,seeded.businessId]);
   const state = { userId, admin: false, calls: 0, observation: 'paid', losePrepare: false };
   const env = { NODE_ENV: 'production', TENH_APP_ORIGIN: 'https://app.tenhchat.com', BAKONG_ENVIRONMENT: environment,
@@ -82,6 +83,8 @@ test('server quote, lost response, concurrent clicks and cross-tab checks retain
     const catalog = f.load('lib/subscription/plan-catalog.ts'), money = f.load('lib/bakong/money.ts');
     assert.equal(view.attempt.amount, money.centsDecimal(catalog.getTrustedSubscriptionQuote({planCode:'mini',billingCycle:'monthly'}).totalCents));
     assert.match(view.attempt.qrImage,/^data:image\/png;base64,/);
+    assert.equal(view.attempt.recipientName, f.config.merchantName, 'the payee label comes from server configuration, not the customer workspace');
+    assert.ok(Number.isFinite(Date.parse(view.attempt.createdAt)), 'automatic scheduling uses the saved server creation time');
     assert.ok(!JSON.stringify(view).includes(f.env.BAKONG_API_TOKEN)); assert.ok(!JSON.stringify(view).includes(f.config.fingerprint));
     assert.equal(view.attempt.md5,undefined); assert.equal(view.attempt.qr,undefined);
     await Promise.all([f.check(one.attemptId), f.check(one.attemptId)]);
@@ -233,4 +236,38 @@ test('individual-account checkout retains production gating, saved QR identity a
       assert.equal(result.attempt.application,environment==='sandbox'?'none':'active');
     }finally{await f.db.close();}
   });
+});
+
+test('an expired or cancelled checkout is never resumed; selecting again issues a new attempt, reference and QR', async () => {
+  const f = await fixture();
+  try {
+    const subscription = async () => (await f.db.query('select * from business_subscriptions where business_id=$1', [f.seeded.businessId])).rows[0];
+    const before = await subscription();
+    const reopen = async () => (await f.checkout.GET(new Request(`https://app.tenhchat.com/api/bakong/checkout?purchase_business=${f.body.businessId}&purchase_intent=${f.body.purchaseIntent}`))).json();
+    const first = await f.start();
+    assert.equal((await reopen()).resumeAttemptId, first.attemptId, 'a still-open checkout is resumed');
+    await f.db.query("select tenh_request_payment_cancellation('bakong',$1,$2,$3,$4,false)", [first.attemptId, f.seeded.businessId, f.userId, f.memberId]);
+    const cancelled = (await (await f.read(first.attemptId)).json()).attempt;
+    assert.equal(cancelled.checkout, 'cancelled'); assert.equal(cancelled.qrImage, null);
+    assert.equal(cancelled.state, 'pending'); assert.equal(cancelled.reconciliationRequired, false);
+    const reopened = await reopen();
+    assert.equal(reopened.resumeAttemptId, null); assert.equal(reopened.pendingAttemptId, null); assert.equal(reopened.intentClosed, true);
+    const replay = await f.checkout.POST(f.post('/api/bakong/checkout', f.body));
+    assert.equal(replay.status, 409); assert.equal((await replay.json()).code, 'CHECKOUT_CLOSED');
+    f.body.purchaseIntent = randomUUID();
+    const second = await f.start();
+    assert.notEqual(second.attemptId, first.attemptId);
+    await f.db.exec(`alter table bakong_payment_attempts disable trigger bakong_immutable_attempt_identity;
+      update bakong_payment_attempts set expires_at=now()-interval '1 second' where id='${second.attemptId}';
+      alter table bakong_payment_attempts enable trigger bakong_immutable_attempt_identity;`);
+    assert.equal((await (await f.read(second.attemptId)).json()).attempt.checkout, 'expired');
+    assert.equal((await f.checkout.POST(f.post('/api/bakong/checkout', f.body))).status, 409);
+    f.body.purchaseIntent = randomUUID();
+    const third = await f.start();
+    const rows = (await f.db.query('select id,reference,md5 from bakong_payment_attempts')).rows;
+    assert.equal(rows.length, 3); assert.equal(new Set(rows.map(r => r.reference)).size, 3); assert.equal(new Set(rows.map(r => r.md5)).size, 3);
+    assert.ok(rows.some(r => r.id === third.attemptId));
+    assert.equal((await f.db.query("select count(*)::int n from billing_transactions where status='pending'")).rows[0].n, 3, 'closed checkouts keep their unresolved payment record');
+    assert.deepEqual(await subscription(), before, 'the current subscription is unchanged until a verified payment is applied');
+  } finally { await f.db.close(); }
 });

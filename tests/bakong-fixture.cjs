@@ -6,7 +6,7 @@ const { loader } = require('./tenh-seven/harness.cjs');
 const load = loader({ 'server-only': {} });
 const { getTrustedPlan, buildPurchaseRecord } = load('lib/billing/subscription-purchase.ts');
 
-async function database(installBakong = true, repairRequestTime = true, installGeneral = true) {
+async function database(installBakong = true, repairRequestTime = true, installGeneral = true, installLifecycle = installBakong && repairRequestTime && installGeneral) {
   const filename = path.resolve('tests/payway-application-baseline.test.cjs');
   const source = fs.readFileSync(filename, 'utf8');
   const moduleFixture = { exports: {} };
@@ -23,8 +23,20 @@ async function database(installBakong = true, repairRequestTime = true, installG
     if (installGeneral && repairRequestTime) await db.exec(fs.readFileSync('db/migrations/20261016043734_bakong_scoped_pilot.sql', 'utf8'));
     if (repairRequestTime) await db.exec(fs.readFileSync('db/migrations/20261016063606_bakong_request_time.sql', 'utf8'));
     if (installGeneral && repairRequestTime) await db.exec(fs.readFileSync('db/migrations/20261016070506_bakong_general_authorization.sql', 'utf8'));
+    if (installLifecycle) await lifecycle(db);
   }
   return { db, trial: () => moduleFixture.exports.trial(db) };
+}
+// Payment cancellation ledger and KHQR checkout lifecycle, with the hosted columns they read.
+async function lifecycle(db) {
+  await db.exec("alter table team_members add column if not exists permissions jsonb default '{}'");
+  await db.exec(`alter table manual_payment_requests
+    add column if not exists transfer_reference text, add column if not exists customer_note text,
+    add column if not exists proof_bucket text, add column if not exists proof_path text,
+    add column if not exists proof_file_name text, add column if not exists proof_mime_type text,
+    add column if not exists proof_size_bytes bigint`);
+  await db.exec(fs.readFileSync('db/migrations/20261016083154_payment_cancellation_safety.sql', 'utf8'));
+  await db.exec(fs.readFileSync('db/migrations/20261016093000_bakong_checkout_lifecycle.sql', 'utf8'));
 }
 async function prepare(ctx, options = {}) {
   const seeded = await ctx.trial(), businessId = seeded.businessId;

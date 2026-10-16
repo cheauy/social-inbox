@@ -493,7 +493,11 @@ function PaymentCheckout({
         if (controller.signal.aborted) return;
         setBakongAvailability({ enabled: result.enabled === true, environment: result.environment });
         if (result.resumeAttemptId || result.pendingAttemptId) enterAttempt("bakong", result.resumeAttemptId || result.pendingAttemptId);
-        else if (intent) setBakongUncertain(true);
+        else if (intent && result.intentClosed === true) {
+          // An expired/cancelled checkout is never reused: the next selection issues a new QR.
+          const url = new URL(window.location.href); url.searchParams.delete("purchase_intent");
+          window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+        } else if (intent) setBakongUncertain(true);
         setBakongSafety(true);
       } catch { if (!controller.signal.aborted) setBakongLoadError(true); }
     }
@@ -508,17 +512,21 @@ function PaymentCheckout({
     submitting.current = true; setCheckoutLoading(true); setCheckoutError(null);
     const controller = new AbortController(); bakongAction.current = controller;
     const url = new URL(window.location.href);
-    let intent = url.searchParams.get("purchase_intent");
-    if (!intent || !/^[0-9a-f-]{36}$/i.test(intent)) {
+    let intent = url.searchParams.get("purchase_intent") ?? "";
+    const newIntent = () => {
       intent = crypto.randomUUID(); url.searchParams.set("purchase_intent", intent);
       window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
-    }
+    };
+    if (!/^[0-9a-f-]{36}$/i.test(intent)) newIntent();
     try {
-      const response = await fetch("/api/bakong/checkout", { method: "POST", cache: "no-store", signal: controller.signal,
+      const prepare = () => fetch("/api/bakong/checkout", { method: "POST", cache: "no-store", signal: controller.signal,
         headers: { "Content-Type": "application/json" }, body: JSON.stringify({ businessId: purchaseBusinessId,
           purchaseIntent: intent, planCode, billingCycle, connections: customConnections, users: customUsers,
           renewSame, customUpgrade, extensionBillingCycle: customUpgradeExtensionBillingCycle ?? "none" }) });
-      const result = await response.json();
+      let response = await prepare();
+      let result = await response.json();
+      // This intent's checkout expired or was cancelled: issue a new attempt once, never reuse the old QR.
+      if (response.status === 409 && result.code === "CHECKOUT_CLOSED") { newIntent(); response = await prepare(); result = await response.json(); }
       if (!response.ok || !result.success || result.businessId !== purchaseBusinessId || !result.attemptId) throw new Error();
       if (alive.current && !controller.signal.aborted) enterAttempt("bakong", result.attemptId);
     } catch {
@@ -1053,7 +1061,7 @@ function PaymentCheckout({
         const response = await fetch("/api/payway/cancel-return", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ transactionId: payWayTransactionId }),
+          body: JSON.stringify({ transactionId: payWayTransactionId, confirmed: true }),
         });
         const result = (await response.json()) as {
           success?: boolean;
@@ -1682,12 +1690,24 @@ function PaymentCheckout({
                 </div>
               </div>
 
-              {checkoutMethod === "bakong" ? <div className="mt-5 rounded-[22px] border border-slate-200 bg-slate-50/70 p-4">
-                <p className="text-xs font-bold uppercase tracking-wide text-red-700">KHQR</p>
-                <p className="mt-2 text-2xl font-black">{formatUsdFromCents(totalCents)}</p>
-                <button type="button" className="mt-4 min-h-11 w-full rounded-xl bg-blue-600 px-5 py-3 font-bold text-white focus-visible:outline-2 focus-visible:outline-offset-2 disabled:bg-slate-300 sm:w-auto" disabled={checkoutLoading || !bakongAvailability?.enabled} onClick={() => void startBakong()}>{checkoutLoading ? t("Preparing…", "កំពុងរៀបចំ…") : t("Show QR", "បង្ហាញ QR")}</button>
-                {checkoutError ? <p role="alert" className="mt-3 text-sm text-red-700">{checkoutError}</p> : null}
-              </div> : null}
+              {checkoutMethod === "bakong" ? (
+                <div className="mt-5 rounded-[22px] border border-slate-200 bg-slate-50/70 p-4">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-[0.14em] text-red-700">KHQR</p>
+                      <p className="mt-1 text-sm font-medium text-slate-500">{t("Total", "សរុប")}</p>
+                      <p className="mt-1 text-2xl font-black tracking-tight text-slate-950">{formatUsdFromCents(totalCents)}</p>
+                    </div>
+                    <button type="button" onClick={() => void startBakong()}
+                      disabled={checkoutLoading || !bakongAvailability?.enabled}
+                      className="inline-flex w-full min-w-0 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-6 py-4 text-base font-extrabold text-white transition hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 sm:w-auto sm:min-w-[230px]">
+                      <PaymentLockIcon />
+                      {checkoutLoading ? t("Preparing…", "កំពុងរៀបចំ…") : t("Checkout", "ទូទាត់")}
+                    </button>
+                  </div>
+                  {checkoutError ? <p role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{checkoutError}</p> : null}
+                </div>
+              ) : null}
 
               {checkoutMethod === "payway" ? (
                 <div className="mt-5 rounded-[22px] border border-slate-200 bg-slate-50/70 p-4">

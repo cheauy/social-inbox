@@ -17,7 +17,7 @@ export const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{1
 export const BAKONG_HEADERS = { "Cache-Control": "private, no-store, max-age=0", Vary: "Cookie, Origin" };
 export type BakongAttempt = { id: string; business_id: string; user_id: string; member_id: string; intent_id: string;
   environment: "sandbox" | "production"; credential_fingerprint: string; recipient: string; amount: number | string;
-  currency: "USD"; reference: string; qr: string; md5: string; expires_at: string; selection: Record<string, unknown>;
+  currency: "USD"; reference: string; qr: string; md5: string; created_at: string; expires_at: string; selection: Record<string, unknown>;
   state: BakongPaymentView["state"]; verified_hash: string | null; next_check_at: string; reason: string | null; check_count: number;
   pilot_authorization_id?: string | null };
 export class BakongError extends Error { constructor(public status: number, public code: string) { super(code); } }
@@ -72,13 +72,26 @@ export async function pendingBakong(businessId: string) {
   return getPendingBakongPayment(businessId);
 }
 
+/** Checkout lifecycle only. Settlement is tracked separately by state and verified_hash. */
+export async function bakongCheckout(attempt: Pick<BakongAttempt, "id" | "business_id" | "expires_at">): Promise<BakongPaymentView["checkout"]> {
+  const closed = await supabaseAdmin.from("payment_cancellations").select("outcome").eq("kind", "bakong")
+    .eq("payment_id", attempt.id).eq("business_id", attempt.business_id).maybeSingle();
+  if (closed.error) throw new BakongError(503, "PAYMENT_UNAVAILABLE");
+  if (closed.data) return "cancelled";
+  return Date.parse(attempt.expires_at) > Date.now() ? "open" : "expired";
+}
+const unpaid = (attempt: Pick<BakongAttempt, "state" | "verified_hash">) => attempt.state === "pending" && !attempt.verified_hash;
+
+/** A closed unpaid checkout is never resumed; the browser must start a new purchase intent. */
 export async function resumeBakongIntent(actor: BakongActor, intent: string | null) {
-  if (intent === null) return null;
+  if (intent === null) return { attemptId: null, closed: false };
   if (!UUID.test(intent)) throw new BakongError(400, "INVALID_PURCHASE_INTENT");
-  const saved = await supabaseAdmin.from("bakong_payment_attempts").select("id").eq("business_id", actor.businessId)
+  const saved = await supabaseAdmin.from("bakong_payment_attempts").select("id,business_id,expires_at,state,verified_hash").eq("business_id", actor.businessId)
     .eq("user_id", actor.userId).eq("intent_id", intent).maybeSingle();
   if (saved.error) throw new BakongError(503, "PAYMENT_UNAVAILABLE");
-  return saved.data?.id as string | null;
+  if (!saved.data) return { attemptId: null, closed: false };
+  const closed = unpaid(saved.data) && await bakongCheckout(saved.data) !== "open";
+  return { attemptId: closed ? null : saved.data.id as string, closed };
 }
 
 export async function prepareBakongPayment(actor: BakongActor, body: Record<string, unknown>) {
@@ -95,6 +108,7 @@ export async function prepareBakongPayment(actor: BakongActor, body: Record<stri
   if (saved.error) throw new BakongError(503, "PAYMENT_UNAVAILABLE");
   if (saved.data) {
     if (Object.keys(selection).some(key => JSON.stringify(saved.data.selection?.[key]) !== JSON.stringify(selection[key as keyof typeof selection]))) throw new BakongError(400, "PURCHASE_INTENT_CHANGED");
+    if (unpaid(saved.data) && await bakongCheckout(saved.data) !== "open") throw new BakongError(409, "CHECKOUT_CLOSED");
     return saved.data as BakongAttempt;
   }
   const pending = await pendingBakong(actor.businessId);
@@ -118,6 +132,7 @@ export async function prepareBakongPayment(actor: BakongActor, body: Record<stri
     p_fingerprint: config.fingerprint, p_recipient: config.accountId, p_qr: qr.qr, p_md5: qr.md5,
     p_reference: qr.reference, p_expires_at: qr.expiresAt, p_budget: config.dailyBudget });
   if (result.error || !result.data) {
+    if (result.error?.details === "TENH_BAKONG_CHECKOUT_CLOSED") throw new BakongError(409, "CHECKOUT_CLOSED");
     // A committed/lost preparation or another tab is reconciled before another QR can be displayed.
     const recovered = await pendingBakong(actor.businessId);
     if (recovered) return loadBakongAttempt(recovered, actor.businessId);
@@ -172,9 +187,10 @@ export async function bakongInquiryStatus(attempt: BakongAttempt, actor?: Pick<B
 }
 
 export async function bakongPaymentView(attempt: BakongAttempt, actor: Pick<BakongActor, "userId" | "memberId" | "owner">): Promise<BakongPaymentView> {
-  const [billing, business] = await Promise.all([
+  const [billing, business, checkout] = await Promise.all([
     supabaseAdmin.from("billing_transactions").select("*").eq("id", attempt.id).eq("business_id", attempt.business_id).eq("provider", "bakong").maybeSingle(),
     supabaseAdmin.from("businesses").select("name").eq("id", attempt.business_id).maybeSingle(),
+    bakongCheckout(attempt),
   ]);
   if (billing.error || !billing.data || business.error) throw new BakongError(503, "PAYMENT_UNAVAILABLE");
   let application: BakongPaymentView["application"] = "none", invoiceId: string | null = null;
@@ -194,14 +210,17 @@ export async function bakongPaymentView(attempt: BakongAttempt, actor: Pick<Bako
   if (!minor) throw new BakongError(503, "INVALID_SAVED_AMOUNT");
   const config = getBakongConfig();
   const inquiry = await bakongInquiryStatus(attempt, actor);
-  const showQr = attempt.state === "pending" && inquiry.canCheck &&
+  // A closed checkout hides its QR. Unpaid closure is not reconciliation; received funds still are.
+  const closed = unpaid(attempt) && checkout !== "open";
+  const showQr = !closed && attempt.state === "pending" && inquiry.canCheck &&
     (attempt.pilot_authorization_id ? config?.pilotRequested : config?.checkoutRequested);
   return { id: attempt.id, businessId: attempt.business_id, userId: actor.userId, memberId: actor.memberId,
     workspaceName: business.data?.name ?? "TENH workspace", planCode: billing.data.plan_code, billingCycle: billing.data.billing_cycle,
+    recipientName: config?.environment === attempt.environment && config.accountId === attempt.recipient ? config.merchantName : null,
     amount: `${minor.slice(0, -2)}.${minor.slice(-2)}`, currency: attempt.currency, reference: attempt.reference, transactionReference: attempt.verified_hash,
     environment: attempt.environment, state: attempt.state, application, invoiceId,
-    qrImage: showQr && Date.parse(attempt.expires_at) > Date.now() ? await QRCode.toDataURL(attempt.qr, { width: 280, margin: 2 }) : null,
-    expiresAt: attempt.expires_at, nextCheckAt: inquiry.nextCheckAt ?? attempt.next_check_at, serverTime: new Date().toISOString(),
-    automaticChecksRemaining: inquiry.inquiriesRemaining, reconciliationRequired: inquiry.reconciliationRequired,
-    reconciliationReason: inquiry.reason, canCheck: inquiry.canCheck };
+    qrImage: showQr ? await QRCode.toDataURL(attempt.qr, { width: 280, margin: 2 }) : null, checkout,
+    createdAt: attempt.created_at, expiresAt: attempt.expires_at, nextCheckAt: inquiry.nextCheckAt ?? attempt.next_check_at, serverTime: new Date().toISOString(),
+    automaticChecksRemaining: inquiry.inquiriesRemaining, reconciliationRequired: !closed && inquiry.reconciliationRequired,
+    reconciliationReason: closed ? null : inquiry.reason, canCheck: inquiry.canCheck };
 }

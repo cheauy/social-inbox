@@ -7,6 +7,7 @@ import { paymentEnvironmentLabel } from "@/lib/billing/payment-display";
 import { createClient } from "@/lib/supabase/client";
 import { getBillingCycleDefinition } from "@/lib/subscription/plan-catalog";
 import { BakongPaymentView } from "./bakong-payment-view";
+import { CancelPaymentButton } from "./cancel-payment-button";
 
 type Props = { kind: "manual" | "payway" | "bakong"; attemptId: string; businessId?: string | null };
 const buttonClass = "inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-50";
@@ -205,7 +206,15 @@ function AttemptStatus({ kind, attemptId, businessId }: Props) {
 
   return <section className="mx-auto w-full max-w-2xl p-4 sm:p-6" aria-busy={busy}>
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8">
-      <h1 className="text-2xl font-bold text-slate-950">{title}</h1>
+      <div className="flex items-start justify-between gap-3">
+        <h1 className="min-w-0 text-2xl font-bold text-slate-950">{title}</h1>
+        {attempt && ["pending", "prepared", "submitted"].includes(attempt.status) && attempt.application !== "review" ?
+          <CancelPaymentButton key={`${kind}:${attempt.id}:${attempt.businessId}`} kind={kind} paymentId={attempt.id} businessId={attempt.businessId} submitted={attempt.status === "submitted"}
+            onResult={outcome => {
+              if (outcome === "cancelled") window.location.assign("/dashboard/subscription");
+              else { setAttempt(saved => saved ? { ...saved, status: "recovery_required", application: "review" } : saved); setRevision(value => value + 1); }
+            }} /> : null}
+      </div>
       {detail ? <p role="status" className="mt-2 text-sm text-slate-600">{detail}</p> : null}
       {attempt ? <>
         <p className={`mt-4 inline-block rounded-lg px-3 py-1 text-sm font-semibold ${attempt.environment === "sandbox" ? "bg-violet-100 text-violet-800" : "bg-slate-100 text-slate-700"}`}>{paymentEnvironmentLabel(attempt.environment, isKhmer)}</p>
