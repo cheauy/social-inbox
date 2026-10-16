@@ -12,7 +12,7 @@ import { generateBakongQr, checkBakongTransaction } from "./provider";
 import type { BakongPaymentView } from "./types";
 import { decimalMinorUnits } from "./money";
 import { getPendingBakongPayment } from "@/lib/billing/pending-bakong-payment";
-import { PAYMENT_CANCELLATION_ENABLED } from "@/lib/billing/payment-cancellation-feature";
+import { KHQR_CHECKOUT_ENABLED } from "@/lib/billing/payment-cancellation-feature";
 import { requireKhqrCheckoutSchema } from "@/lib/billing/require-khqr-checkout-schema";
 
 export const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -76,7 +76,7 @@ export async function pendingBakong(businessId: string) {
 
 /** Checkout lifecycle only. Settlement is tracked separately by state and verified_hash. */
 export async function bakongCheckout(attempt: Pick<BakongAttempt, "id" | "business_id" | "expires_at">): Promise<BakongPaymentView["checkout"]> {
-  if (!PAYMENT_CANCELLATION_ENABLED) return Date.parse(attempt.expires_at) > Date.now() ? "open" : "expired";
+  if (!KHQR_CHECKOUT_ENABLED) return Date.parse(attempt.expires_at) > Date.now() ? "open" : "expired";
   const closed = await supabaseAdmin.from("payment_cancellations").select("outcome").eq("kind", "bakong")
     .eq("payment_id", attempt.id).eq("business_id", attempt.business_id).maybeSingle();
   if (closed.error) throw new BakongError(503, "PAYMENT_UNAVAILABLE");
@@ -93,7 +93,7 @@ export async function resumeBakongIntent(actor: BakongActor, intent: string | nu
     .eq("user_id", actor.userId).eq("intent_id", intent).maybeSingle();
   if (saved.error) throw new BakongError(503, "PAYMENT_UNAVAILABLE");
   if (!saved.data) return { attemptId: null, closed: false };
-  const closed = PAYMENT_CANCELLATION_ENABLED && unpaid(saved.data) && await bakongCheckout(saved.data) !== "open";
+  const closed = KHQR_CHECKOUT_ENABLED && unpaid(saved.data) && await bakongCheckout(saved.data) !== "open";
   return { attemptId: closed ? null : saved.data.id as string, closed };
 }
 
@@ -106,13 +106,13 @@ export async function prepareBakongPayment(actor: BakongActor, body: Record<stri
   const selection = { planCode: text(body.planCode), billingCycle: text(body.billingCycle), connections: body.connections ?? null,
     users: body.users ?? null, renewSame: body.renewSame === true, customUpgrade: body.customUpgrade === true,
     extensionBillingCycle: text(body.extensionBillingCycle) || "none" };
-  if (PAYMENT_CANCELLATION_ENABLED) await requireKhqrCheckoutSchema();
+  if (KHQR_CHECKOUT_ENABLED) await requireKhqrCheckoutSchema();
   const saved = await supabaseAdmin.from("bakong_payment_attempts").select("*").eq("business_id", actor.businessId)
     .eq("user_id", actor.userId).eq("intent_id", intent).maybeSingle();
   if (saved.error) throw new BakongError(503, "PAYMENT_UNAVAILABLE");
   if (saved.data) {
     if (Object.keys(selection).some(key => JSON.stringify(saved.data.selection?.[key]) !== JSON.stringify(selection[key as keyof typeof selection]))) throw new BakongError(400, "PURCHASE_INTENT_CHANGED");
-    if (PAYMENT_CANCELLATION_ENABLED && unpaid(saved.data) && await bakongCheckout(saved.data) !== "open") throw new BakongError(409, "CHECKOUT_CLOSED");
+    if (KHQR_CHECKOUT_ENABLED && unpaid(saved.data) && await bakongCheckout(saved.data) !== "open") throw new BakongError(409, "CHECKOUT_CLOSED");
     return saved.data as BakongAttempt;
   }
   const pending = await pendingBakong(actor.businessId);

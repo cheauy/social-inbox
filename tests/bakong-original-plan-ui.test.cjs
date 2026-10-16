@@ -9,7 +9,7 @@ async function fixture(options={}){
  dom.window.HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};dom.window.HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');};
  const requests=[],applied=[],deadlines=new Map();let next=0,release,reject;
  const payment={id:'00000000-0000-4000-8000-000000000001',workspaceName:'Synthetic workspace',amount:'13.00',currency:'USD',transactionReference:'a'.repeat(64),planCode:'mini',billingCycle:'monthly',canApplyOriginal:true,...options.payment};
- const load=loader({react:React,'@/lib/billing/payment-cancellation-feature':{PAYMENT_CANCELLATION_ENABLED:options.enabled!==false},'@/components/display/workspace-language-text':{useWorkspaceLanguageId:()=>options.language??'en'}},
+ const load=loader({react:React,'@/lib/billing/payment-cancellation-feature':{KHQR_CHECKOUT_ENABLED:options.enabled!==false,PAYMENT_CANCELLATION_ENABLED:options.otherEnabled??false},'@/components/display/workspace-language-text':{useWorkspaceLanguageId:()=>options.language??'en'}},
   {window:dom.window,document:dom.window.document,HTMLElement:dom.window.HTMLElement,AbortController,crypto:{randomUUID},fetch:(url,init)=>{
    assert.equal(url,'/api/bakong/admin');assert.equal(init.method,'POST');requests.push(JSON.parse(init.body));
    return new Promise((ok,fail)=>{release=ok;reject=fail;init.signal.addEventListener('abort',()=>fail(new DOMException('Aborted','AbortError')),{once:true});});
@@ -26,7 +26,7 @@ async function fixture(options={}){
   close:async()=>{await act(async()=>root.unmount());dom.window.close();for(const[key,value]of Object.entries(previous)){if(value===undefined)delete global[key];else global[key]=value;}}
  };
 }
-test('disabled feature has no financial control and sends nothing',async()=>{const f=await fixture({enabled:false});try{assert.equal(f.dom.window.document.querySelector('button'),null);assert.equal(f.requests.length,0);}finally{await f.close();}});
+test('disabled feature has no financial control and sends nothing',async()=>{const f=await fixture({enabled:false,otherEnabled:true});try{assert.equal(f.dom.window.document.querySelector('button'),null);assert.equal(f.requests.length,0);}finally{await f.close();}});
 test('review opens without a write; meaningful reason and explicit confirmation submit once without browser-controlled price, plan or actor',async()=>{
  const f=await fixture();try{
   await f.click('Apply original plan');assert.equal(f.requests.length,0);const confirm=[...f.dom.window.document.querySelectorAll('dialog button')].find(button=>button.textContent==='Apply original plan');assert.equal(confirm.disabled,true);

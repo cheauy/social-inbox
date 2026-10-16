@@ -52,7 +52,7 @@ async function fixture(options = {}) {
     '@/lib/supabase/client': { createClient: () => ({ auth: { onAuthStateChange: fn => {
       authListeners.add(fn); return { data: { subscription: { unsubscribe: () => authListeners.delete(fn) } } };
     } } }) },
-    '@/lib/billing/payment-cancellation-feature': { PAYMENT_CANCELLATION_ENABLED: options.cancellation === true },
+    '@/lib/billing/payment-cancellation-feature': { KHQR_CHECKOUT_ENABLED: options.cancellation === true },
   }, { window: dom.window, document: dom.window.document, HTMLElement: dom.window.HTMLElement, navigator: dom.window.navigator, fetch: fetcher, AbortController,
     performance: { now: () => clock }, setTimeout: (fn, delay) => schedule(fn, delay), clearTimeout: id => timers.delete(id),
     setInterval: (fn, delay) => schedule(fn, delay, true), clearInterval: id => timers.delete(id) });

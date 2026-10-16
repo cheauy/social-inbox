@@ -14,7 +14,7 @@ function server(options = {}) {
     { id: 'removed', user_id: 'user', business_id: 'removed', role: 'owner', is_active: false },
     { id: 'unrelated', user_id: 'other', business_id: 'other', role: 'owner', is_active: true },
   ], payment_cancellations: [], manual_payment_requests: [], manual_payment_uploads: [], billing_transactions: [], bakong_payment_attempts: [], ...options.seed });
-  const load = loader({ '@/lib/billing/payment-cancellation-feature': { PAYMENT_CANCELLATION_ENABLED: options.lifecycleEnabled ?? true }, '@/lib/supabase/admin': { supabaseAdmin: db }, '@/lib/supabase/server': {
+  const load = loader({ '@/lib/billing/payment-cancellation-feature': { KHQR_CHECKOUT_ENABLED: options.khqrEnabled ?? options.lifecycleEnabled ?? true, PAYMENT_CANCELLATION_ENABLED: options.otherEnabled ?? options.lifecycleEnabled ?? true }, '@/lib/supabase/admin': { supabaseAdmin: db }, '@/lib/supabase/server': {
     createClient: async () => ({ auth: { getUser: async () => ({ data: { user: options.unauthenticated ? null : { id: 'user' } }, error: null }) } }),
   } }, { URLSearchParams });
   return { db, get: () => load('app/api/subscription/pending-payments/route.ts').GET(new Request('https://app.tenhchat.com/api/subscription/pending-payments')) };
@@ -68,6 +68,16 @@ test('newest active membership determines access, with explicit billing delegati
   const data = await (await f.get()).json(); assert.equal(data.items.length, 1); assert.equal(data.items[0].memberId, 'new-agent');
   f.db.failures.push({ table: 'payment_cancellations' }); assert.equal((await f.get()).status, 503);
 });
+test('KHQR-only summary hides its closed checkout without enabling other provider cancellation semantics',async()=>{
+  const f=server({khqrEnabled:true,otherEnabled:false,seed:{billing_transactions:[billing(),billing({id:'payway-row',provider:'payway',provider_transaction_id:'SAVED'})],
+    manual_payment_requests:[{...billing({id:'manual-row'}),status:'submitted'}],
+    bakong_payment_attempts:[{id:ID,business_id:A,state:'pending',verified_hash:null,expires_at:'2099-01-01T00:00:00Z'}],
+    payment_cancellations:[{kind:'bakong',payment_id:ID,business_id:A,outcome:'checkout_closed'},{kind:'payway',payment_id:'SAVED',business_id:A,outcome:'cancelled'},{kind:'manual',payment_id:'manual-row',business_id:A,outcome:'withdrawn'}]}});
+  const data=await(await f.get()).json();
+  assert.deepEqual(data.items.map(item=>[item.kind,item.status]).sort(),[['manual','submitted'],['payway','pending']]);
+  assert.ok(f.db.history.every(item=>item.op==='read'));
+});
+
 test('provider review stays visible; an expired or customer-closed unpaid KHQR checkout is hidden', async () => {
   const future = new Date(Date.now() + 600000).toISOString();
   for (const mode of ['open', 'expired', 'closed', 'review', 'late-paid-after-close']) {

@@ -10,7 +10,7 @@ async function fixture(options={}){
   dom.window.HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};
   dom.window.HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');};
   const requests=[],results=[];let resolve,reject;
-  const load=loader({react:React,'@/lib/billing/payment-cancellation-feature':{PAYMENT_CANCELLATION_ENABLED:true},'@/components/display/workspace-language-text':{useWorkspaceLanguageId:()=>options.language??'en'}},
+  const load=loader({react:React,'@/lib/billing/payment-cancellation-feature':options.feature??{KHQR_CHECKOUT_ENABLED:true,PAYMENT_CANCELLATION_ENABLED:true},'@/components/display/workspace-language-text':{useWorkspaceLanguageId:()=>options.language??'en'}},
     {window:dom.window,document:dom.window.document,HTMLElement:dom.window.HTMLElement,fetch:(url,init)=>{
       requests.push({url,body:JSON.parse(init.body)});return new Promise((ok,fail)=>{resolve=ok;reject=fail;});
     }});
@@ -24,6 +24,17 @@ async function fixture(options={}){
     close:async()=>{await act(async()=>root.unmount());dom.window.close();for(const [key,value] of Object.entries(previous)){if(value===undefined)delete global[key];else global[key]=value;}}
   };
 }
+test('release UI offers KHQR cancellation while PayWay and manual proof actions stay hidden',async()=>{
+  const feature=loader()('lib/billing/payment-cancellation-feature.ts');
+  for(const kind of ['bakong','payway','manual']){
+    const f=await fixture({kind,submitted:kind==='manual',feature});try{
+      assert.equal(f.dom.window.document.querySelectorAll('button').length,kind==='bakong'?1:0);
+      if(kind==='bakong'){await f.click('Cancel payment');assert.ok(f.dom.window.document.querySelector('dialog'));}
+      assert.equal(f.requests.length,0);
+    }finally{await f.close();}
+  }
+});
+
 test('opening, closing and reopening only confirms; repeated clicks submit once and pending dialog cannot dismiss',async()=>{
   const f=await fixture();try{
     await f.click('Cancel payment');await f.click('Cancel payment');

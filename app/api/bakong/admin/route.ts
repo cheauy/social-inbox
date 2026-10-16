@@ -1,7 +1,7 @@
 import { getBillingAdminUser } from "@/lib/billing/require-billing-admin";
 import { validateAuthMutationRequest } from "@/lib/auth/mutation-request";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { PAYMENT_CANCELLATION_ENABLED } from "@/lib/billing/payment-cancellation-feature";
+import { KHQR_CHECKOUT_ENABLED } from "@/lib/billing/payment-cancellation-feature";
 import { requireKhqrCheckoutSchema } from "@/lib/billing/require-khqr-checkout-schema";
 import { bakongFailure, bakongJson, bakongInquiryStatus, checkBakongPayment, UUID, type BakongAttempt } from "@/lib/bakong/payments";
 export const runtime = "nodejs";
@@ -29,7 +29,7 @@ export async function GET(request: Request) {
     const names = new Map((businesses.data ?? []).map(row => [row.id, row.name]));
     const last = rows.at(-1);
     const inquiries = await Promise.all(rows.map(row => bakongInquiryStatus(row as BakongAttempt)));
-    const reviewIds = PAYMENT_CANCELLATION_ENABLED ? rows.filter(row => row.environment === "production" && row.state === "review" && row.verified_hash &&
+    const reviewIds = KHQR_CHECKOUT_ENABLED ? rows.filter(row => row.environment === "production" && row.state === "review" && row.verified_hash &&
       ["CANCELLATION_PAYMENT_REVIEW", "LATE_PAYMENT_REVIEW"].includes(row.reason)).map(row => row.id) : [];
     let reviews: Record<string, { canApplyOriginal: boolean; reason: string | null }> = {};
     if (reviewIds.length) {
@@ -61,7 +61,7 @@ export async function POST(request: Request) {
         !UUID.test(body.attemptId) || !UUID.test(body.requestId) || body.confirmed !== true ||
         typeof body.reason !== "string" || body.reason.trim().length < 10 || body.reason.trim().length > 500 ||
         typeof body.expectedTransactionReference !== "string" || !/^[a-f0-9]{64}$/.test(body.expectedTransactionReference)) return bakongJson({ success: false }, 400);
-      if (!PAYMENT_CANCELLATION_ENABLED) return bakongJson({ success: false, code: "RESOLUTION_UNAVAILABLE",
+      if (!KHQR_CHECKOUT_ENABLED) return bakongJson({ success: false, code: "RESOLUTION_UNAVAILABLE",
         error: "Original-plan resolution is not enabled. The saved payment remains available for review." }, 503);
       await requireKhqrCheckoutSchema();
       const resolution = await supabaseAdmin.rpc("tenh_apply_reviewed_bakong_original_plan", {

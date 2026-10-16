@@ -35,7 +35,7 @@ function postgresClient(db) {
 }
 
 // The retained future-feature tests opt in only inside this isolated migrated fixture.
-async function fixture(environment = 'sandbox', accountType = 'merchant', lifecycleEnabled = true) {
+async function fixture(environment = 'sandbox', accountType = 'merchant', lifecycleEnabled = true, khqrEnabled = lifecycleEnabled) {
   const ctx = await database(true, true, true, lifecycleEnabled ? 'atomic' : false);
   const seeded = await ctx.trial(), userId = randomUUID(), memberId = randomUUID();
   await ctx.db.query("insert into team_members(id,user_id,business_id,role,is_active) values($1,$2,$3,'owner',true)", [memberId,userId,seeded.businessId]);
@@ -48,7 +48,7 @@ async function fixture(environment = 'sandbox', accountType = 'merchant', lifecy
   const pg = postgresClient(ctx.db), rpc = pg.rpc.bind(pg);
   pg.rpc = async (name, args) => { const result = await rpc(name,args); if(result.error) state.lastRpcError=result.error; if (name === 'tenh_prepare_bakong_payment' && state.losePrepare && !result.error) { state.losePrepare = false; return { data: null, error: { code: 'NETWORK' } }; } return result; };
   const provider = loader({ 'server-only': {} })('lib/bakong/provider.ts');
-  const load = loader({ '@/lib/billing/payment-cancellation-feature': { PAYMENT_CANCELLATION_ENABLED: lifecycleEnabled }, '@/lib/supabase/admin': { supabaseAdmin: pg }, '@/lib/supabase/server': { createClient: async () => ({ auth: { getUser: async () => ({ data: { user: state.userId ? { id: state.userId } : null }, error: null }) } }) },
+  const load = loader({ '@/lib/billing/payment-cancellation-feature': { KHQR_CHECKOUT_ENABLED: khqrEnabled }, '@/lib/supabase/admin': { supabaseAdmin: pg }, '@/lib/supabase/server': { createClient: async () => ({ auth: { getUser: async () => ({ data: { user: state.userId ? { id: state.userId } : null }, error: null }) } }) },
     '@/lib/auth/require-permission': { memberHasPermission: async member => member.role === 'owner' },
     '@/lib/subscription/sync-subscription-lifecycle': { syncBusinessSubscriptionLifecycle: async () => {} },
     '@/lib/billing/require-billing-admin': { getBillingAdminUser: async () => state.admin ? { success: true, user: { id: userId } } : { success: false, status: 403, error: 'Forbidden' } },

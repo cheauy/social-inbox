@@ -33,7 +33,7 @@ for(const recovery of [false,true])test('cancellation verification conflict stop
  const db=database({billing_transactions:[{id:'v2',business_id:'b',provider:'payway',provider_transaction_id:'v2',status:'pending',metadata:{checkout_contract_version:2}}],team_members:[{id:'owner',business_id:'b',user_id:'u',is_active:true,role:'owner'}]});
  db.rpc=async name=>({data:name==='tenh_request_payment_cancellation'?{claimed:true,outcome:'processing'}:{outcome:'reconciliation_required'},error:null});
  const before=JSON.stringify(db.tables);let closes=0,verifications=0;
- const load=loader({'@/lib/billing/payment-cancellation-feature':{PAYMENT_CANCELLATION_ENABLED:true},'@/lib/supabase/admin':{supabaseAdmin:db},'next/headers':{cookies:async()=>{throw Error('Unexpected cookie mutation');}},
+ const load=loader({'@/lib/billing/payment-cancellation-feature':{KHQR_CHECKOUT_ENABLED:true,PAYMENT_CANCELLATION_ENABLED:true},'@/lib/supabase/admin':{supabaseAdmin:db},'next/headers':{cookies:async()=>{throw Error('Unexpected cookie mutation');}},
  '@/lib/auth/get-current-member':{getCurrentMember:async()=>({success:true,user:{id:'u'}})},'@/lib/auth/require-permission':{memberHasPermission:async()=>true},
  '@/lib/payway/close-transaction':{closePayWayTransaction:async()=>{closes++;throw Error('Unexpected closure');}},
  '@/lib/payway/finalize-payment':{verifyAndFinalizePayWayTransaction:async()=>{verifications++;if(recovery)return {paymentState:'recovery_required'};throw Error('Synthetic conflicting approval');}}});

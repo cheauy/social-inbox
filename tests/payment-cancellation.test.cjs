@@ -6,7 +6,7 @@ const businessId='10000000-0000-4000-8000-000000000001';
 function service(options={}) {
   const calls=[];
   const load=loader({
-    '@/lib/billing/payment-cancellation-feature':{PAYMENT_CANCELLATION_ENABLED:true},
+    '@/lib/billing/payment-cancellation-feature':options.feature??{KHQR_CHECKOUT_ENABLED:true,PAYMENT_CANCELLATION_ENABLED:true},
     '@/lib/supabase/admin':{supabaseAdmin:{rpc:async(name,args)=>{
       calls.push({name,args});
       if(options.rpcError)return{data:null,error:{message:'unavailable'}};
@@ -43,6 +43,27 @@ test('manual and KHQR never call PayWay or claim provider cancellation',async()=
 });
 test('enabled KHQR cancellation fails before writing against an older or partial schema',async()=>{
   const f=service({oldSchema:true});await assert.rejects(f.cancel('bakong'),/schema is unavailable/);assert.deepEqual(f.calls.map(call=>call.name),['tenh_khqr_checkout_capabilities']);
+});
+
+test('KHQR-only release reaches the real cancellation route while PayWay and both manual actions stay off',async()=>{
+  for(const [kind,action] of [['bakong','cancel'],['payway','cancel'],['manual','cancel'],['manual','withdraw']]){
+    const calls=[],db=database({team_members:[{id:'member',user_id:'user',business_id:businessId,role:'owner',is_active:true}]});
+    db.rpc=async name=>{calls.push(name);return{data:name==='tenh_khqr_checkout_capabilities'?{version:1,accounting:'open-checkout-reservations',originalPlanResolution:'explicit-admin',qrCountCap:false}:{outcome:'checkout_closed',claimed:false},error:null};};
+    const forbidden=async()=>{throw Error('A disabled provider path was reached');};
+    const route=loader({'@/lib/supabase/admin':{supabaseAdmin:db},
+      '@/lib/supabase/server':{createClient:async()=>({auth:{getUser:async()=>({data:{user:{id:'user'}},error:null})}})},
+      '@/lib/auth/require-permission':{memberHasPermission:async()=>true},
+      '@/lib/payway/finalize-payment':{verifyAndFinalizePayWayTransaction:forbidden},
+      '@/lib/payway/close-transaction':{closePayWayTransaction:forbidden},
+    })('app/api/subscription/cancel-payment/route.ts');
+    const response=await route.POST(new Request('https://fixture.invalid/api/subscription/cancel-payment',{method:'POST',headers:{Origin:'https://fixture.invalid','Content-Type':'application/json'},body:JSON.stringify({kind,action,paymentId:'synthetic',businessId,confirmed:true})}));
+    assert.equal(response.status,kind==='bakong'?200:409,kind+':'+action);
+    assert.deepEqual(calls,kind==='bakong'?['tenh_khqr_checkout_capabilities','tenh_request_payment_cancellation']:[]);
+    assert.ok(db.history.every(item=>item.op==='read'));
+  }
+  const flags=loader()('lib/billing/payment-cancellation-feature.ts');
+  const old=service({feature:flags,oldSchema:true});await assert.rejects(old.cancel('bakong'),/schema is unavailable/);
+  assert.deepEqual(old.calls.map(call=>call.name),['tenh_khqr_checkout_capabilities']);
 });
 test('PayWay close acknowledgement rejects a mismatched transaction and unconfirmed provider status',async()=>{
   for(const [status,closed] of [[{code:'00',tran_id:'synthetic'},true],[{code:'00',tran_id:'other'},false],[{code:'99'},false]]){

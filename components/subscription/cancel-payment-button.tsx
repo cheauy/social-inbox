@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
 import type { CancellationOutcome } from "@/lib/billing/cancel-payment";
-import { PAYMENT_CANCELLATION_ENABLED } from "@/lib/billing/payment-cancellation-feature";
+import { KHQR_CHECKOUT_ENABLED, PAYMENT_CANCELLATION_ENABLED } from "@/lib/billing/payment-cancellation-feature";
 
 export function CancelPaymentButton({ kind, paymentId, businessId, submitted = false, onResult }: {
   kind: "manual" | "payway" | "bakong"; paymentId: string; businessId: string; submitted?: boolean;
@@ -49,7 +49,7 @@ export function CancelPaymentButton({ kind, paymentId, businessId, submitted = f
     }
   }
   const label = submitted ? t("Withdraw proof", "ដកភស្តុតាងដែលបានដាក់ស្នើ") : t("Cancel payment", "បោះបង់ការទូទាត់");
-  if (!PAYMENT_CANCELLATION_ENABLED) return null;
+  if (!(kind === "bakong" ? KHQR_CHECKOUT_ENABLED : PAYMENT_CANCELLATION_ENABLED)) return null;
   return <>
     <button ref={trigger} type="button" onClick={() => { setError(null); setOpen(true); }}
       className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-lg px-3 text-sm font-semibold text-red-700 hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600">

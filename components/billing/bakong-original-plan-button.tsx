@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
-import { PAYMENT_CANCELLATION_ENABLED } from "@/lib/billing/payment-cancellation-feature";
+import { KHQR_CHECKOUT_ENABLED } from "@/lib/billing/payment-cancellation-feature";
 
 type OriginalPayment = { id: string; workspaceName: string; amount: string; currency: string; transactionReference: string | null;
   planCode?: string | null; billingCycle?: string | null; canApplyOriginal?: boolean; resolutionConflict?: string | null };
@@ -49,7 +49,7 @@ export function BakongOriginalPlanButton({ payment, onApplied }: { payment: Orig
       if (active.current === controller) { active.current = null; setPending(false); }
     }
   }
-  if (!PAYMENT_CANCELLATION_ENABLED) return null;
+  if (!KHQR_CHECKOUT_ENABLED) return null;
   return <div className="min-w-0 sm:max-w-xs">
     <button ref={trigger} type="button" disabled={!payment.canApplyOriginal || pending}
       className="min-h-11 rounded-xl border border-slate-200 px-3 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-blue-600 disabled:opacity-50"

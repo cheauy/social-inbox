@@ -11,8 +11,22 @@ function fixtureModule(name,marker,names){
 const api=fixtureModule('bakong-api.test.cjs',"test('server quote",'fixture');
 const savedStatus=fixtureModule('billing-payment-attempt.test.cjs',"test('one persisted",'route,saved,businessId,manualId');
 
-test('emergency release disables cancellation in code, rather than guessing after a database failure',()=>{
+test('KHQR release is independent while other cancellation remains disabled',()=>{
+ assert.equal(loader()('lib/billing/payment-cancellation-feature.ts').KHQR_CHECKOUT_ENABLED,true);
  assert.equal(loader()('lib/billing/payment-cancellation-feature.ts').PAYMENT_CANCELLATION_ENABLED,false);
+});
+
+test('enabled KHQR creation refuses missing or incomplete schema before saving an obligation',async()=>{
+ for(const mode of ['missing','incomplete']){
+  const f=await api.fixture('sandbox','merchant',mode!=='missing',true);
+  try{
+   if(mode==='incomplete')await f.db.exec("create or replace function public.tenh_khqr_checkout_capabilities() returns jsonb language sql as $$ select '{\"version\":1}'::jsonb $$");
+   const response=await f.checkout.POST(f.post('/api/bakong/checkout',f.body));
+   assert.equal(response.status,503,mode);assert.equal(f.state.calls,0);
+   assert.equal((await f.db.query('select count(*)::int n from billing_transactions')).rows[0].n,0);
+   assert.equal((await f.db.query('select count(*)::int n from bakong_payment_attempts')).rows[0].n,0);
+  }finally{await f.db.close();}
+ }
 });
 test('KHQR returns its saved QR and server deadlines on the installed schema without cancellation tables',async()=>{
  const f=await api.fixture('sandbox','merchant',false);
@@ -58,7 +72,7 @@ test('summary reads work without new schema while retaining membership and permi
 });
 test('disabled cancellation never reaches its RPC or any provider for any method',async()=>{
  let calls=0;const forbidden=async()=>{calls++;throw Error('forbidden fixture operation');};
- const load=loader({'@/lib/supabase/admin':{supabaseAdmin:{rpc:forbidden}},'@/lib/payway/finalize-payment':{verifyAndFinalizePayWayTransaction:forbidden},'@/lib/payway/close-transaction':{closePayWayTransaction:forbidden}});
+ const load=loader({'@/lib/billing/payment-cancellation-feature':{KHQR_CHECKOUT_ENABLED:false,PAYMENT_CANCELLATION_ENABLED:false},'@/lib/supabase/admin':{supabaseAdmin:{rpc:forbidden}},'@/lib/payway/finalize-payment':{verifyAndFinalizePayWayTransaction:forbidden},'@/lib/payway/close-transaction':{closePayWayTransaction:forbidden}});
  for(const kind of ['bakong','payway','manual'])await assert.rejects(load('lib/billing/cancel-payment.ts').cancelPayment({kind,paymentId:'synthetic',businessId:'synthetic',actorId:'synthetic',memberId:'synthetic',withdraw:kind==='manual'}),/temporarily unavailable/);
  assert.equal(calls,0);
 });

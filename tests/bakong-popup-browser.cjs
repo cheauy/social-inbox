@@ -13,7 +13,7 @@ async function run(){
  const navigation=write('navigation.cjs',"const router={replace:href=>window.navigations.push(href)};exports.useRouter=()=>router;");
  const link=write('link.cjs',"const React=require('react');module.exports=({children,...props})=>React.createElement('a',props,children);");
  const supabase=write('supabase.cjs',"exports.createClient=()=>({auth:{onAuthStateChange:()=>({data:{subscription:{unsubscribe(){}}}})}});");
- const feature=write('feature.cjs',"exports.PAYMENT_CANCELLATION_ENABLED=new URLSearchParams(location.search).get('future')==='1';");
+ const feature=write('feature.cjs',"exports.KHQR_CHECKOUT_ENABLED=new URLSearchParams(location.search).get('future')==='1';");
  const entry=write('entry.cjs',`
  const React=require('react'),{createRoot}=require('react-dom/client');
  const {BakongPaymentView}=require(${JSON.stringify(path.join(root,'components/subscription/bakong-payment-view.tsx'))});

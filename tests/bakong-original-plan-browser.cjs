@@ -8,7 +8,7 @@ const write=(name,body)=>{const file=path.join(temp,name);fs.writeFileSync(file,
 async function run(){
  const loader=write('loader.cjs',`const ts=require(${JSON.stringify(require.resolve('typescript'))});module.exports=function(source){return ts.transpileModule(source,{fileName:this.resourcePath,compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext,jsx:ts.JsxEmit.ReactJSX}}).outputText};`);
  const language=write('language.cjs',"exports.useWorkspaceLanguageId=()=>new URLSearchParams(location.search).get('lang')||'en';");
- const feature=write('feature.cjs',"exports.PAYMENT_CANCELLATION_ENABLED=new URLSearchParams(location.search).get('mode')!=='disabled';");
+ const feature=write('feature.cjs',"exports.KHQR_CHECKOUT_ENABLED=new URLSearchParams(location.search).get('mode')!=='disabled';");
  const entry=write('entry.cjs',`
  const React=require('react'),{createRoot}=require('react-dom/client');const {BakongOriginalPlanButton}=require(${JSON.stringify(path.join(root,'components/billing/bakong-original-plan-button.tsx'))});
  const mode=new URLSearchParams(location.search).get('mode');window.requests=[];window.applied=0;
