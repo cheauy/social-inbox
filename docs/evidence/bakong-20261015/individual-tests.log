@@ -1,0 +1,44 @@
+✔ server quote, lost response, concurrent clicks and cross-tab checks retain one exact attempt (4755.7249ms)
+✔ provider errors preserve the attempt, shared cooldowns and private evidence; admin reconciliation remains role-gated (3576.9523ms)
+✔ verified payment with a temporary invoice failure retries application without another provider request or charge (6050.1779ms)
+✔ workspace ownership, removed users, missing sessions, forged state and strict CSRF fail before provider calls (8697.9908ms)
+✔ production remains unavailable without reviewed credential capacity; approved fixture activates once and issues a TENH receipt (7995.8193ms)
+✔ invalid selection types and mutated intent cannot alter an issued quote or call the provider (3666.5153ms)
+▶ Bakong reuses CHAT renewal, custom upgrade and trial-conversion quotes and coverage
+  ✔ trial-conversion (2519.6754ms)
+  ✔ expired-renewal (4781.992ms)
+  ✔ ordinary-renewal (5294.1514ms)
+  ✔ custom-capacity (6205.2685ms)
+  ✔ custom-extension (3033.0058ms)
+✔ Bakong reuses CHAT renewal, custom upgrade and trial-conversion quotes and coverage (21840.2786ms)
+✔ pre-existing active same-plan SQL purchase guard remains authoritative (4045.9181ms)
+▶ individual-account checkout retains production gating, saved QR identity and exactly-once settlement
+  ✔ sandbox (6964.8775ms)
+  ✔ production (6473.4324ms)
+✔ individual-account checkout retains production gating, saved QR identity and exactly-once settlement (13444.2065ms)
+✔ official pinned merchant SDK emits a unique exact-amount dynamic QR with millisecond expiry (9.6276ms)
+✔ individual accounts generate dynamic USD KHQR without a merchant ID or acquiring bank (3.3837ms)
+✔ configuration requires explicit contract, environment, merchant fields and server secret; account ID alone never enables (0.7497ms)
+✔ decimal verification rejects fractional cents, conversion, malformed money and every mismatched settlement field (1.0198ms)
+✔ verification makes exactly one authenticated server request, honors rate limits and never treats transport errors as unpaid/paid (7.0583ms)
+✔ saved Bakong provenance is distinct from ABA/manual; unknown and test records cannot become confirmed production revenue (1.6183ms)
+✔ Bakong migration, claims, capacity isolation and shared rolling budget use real local PostgreSQL (3837.9718ms)
+✔ verified production applies once through existing subscription/invoice math; test payments never activate (3039.945ms)
+▶ late settlement, changed subscription, consumed hashes, removed membership and activation failures remain recoverable
+  ✔ failed invoice rolls back application but preserves verified evidence for a safe retry (267.7085ms)
+  ✔ a verified payment never overwrites a newer entitlement or restores removed membership (195.4858ms)
+  ✔ full transaction identity is single-use across workspaces and evidence cannot change (169.6401ms)
+  ✔ expired QR remains pending until a real check; late paid evidence is retained for review (346.2816ms)
+✔ late settlement, changed subscription, consumed hashes, removed membership and activation failures remain recoverable (4218.7758ms)
+✔ all providers share workspace claims and every provider call consumes the 24-hour budget, including errors (6921.699ms)
+✔ quota admission reserves three checks per obligation before showing another QR (8959.2832ms)
+✔ unknown installed activation contracts roll the whole migration back without changing old data (5103.7234ms)
+✔ installed Bakong migration preserves original ABA and manual activation/invoice paths (3157.0765ms)
+ℹ tests 33
+ℹ suites 0
+ℹ pass 33
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 74910.2975

@@ -5,6 +5,7 @@ const { PaymentAttemptView } = require('../../components/subscription/payment-at
 const h = React.createElement, root = createRoot(document.getElementById('root'));
 const A = '00000000-0000-4000-8000-000000000001', B = '00000000-0000-4000-8000-000000000002';
 const params = new URLSearchParams(location.search);
+const demoMode = process.env.TENH_TEST_BAKONG_DEMO === 'true';
 window.fixtureLanguage = params.get('lang') || sessionStorage.getItem('bakong-language') || 'en';
 sessionStorage.setItem('bakong-language',window.fixtureLanguage);
 const t = (en,km) => window.fixtureLanguage === 'km' ? km : en;
@@ -19,11 +20,11 @@ const longTimers = new Map(), pollDelays = [];
 Object.defineProperty(performance,'now',{configurable:true,value:()=>nativePerformance()+offset});
 const now = () => Date.now()+offset;
 window.setTimeout = (callback,delay,...args) => {
-  if (delay >= 300000) { const id = ++timerId; pollDelays.push(delay); longTimers.set(id,{at:now()+delay,callback:()=>callback(...args)}); return id; }
+  if (!demoMode && delay >= 300000) { const id = ++timerId; pollDelays.push(delay); longTimers.set(id,{at:now()+delay,callback:()=>callback(...args)}); return id; }
   return nativeTimeout(callback,delay >= 3000 && delay <= 30000 ? 120 : delay,...args);
 };
 window.clearTimeout = id => { if (!longTimers.delete(id)) nativeClear(id); };
-window.setInterval = (callback,delay,...args) => nativeInterval(callback,delay===1000?20:delay,...args);
+window.setInterval = (callback,delay,...args) => nativeInterval(callback,!demoMode&&delay===1000?20:delay,...args);
 const pause = ms => new Promise(resolve=>nativeTimeout(resolve,ms));
 const copy = value => JSON.parse(JSON.stringify(value));
 function save() { sessionStorage.setItem('bakong-records',JSON.stringify([...records])); }
@@ -134,3 +135,13 @@ async function isolationChecks() {
   check('session change immediately removes private payment state',!document.querySelector('img[alt]')&&!document.body.textContent.includes('Fixture workspace B'));
 }
 window.bakongFixture={checkoutChecks,reloadChecks,stateChecks,pollChecks,isolationChecks,result:()=>({checks,requests,navigations,mockedProviderChecks:providerChecks,actualProviderRequests:0,realPayments:0,realCredentialsUsed:false,language:window.fixtureLanguage})};
+
+if (demoMode) {
+  if (params.get('reset') === '1') { records.clear(); save(); history.replaceState(null,'','/fixture.html?lang='+window.fixtureLanguage); }
+  const existing = records.get(params.get('bakong_attempt'));
+  if (existing) status(existing);
+  else {
+    checkout();
+    void until(()=>Boolean(button('Bakong KHQR','Bakong KHQR')),'demo checkout').then(()=>button('Bakong KHQR','Bakong KHQR').click());
+  }
+}

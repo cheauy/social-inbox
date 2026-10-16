@@ -1,0 +1,188 @@
+{
+  "status": "release blocked by automatic approval review; migration not executed; commit/push held in approved sequence",
+  "baseCommit": "34ace29ae4c73f3436b1cd5195ac39bdb3454814",
+  "checkedAtUtc": "2026-10-16T04:49:00.4076922Z",
+  "userId": "6b84cd6d-deb5-4191-b1c6-0f3861eda892",
+  "businessId": "f79eeac0-db5e-4f3f-8783-2dfb9b818dd9",
+  "connectionLimit": {
+    "before": 12,
+    "after": 13
+  },
+  "users": 8,
+  "expiry": "2027-08-21T10:03:56.418985Z",
+  "absoluteCeilingCents": 3253,
+  "currency": "USD",
+  "localFlags": {
+    "BAKONG_PILOT_ENABLED": false,
+    "BAKONG_CHECKOUT_ENABLED": false
+  },
+  "validation": {
+    "diffCheck": "passed",
+    "focusedTestsPassed": 133,
+    "scopedEslint": "passed",
+    "strengthenedLifetimeCapTestPassed": 1,
+    "typeScript": "passed --noEmit --incremental false",
+    "focusedTestsFailed": 0,
+    "fullBuild": {
+      "command": "node node_modules/next/dist/bin/next build --webpack",
+      "status": "blocked",
+      "exitCode": 1,
+      "stage": "webpack compilation",
+      "errorCode": "EPERM",
+      "target": "C:\\Users\\TUF\\social-inbox\\.next\\server\\app\\api\\facebook\\stickers\\search",
+      "reason": "Windows filesystem denied mkdir",
+      "retryOrPermissionChange": false
+    }
+  },
+  "execution": {
+    "liveAttemptsCreated": 0,
+    "hostedMigrationsApplied": 0,
+    "liveAuthorizationsCreated": 0,
+    "pushes": 0,
+    "commits": 0,
+    "providerRequests": 0,
+    "deployments": 0
+  },
+  "limits": [
+    "PGlite fixtures serialize connection work; native PostgreSQL 17 concurrent transactions not proven",
+    "Live provider eligibility, quota, deployment and secret equality not independently verified",
+    "Existing Vercel 403 access denials not retried or bypassed"
+  ],
+  "approvalsRequired": [
+    "Exact migration hash and source release",
+    "Hosted CHAT migration and verified deployment with flags false",
+    "Fresh baseline and exact pilot/payment charge approval, one attempt and three additional inquiries",
+    "Owner-created expiring private authorization with honest attestations",
+    "Separate pilot flag activation, global checkout remains false"
+  ],
+  "files": [
+    {
+      "path": "app/api/bakong/checkout/route.ts",
+      "sha256": "22cd4049927ea48e018d2a2053c716b0b9d87ec83c7bedc578eae209f0e50f0b"
+    },
+    {
+      "path": "components/subscription/bakong-payment-view.tsx",
+      "sha256": "c854df73798c22c08433b810558a152f4a2b0f6456e03aa1e7468445d5fc8d3b"
+    },
+    {
+      "path": "lib/bakong/config.ts",
+      "sha256": "40e355ec924b35938564b3cc9694a338a6165bac3bb593d1b112702046ccf571"
+    },
+    {
+      "path": "lib/bakong/payments.ts",
+      "sha256": "1de8bb4bac0eb4f5c70e513a01b075681d2192f9420c0a4c793c427aabeeb2db"
+    },
+    {
+      "path": "lib/bakong/types.ts",
+      "sha256": "911b894d68f160e92ba3e13cb9d64b37bc757178cb2547cc03d9690ad8ecfa7e"
+    },
+    {
+      "path": "docs/config/bakong.env.example",
+      "sha256": "1a34246c5fc18839bbaa96e4a0f2a08d6d577aa798517719bc841fb44a5eb142"
+    },
+    {
+      "path": "db/migrations/20261016043734_bakong_scoped_pilot.sql",
+      "sha256": "227822681e8715d7332494a7cf9063e081e62b29ecdc5fa421ca0a95be3adc24"
+    },
+    {
+      "path": "tests/bakong-pilot.test.cjs",
+      "sha256": "7d00b8714a1e862210be7e42745e8a3d8239d9a69a0d6623922c752123db3424"
+    },
+    {
+      "path": "docs/bakong-scoped-pilot-20261016.md",
+      "sha256": "e7e1ec04960687736f5cf8f5849885c10f78f98293210a3ae334ca53a9abfe2d"
+    },
+    {
+      "path": "components/subscription/subscription-payment-view.tsx",
+      "sha256": "efc931e85b36c4f32211a464b822b986db1819b0defdb35c3c113251fe10b7c5"
+    },
+    {
+      "path": "public/images/khqr.png",
+      "sha256": "2a92c6847ab913e16aee371a72ebe47afe65ab286a25d8d80593e8bfd28d9143"
+    }
+  ],
+  "releaseReview": {
+    "review": "separate finished-diff pass by implementation agent; no second-agent review",
+    "hostedReadonlyAclCheckedAtUtc": "2026-10-16T04:53:45.1170471Z",
+    "attemptsServiceRoleSelectOnly": true,
+    "attemptsBrowserAllPrivilegesDenied": true,
+    "prerequisite": "Existing payment_service_table_privileges migration must remain installed; pilot draft does not itself change old table grants or preflight those ACLs",
+    "trueMultiSessionPostgresTested": false,
+    "normalFinancialBodiesPreserved": true,
+    "releaseAllowlistFiles": 11,
+    "evidenceKeptLocalOnly": true
+  },
+  "khqrBranding": {
+    "label": "KHQR in customer payment choice and selected method heading",
+    "assetLibraryId": "libfile_cf3c94405bd88191a2c5da9dbaee4c97",
+    "assetStatus": "included: user-saved local public/images/khqr.png, visually matched red/white KHQR and 1248x514 dimensions; file representation differs from Library upload",
+    "assetSubstituted": false,
+    "brokenAssetReferenceAdded": false,
+    "typeScript": "passed after label change",
+    "eslint": "0 errors, 4 warnings on unchanged lines",
+    "browserFixture": "Pre-existing dirty fixtures unchanged; isolated real-component JSDOM checks passed in English and Khmer with mocked read-only API responses",
+    "providerAndReceiptLabels": "unchanged",
+    "fullBuild": "previous EPERM remains blocked/unverified; user requested no further diagnosis or full build",
+    "asset": {
+      "path": "public/images/khqr.png",
+      "width": 1248,
+      "height": 514,
+      "bytes": 107281,
+      "sha256": "2a92c6847ab913e16aee371a72ebe47afe65ab286a25d8d80593e8bfd28d9143",
+      "source": "user-saved local file",
+      "unchanged": true,
+      "libraryByteIdentityAsserted": false,
+      "displayWidthPixels": 56,
+      "automaticHeight": true,
+      "objectFit": "contain",
+      "accessibleName": "adjacent visible KHQR label; decorative image alt is empty"
+    },
+    "renderChecks": {
+      "status": "passed",
+      "languages": [
+        "en",
+        "km"
+      ],
+      "actualComponentRendered": true,
+      "nextImageAdapter": "native img for DOM assertions",
+      "otherMethodsPresent": true,
+      "selectionWithoutMutation": true,
+      "externalRequests": 0,
+      "nativeBrowserLayoutMeasured": false
+    }
+  },
+  "buildDiagnosis": {
+    "nodeProcessObserved": false,
+    "nextLockFileObserved": false,
+    "parentAclOwner": "ASUS\\TUF",
+    "parentExplicitDenyCount": 0,
+    "parentAclProtected": false,
+    "cimProcessDetails": "access denied; no alternate CIM request",
+    "cause": "not proven as ordinary process contention",
+    "supportedConfiglessAlternateDistDirFound": false,
+    "permissionChanges": 0,
+    "processesKilled": 0,
+    "buildRetries": 0,
+    "stoppedPerUser": true
+  },
+  "releaseAttempt": {
+    "migrationFile": "20261016043734_bakong_scoped_pilot.sql",
+    "migrationSha256": "227822681e8715d7332494a7cf9063e081e62b29ecdc5fa421ca0a95be3adc24",
+    "project": "dvieoqprsmzydtepbxwn",
+    "applyCalls": 1,
+    "status": "denied",
+    "reason": "Automatic approval review could not establish exact hosted-DDL authorization from quoted approval; persistent schema and payment-RPC changes were rejected",
+    "confirmationRequestId": null,
+    "retryCalls": 0,
+    "sourceApprovalLookup": "read_thread returned no turns; no new trusted authorization obtained",
+    "readOnlyVerification": "pilot tables absent, no migration history, financial snapshots and all original function hashes unchanged",
+    "remoteMain": "34ace29ae4c73f3436b1cd5195ac39bdb3454814",
+    "remoteDrift": "0 ahead / 0 behind",
+    "reviewedFileHashes": 11,
+    "secretFindings": 0,
+    "localFlagsRemainFalse": true,
+    "hostedFlagValues": "not independently readable due to prior Vercel access denial; no settings changed",
+    "commitCreated": false,
+    "pushed": false
+  }
+}

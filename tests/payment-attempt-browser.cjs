@@ -4,6 +4,7 @@ const fs = require("node:fs"), os = require("node:os"), path = require("node:pat
 const { spawn } = require("node:child_process");
 const root = path.resolve(__dirname, "..");
 const bakongMode = process.env.TENH_PAYMENT_BROWSER_MODE === "bakong";
+const serveDemo = bakongMode && process.argv.includes("--serve");
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), "tenh-payment-attempt-"));
 const evidence = path.resolve(process.env.TENH_PAYMENT_ATTEMPT_EVIDENCE || path.join(root, "docs/evidence/payment-attempt-20261015/browser"));
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -28,16 +29,17 @@ async function build() {
     const generated = new BakongKHQR().generateMerchant(new MerchantInfo("merchant@devb", "TENH CHAT", "Phnom Penh", "12345", "DEV BANK",
       { currency: khqrData.currency.usd, amount: 13, billNumber: "TC-SYNTHETIC-UI", expirationTimestamp: Date.now() + 900000 }));
     assert.equal(generated.status.code, 0);
-    qrImage = await require("qrcode").toDataURL(generated.data.qr, { width: 280, margin: 2 });
+    qrImage = await require("qrcode").toDataURL(serveDemo ? "TENH-LOCAL-DEMO-NOT-FOR-PAYMENT" : generated.data.qr, { width: 280, margin: 2 });
   }
   await new Promise((resolve, reject) => webpack({
     mode: "development", devtool: false, optimization: { minimize: false }, entry: path.join(root, `tests/fixtures/${bakongMode ? "bakong-browser" : "payment-attempt-browser"}.entry.cjs`), output: { path: temp, filename: "bundle.js" },
     resolve: { extensions: [".ts", ".tsx", ".js", ".cjs"], alias: { "next/image$": image, "next/link$": link, "next/navigation$": navigation, "next/script$": script, "@/lib/supabase/client$": supabase, "@/components/display/workspace-language-text$": language, "@": root }, modules: [path.join(root, "node_modules"), "node_modules"] },
-    plugins: [new webpack.DefinePlugin({ "process.env.TENH_TEST_BAKONG_QR_IMAGE": JSON.stringify(qrImage) })],
+    plugins: [new webpack.DefinePlugin({ "process.env.TENH_TEST_BAKONG_QR_IMAGE": JSON.stringify(qrImage), "process.env.TENH_TEST_BAKONG_DEMO": JSON.stringify(serveDemo ? "true" : "false") })],
     module: { rules: [{ test: /\.tsx?$/, exclude: /node_modules/, use: loader }] },
   }, (error, stats) => error || stats.hasErrors() ? reject(error || new Error(stats.toString({ all: false, errors: true }))) : resolve()));
   const css = (await postcss([tailwind({ base: root, optimize: false })]).process(fs.readFileSync(path.join(root, "app/globals.css"), "utf8"), { from: path.join(root, "app/globals.css") })).css;
-  fs.writeFileSync(path.join(temp, "fixture.html"), `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Payment attempt browser regression fixture</title><style>${css}</style><style>html,body{margin:0}</style></head><body><div id="root"></div><script src="/bundle.js"></script></body></html>`);
+  const demoBanner = serveDemo ? '<aside class="sticky top-0 z-50 border-b border-amber-300 bg-amber-100 p-3 text-center text-sm font-bold text-amber-950" role="status">LOCAL DEMO · Simulated payments only · Do not send money. <a class="inline-flex min-h-11 items-center rounded-lg border border-amber-700 px-3 underline focus-visible:outline-2" href="/fixture.html?reset=1">Restart demo</a></aside>' : "";
+  fs.writeFileSync(path.join(temp, "fixture.html"), `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${serveDemo ? "TENH CHAT — Local payment demo" : "Payment attempt browser regression fixture"}</title><style>${css}</style><style>html,body{margin:0}</style></head><body>${demoBanner}<div id="root"></div><script src="/bundle.js"></script></body></html>`);
 }
 function send(method, params = {}) {
   return new Promise((resolve, reject) => {
@@ -65,13 +67,20 @@ async function run() {
     "/images/channels/telegram.png": [path.join(root, "public/images/channels/telegram.png"), "image/png"],
     "/images/channels/messenger.png": [path.join(root, "public/images/channels/messenger.png"), "image/png"],
   };
+  if (serveDemo) { assets["/"] = assets["/fixture.html"]; assets["/dashboard/subscription"] = assets["/fixture.html"]; }
   server = http.createServer((request, response) => {
     const route = new URL(request.url, "http://127.0.0.1").pathname, asset = assets[route];
     if (!asset) { response.writeHead(route === "/favicon.ico" ? 204 : 404); response.end(); return; }
-    response.writeHead(200, { "Content-Type": asset[1], "Cache-Control": "no-store" }); fs.createReadStream(asset[0]).pipe(response);
+    response.writeHead(200, { "Content-Type": asset[1], "Cache-Control": "no-store", ...(serveDemo ? { "Content-Security-Policy": "default-src 'self'; connect-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-src 'none'; form-action 'none'; base-uri 'none'" } : {}) }); fs.createReadStream(asset[0]).pipe(response);
   });
-  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  await new Promise((resolve, reject) => { server.once("error", reject); server.listen(serveDemo ? 3005 : 0, "127.0.0.1", resolve); });
   const origin = `http://127.0.0.1:${server.address().port}`;
+  if (serveDemo) {
+    console.log(`Local simulated Bakong checkout: ${origin}/fixture.html`);
+    console.log("No Supabase or bank connection. The QR is not a payment QR. Press Ctrl+C to stop.");
+    await new Promise(resolve => { process.once("SIGINT", resolve); process.once("SIGTERM", resolve); });
+    return;
+  }
   const executable = [process.env.TENH_BROWSER, "C:/Program Files/Google/Chrome/Application/chrome.exe", "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"].filter(Boolean).find(fs.existsSync);
   assert.ok(executable, "Chrome or Edge is required");
   const profile = path.join(temp, "browser-profile");
@@ -150,7 +159,7 @@ async function run() {
   fs.rmSync(path.join(evidence, "browser-failure.png"), { force: true });
   console.log(JSON.stringify({ passed: true, cases: reports.length, assertions: reports.reduce((total, report) => total + report.checks.length, 0), evidence, temp }));
 }
-const timeout = setTimeout(() => { console.error("Payment attempt browser regression timed out"); socket?.close(); chrome?.kill(); server?.close(); process.exitCode = 1; }, 300000);
+const timeout = serveDemo ? undefined : setTimeout(() => { console.error("Payment attempt browser regression timed out"); socket?.close(); chrome?.kill(); server?.close(); process.exitCode = 1; }, 300000);
 run().catch(async error => {
   fs.mkdirSync(evidence, { recursive: true });
   const state = socket?.readyState === WebSocket.OPEN ? await evaluate("window.paymentAttemptFixture?.result()").catch(() => null) : null;

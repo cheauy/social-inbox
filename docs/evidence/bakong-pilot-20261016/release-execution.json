@@ -1,0 +1,84 @@
+{
+  "project": "dvieoqprsmzydtepbxwn",
+  "scope": "TENH CHAT only",
+  "authorization": "Direct user approval: exact reviewed pilot migration plus 11-file commit/push to cheauy/social-inbox main; checkout remains disabled",
+  "migration": {
+    "source": "db/migrations/20261016043734_bakong_scoped_pilot.sql",
+    "sourceSha256": "227822681e8715d7332494a7cf9063e081e62b29ecdc5fa421ca0a95be3adc24",
+    "hostedVersion": "20261016053748",
+    "hostedName": "bakong_scoped_pilot",
+    "applied": true,
+    "storedSqlMd5": "3416d51bab7a7f867d98b6cfa697521c",
+    "storedSqlMatchesSource": true
+  },
+  "git": {
+    "commit": "42d31973b6a63ad597918098ae5e5993d973c2e9",
+    "branch": "main",
+    "remote": "https://github.com/cheauy/social-inbox.git",
+    "files": 11,
+    "reviewedHashesMatched": true,
+    "remoteShaVerified": true,
+    "unrelatedWorkPreserved": true
+  },
+  "checks": {
+    "testsPassed": 77,
+    "testsFailed": 0,
+    "testsSkipped": 1,
+    "testFiles": [
+      "tests/bakong-pilot.test.cjs",
+      "tests/bakong-api.test.cjs",
+      "tests/bakong-provider.test.cjs",
+      "tests/bakong-sql.test.cjs",
+      "tests/manual-payment-attempts.test.cjs",
+      "tests/payway-application-baseline.test.cjs"
+    ],
+    "typescript": "passed --noEmit --incremental false",
+    "scopedEslint": {
+      "exitCode": 0,
+      "errors": 0,
+      "warnings": 4
+    },
+    "stagedWhitespace": "passed",
+    "fullBuild": "not rerun; prior reviewed build blocked by Windows EPERM; no permission workaround"
+  },
+  "postflight": {
+    "guardsReady": true,
+    "pilotAuthorizations": 0,
+    "pilotAudit": 0,
+    "attempts": 0,
+    "providerCalls": 0,
+    "capacityReviews": 0,
+    "financialCountsUnchanged": {
+      "manual": 17,
+      "billing": 68
+    },
+    "originalRpcOidsPreserved": true,
+    "financialCompletionAndApplicationHashesUnchanged": true,
+    "anonAndAuthenticatedPilotPrivilegesDenied": true,
+    "pilotTablesRlsEnabled": true,
+    "newSecurityWarnings": [],
+    "newSecurityInfo": "Two private deny-all RLS tables have no browser policies, intentionally",
+    "advisorsRun": [
+      "security",
+      "performance"
+    ]
+  },
+  "safety": {
+    "checkoutEnabledByThisTask": false,
+    "pilotFlagEnabledByThisTask": false,
+    "localCheckoutFlag": false,
+    "localPilotFlag": "unset/default false",
+    "hostedVercelFlagValues": "not independently readable; no settings changed",
+    "liveProviderRequests": 0,
+    "realPayments": 0,
+    "pilotApprovalsCreated": 0,
+    "explicitDeployments": 0
+  },
+  "limits": [
+    "No hosted runtime/browser verification or real payment.",
+    "Vercel deployment and hosted environment flags not independently verified; prior access denied, no bypass.",
+    "True independent-connection PostgreSQL races not tested; isolated PGlite and mocked provider tests only.",
+    "Security advisor warnings predate this migration and remain outside the approved patch."
+  ]
+}
+

@@ -1,0 +1,100 @@
+{
+  "scope": "Local simulated checkout, explicitly selected by the user; no real bank payments, hosted migrations or production bypass.",
+  "rootCause": {
+    "localAppDatabaseTarget": "hosted Supabase",
+    "readOnlyQueries": [
+      {
+        "table": "manual_payment_requests",
+        "status": 200,
+        "returnedRows": 0
+      },
+      {
+        "table": "manual_payment_uploads",
+        "status": 404,
+        "code": "PGRST205"
+      },
+      {
+        "table": "bakong_payment_attempts",
+        "status": 404,
+        "code": "PGRST205"
+      },
+      {
+        "function": "tenh_payment_application_guards_ready",
+        "code": "PGRST202"
+      }
+    ],
+    "interpretation": "Required billing schema is not available through the configured hosted Data API. Pending reviewed migrations/readiness remain prerequisites.",
+    "dockerAvailable": false,
+    "supabaseCliAvailable": false,
+    "localSupabaseConfigPresent": false
+  },
+  "demo": {
+    "url": "http://127.0.0.1:3005/fixture.html",
+    "startCommand": "node tests/bakong-browser.cjs --serve",
+    "qrPayload": "TENH-LOCAL-DEMO-NOT-FOR-PAYMENT",
+    "envFilesLoaded": false,
+    "realCredentialsUsed": false,
+    "supabaseCalls": 0,
+    "bakongCalls": 0,
+    "outboundFetchAndFormsBlockedByCsp": true,
+    "loopbackOnly": true,
+    "usesTestFixturesOnly": true
+  },
+  "changedFiles": [
+    "tests/payment-attempt-browser.cjs",
+    "tests/fixtures/bakong-browser.entry.cjs",
+    "docs/local-bakong-demo.md"
+  ],
+  "verification": {
+    "bakongBrowserRegression": {
+      "command": "TENH_PAYMENT_ATTEMPT_EVIDENCE=docs/evidence/bakong-20261015/local-demo-regression node tests/bakong-browser.cjs",
+      "cases": 8,
+      "assertions": 168,
+      "passed": true,
+      "languages": [
+        "en",
+        "km"
+      ],
+      "widths": [
+        390,
+        768,
+        1024,
+        1440
+      ],
+      "results": "local-demo-regression/browser-results.json"
+    },
+    "interactiveBrowser": {
+      "passed": [
+        "Fresh checkout with demo banner and Bakong selected",
+        "Show QR recovers original attempt after synthetic lost response",
+        "Reload restores exact pending attempt",
+        "Check payment shows Test payment confirmed and no paid access",
+        "Restart demo resets only fake data and presents fresh checkout"
+      ],
+      "tabLeftOpen": true,
+      "engine": "Codex in-app browser"
+    },
+    "http": {
+      "status": 200,
+      "demoBanner": true,
+      "connectSrcNone": true,
+      "formActionNone": true
+    },
+    "lint": {
+      "command": "npx eslint tests/payment-attempt-browser.cjs tests/fixtures/bakong-browser.entry.cjs",
+      "passed": true,
+      "errors": 0,
+      "warnings": 0
+    },
+    "whitespace": {
+      "command": "git diff --check",
+      "passed": true
+    }
+  },
+  "unrun": [
+    "Real Auth/database checkout and bank settlement",
+    "Hosted migration application or schema-cache reload",
+    "Full production build/TypeScript after test-runner-only changes; both passed on the unchanged application code during the preceding individual-account correction"
+  ],
+  "preserved": "All earlier individual-account implementation changes and unrelated work remain intact."
+}

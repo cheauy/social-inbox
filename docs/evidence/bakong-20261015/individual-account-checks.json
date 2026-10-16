@@ -1,0 +1,52 @@
+{
+  "baseline": "6960b57088c93fb149ff076491c86ed999df4f0c",
+  "scope": "Individual KHQR account support; no live credentials, account approvals, hosted migrations, payments or Vercel changes.",
+  "changedFiles": [
+    "lib/bakong/config.ts",
+    "lib/bakong/provider.ts",
+    "types/bakong-khqr.d.ts",
+    "tests/bakong-provider.test.cjs",
+    "tests/bakong-api.test.cjs",
+    "docs/config/bakong.env.example",
+    "docs/bakong-subscription-payments-20261015.md"
+  ],
+  "reproduced": "Individual configuration was rejected by the merchant-only guard; the new individual regression failed before the patch.",
+  "tests": {
+    "command": "node --test tests/bakong-provider.test.cjs tests/bakong-api.test.cjs tests/bakong-sql.test.cjs",
+    "passed": 33,
+    "failed": 0,
+    "log": "individual-tests.log",
+    "fixtures": "PGlite and mocked Auth/provider transports; no real payments"
+  },
+  "typescript": {
+    "command": "npx tsc --noEmit",
+    "passed": true,
+    "log": "individual-typescript.log"
+  },
+  "lint": {
+    "command": "npx eslint lib/bakong/config.ts lib/bakong/provider.ts types/bakong-khqr.d.ts tests/bakong-provider.test.cjs tests/bakong-api.test.cjs",
+    "passed": true,
+    "errors": 0,
+    "warnings": 0
+  },
+  "whitespace": {
+    "command": "git diff --check",
+    "passed": true
+  },
+  "build": {
+    "command": "npm run build (next build --webpack)",
+    "passed": true,
+    "log": "individual-build.log"
+  },
+  "accountTypeReview": "Individual fingerprint uses SHA-256(individual: + token), so the same token cannot reuse merchant approval. Merchant fingerprint compatibility is retained; quota remains shared by environment.",
+  "officialReference": "https://bakong.nbc.gov.kh/download/KHQR%20SDK.pdf",
+  "unrun": [
+    "Actual individual-account production/SIT transactions, commercial-collection eligibility and USD settlement",
+    "Credential quota/capacity confirmation",
+    "Separate-connection PostgreSQL contention",
+    "Browser and device/banking-app scans after this server-only correction"
+  ],
+  "productionEnabled": false,
+  "newMigrationRequired": false,
+  "deployed": false
+}

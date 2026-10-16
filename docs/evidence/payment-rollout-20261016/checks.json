@@ -1,0 +1,317 @@
+{
+  "date": "2026-10-16",
+  "project": "dvieoqprsmzydtepbxwn",
+  "remote_migrations": [
+    {
+      "source": "20261015104508_manual_payment_upload_lifecycle.sql",
+      "remote_version": "20261016024317",
+      "sha256": "73c8d10d649f6072cf8104d1778154e2ddc7827503b6a008c8491819fcd29705"
+    },
+    {
+      "source": "20261015113000_payment_application_baselines.sql",
+      "remote_version": "20261016024358",
+      "sha256": "5700d6f0c30e0a698d4719a2863ce0238a2615bbc255f3dc01c8a1fae3ffaede"
+    },
+    {
+      "source": "20261015140343_bakong_subscription_payments.sql",
+      "remote_version": "20261016024515",
+      "sha256": "af2b1e649909f45ea89cb9e609f92a1a9b7164cc88ab2f4c60df6e531b544818"
+    },
+    {
+      "source": "20261016025655_payment_service_table_privileges.sql",
+      "remote_version": "20261016025935",
+      "sha256": "03b253053e595b22dd79f18ac1c59e87de189415e027c62356c2281afd0cec74"
+    }
+  ],
+  "auth_migration_mappings_preserved": true,
+  "postflight": {
+    "rpcs": [
+      {
+        "anon": false,
+        "name": "tenh_abort_manual_payment_upload",
+        "owner": "postgres",
+        "definer": false,
+        "service": true,
+        "authenticated": false,
+        "owner_can_write_attempts": true
+      },
+      {
+        "anon": false,
+        "name": "tenh_apply_bakong_payment",
+        "owner": "postgres",
+        "definer": true,
+        "service": true,
+        "authenticated": false,
+        "owner_can_write_attempts": true
+      },
+      {
+        "anon": false,
+        "name": "tenh_bakong_capacity",
+        "owner": "postgres",
+        "definer": true,
+        "service": true,
+        "authenticated": false,
+        "owner_can_write_attempts": true
+      },
+      {
+        "anon": false,
+        "name": "tenh_claim_bakong_check",
+        "owner": "postgres",
+        "definer": true,
+        "service": true,
+        "authenticated": false,
+        "owner_can_write_attempts": true
+      },
+      {
+        "anon": false,
+        "name": "tenh_complete_bakong_check",
+        "owner": "postgres",
+        "definer": true,
+        "service": true,
+        "authenticated": false,
+        "owner_can_write_attempts": true
+      },
+      {
+        "anon": false,
+        "name": "tenh_finalize_manual_payment_upload",
+        "owner": "postgres",
+        "definer": false,
+        "service": true,
+        "authenticated": false,
+        "owner_can_write_attempts": true
+      },
+      {
+        "anon": false,
+        "name": "tenh_get_manual_payment_upload",
+        "owner": "postgres",
+        "definer": false,
+        "service": true,
+        "authenticated": false,
+        "owner_can_write_attempts": true
+      },
+      {
+        "anon": false,
+        "name": "tenh_prepare_bakong_payment",
+        "owner": "postgres",
+        "definer": true,
+        "service": true,
+        "authenticated": false,
+        "owner_can_write_attempts": true
+      }
+    ],
+    "tables": [
+      {
+        "rls": true,
+        "name": "bakong_payment_attempts",
+        "owner": "postgres",
+        "roles": {
+          "anon": {
+            "DELETE": false,
+            "INSERT": false,
+            "SELECT": false,
+            "UPDATE": false,
+            "TRIGGER": false,
+            "MAINTAIN": false,
+            "TRUNCATE": false,
+            "REFERENCES": false
+          },
+          "service_role": {
+            "DELETE": false,
+            "INSERT": false,
+            "SELECT": true,
+            "UPDATE": false,
+            "TRIGGER": false,
+            "MAINTAIN": false,
+            "TRUNCATE": false,
+            "REFERENCES": false
+          },
+          "authenticated": {
+            "DELETE": false,
+            "INSERT": false,
+            "SELECT": false,
+            "UPDATE": false,
+            "TRIGGER": false,
+            "MAINTAIN": false,
+            "TRUNCATE": false,
+            "REFERENCES": false
+          }
+        }
+      },
+      {
+        "rls": true,
+        "name": "manual_payment_uploads",
+        "owner": "postgres",
+        "roles": {
+          "anon": {
+            "DELETE": false,
+            "INSERT": false,
+            "SELECT": false,
+            "UPDATE": false,
+            "TRIGGER": false,
+            "MAINTAIN": false,
+            "TRUNCATE": false,
+            "REFERENCES": false
+          },
+          "service_role": {
+            "DELETE": false,
+            "INSERT": true,
+            "SELECT": true,
+            "UPDATE": true,
+            "TRIGGER": false,
+            "MAINTAIN": false,
+            "TRUNCATE": false,
+            "REFERENCES": false
+          },
+          "authenticated": {
+            "DELETE": false,
+            "INSERT": false,
+            "SELECT": false,
+            "UPDATE": false,
+            "TRIGGER": false,
+            "MAINTAIN": false,
+            "TRUNCATE": false,
+            "REFERENCES": false
+          }
+        }
+      }
+    ],
+    "guards_ready": true,
+    "pending_payway": {
+      "count": 6,
+      "digest": "f1b73e7a4c8c797e29e62059edfd0d34",
+      "sandbox": 6
+    },
+    "new_data_counts": {
+      "calls": 0,
+      "uploads": 0,
+      "attempts": 0,
+      "capacity": 0,
+      "settlements": 0
+    },
+    "financial_counts": {
+      "manual": 17,
+      "billing": 68,
+      "invoices": 26
+    }
+  },
+  "local_verification": {
+    "sharp": "0.35.5",
+    "native_versions": {
+      "vips": "8.18.7",
+      "heif": "1.23.5",
+      "rsvg": "2.63.2"
+    },
+    "app_and_next_share_patched_sharp": true,
+    "scoped_image_payment_tests": {
+      "passed": 146,
+      "failed": 0,
+      "log": "C:/Users/TUF/AppData/Local/Temp/tenh-sharp-20261016-evidence/image-payment-tests.tap.log"
+    },
+    "permission_regression": {
+      "command": "TENH_PGLITE_MODULE=<temporary PGlite> node --test tests/payment-service-privileges.test.cjs",
+      "passed": 1,
+      "failed": 0,
+      "isolation": "PGlite 18.6, synthetic users/settlement/capacity, real SET ROLE privilege enforcement; no provider or hosted writes"
+    },
+    "build": "passed",
+    "typescript": "passed",
+    "lint": "passed",
+    "whitespace": "passed",
+    "baseline_failures": [
+      "Five inbox-image-ui selectors failed before dependency edits.",
+      "Existing Telegram avatar test mock lacks .in(); reproduced before patch."
+    ]
+  },
+  "deployment": {
+    "committed": true,
+    "pushed": true,
+    "deployed": null,
+    "checkout_enabled_by_this_task": false,
+    "production_env_inventory": "user-reported presence; independent metadata listing denied 403, no bypass",
+    "capacity_approvals_created": 0,
+    "real_provider_calls": 0,
+    "real_payments": 0,
+    "commit": "34ace29ae4c73f3436b1cd5195ac39bdb3454814",
+    "github_repository": "https://github.com/cheauy/social-inbox",
+    "branch": "main",
+    "production_deployment_confirmed": false,
+    "status_monitoring": {
+      "action": "GET /v7/deployments",
+      "status": 403,
+      "state": "DENIED",
+      "scope": "chea-uy",
+      "fallback_attempted": false
+    },
+    "public_smoke": {
+      "login": 200,
+      "register": 200,
+      "forgot_password": 200,
+      "privacy": 200,
+      "root_redirect_to_login": 307,
+      "subscription_redirect_to_login": 307,
+      "unauthenticated_catalog": 401,
+      "proves_deployed_commit": false
+    }
+  },
+  "release_scope": [
+    {
+      "path": "lib/bakong/config.ts",
+      "sha256": "e50710306a95593f6fd31efee63466218151c2473c38b96e3b2c0efb804ba728"
+    },
+    {
+      "path": "lib/bakong/provider.ts",
+      "sha256": "024f5b782ab1872746b4b26d05235922b37cdc35ce527bf423c652fa4e7e712a"
+    },
+    {
+      "path": "types/bakong-khqr.d.ts",
+      "sha256": "e49470084776b7da4c52db085fa8a75cd06dd3f9ffd1f02b2bd64f2dd85142a0"
+    },
+    {
+      "path": "tests/bakong-api.test.cjs",
+      "sha256": "aab2fdba9f84d1f11daaeec0b4a9050f3fd4abc30423a29962bd198c3ba1d060"
+    },
+    {
+      "path": "tests/bakong-provider.test.cjs",
+      "sha256": "50bc5423c9c920a25eb62ac93c6e2c7f780f0221a394de8eaefe4b3bf3050ad8"
+    },
+    {
+      "path": "docs/config/bakong.env.example",
+      "sha256": "e8e2c3491b2aed0512ee8275b43b49bea165d75e35289bc9f3b85b5130b402d8"
+    },
+    {
+      "path": "docs/bakong-subscription-payments-20261015.md",
+      "sha256": "de8d66566e6c446c9da99743019906ecfa1c7714e02f2c4c0c4dd91dc97fdb5f"
+    },
+    {
+      "path": "package.json",
+      "sha256": "86ce46888794977d56fa0af5f70a34796c3ee485e2976e79342b893f20636f44"
+    },
+    {
+      "path": "package-lock.json",
+      "sha256": "0d710d3ab5f6d21ab9637943d9f7600d5f104159b6faf6112fea2a90035fda72"
+    },
+    {
+      "path": "tests/sharp-security.test.cjs",
+      "sha256": "4cd6d2570e3de548c08a9a8f6511af7d4c00b873c55a4e000c31200dd36e778d"
+    },
+    {
+      "path": "tests/payment-service-privileges.test.cjs",
+      "sha256": "19d9f52746d8d62f01eb1232eda8c8bfb566806f7c8e6ac32243626091bcd7ce"
+    },
+    {
+      "path": "db/migrations/20261016025655_payment_service_table_privileges.sql",
+      "sha256": "03b253053e595b22dd79f18ac1c59e87de189415e027c62356c2281afd0cec74"
+    }
+  ],
+  "release_scope_note": "The twelve listed files form the proposed patch over production. This JSON is supporting local evidence and is not part of that twelve-file release manifest. Separate demo edits, demo evidence, secrets, and generated build output are excluded.",
+  "remaining_real_money_gate": [
+    "Privately confirm actual Individual account commercial subscription collection, USD receipt, production MD5 API access and account-specific quota/allocation/reset/short-window limits.",
+    "Separately approve an evidence-bound capacity row, checkout enablement and the user's own purchase. No invented merchant ID is required."
+  ],
+  "limits": [
+    "No true separate-connection PostgreSQL contention run.",
+    "No live Auth/bank/device settlement check.",
+    "npm audit still reports Next.js plus three other packages; no blanket clean-audit or bug-free claim."
+  ],
+  "last_verified_production_commit": "6960b57088c93fb149ff076491c86ed999df4f0c"
+}

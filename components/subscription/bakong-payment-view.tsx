@@ -2,45 +2,53 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
 import { createClient } from "@/lib/supabase/client";
 import type { BakongPaymentView as Payment } from "@/lib/bakong/types";
 
 const button = "inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-50";
-export function BakongPaymentView({ attemptId, businessId }: { attemptId: string; businessId?: string | null }) {
+export function BakongPaymentView({ attemptId, businessId, qrClosed = false }: { attemptId: string; businessId?: string | null; qrClosed?: boolean }) {
+  const router = useRouter();
   const language = useWorkspaceLanguageId();
   const t = (en: string, km: string) => language === "km" ? km : en;
   const [payment, setPayment] = useState<Payment | null>(null);
   const [error, setError] = useState(false), [busy, setBusy] = useState(false);
   const [revision, setRevision] = useState(0), [serverNow, setServerNow] = useState(0);
   const active = useRef<AbortController | null>(null);
-  const identity = useRef<{ userId: string; memberId: string } | null>(null);
+  const identity = useRef<{ userId: string; memberId: string; expiresAt: string } | null>(null);
   const anchor = useRef<{ server: number; client: number } | null>(null);
+  const latest = useRef<Payment | null>(null), closing = useRef(false);
   const automaticChecks = useRef(0);
   const endpoint = `/api/bakong/payments/${encodeURIComponent(attemptId)}?purchase_business=${encodeURIComponent(businessId ?? "")}`;
-  const accept = useCallback((saved: Payment) => {
+  const accept = useCallback((saved: Payment, requestedAt: number) => {
     if (saved.id !== attemptId || saved.businessId !== businessId || !saved.userId || !saved.memberId ||
-        (identity.current && (saved.userId !== identity.current.userId || saved.memberId !== identity.current.memberId))) throw new Error("Payment identity changed");
-    identity.current = { userId: saved.userId, memberId: saved.memberId };
-    anchor.current = { server: Date.parse(saved.serverTime), client: performance.now() };
-    setServerNow(Date.parse(saved.serverTime)); setPayment(saved); setError(false);
+        !Number.isFinite(Date.parse(saved.serverTime)) || !Number.isFinite(Date.parse(saved.expiresAt)) ||
+        (identity.current && (saved.userId !== identity.current.userId || saved.memberId !== identity.current.memberId || saved.expiresAt !== identity.current.expiresAt))) throw new Error("Payment identity changed");
+    identity.current = { userId: saved.userId, memberId: saved.memberId, expiresAt: saved.expiresAt };
+    const client = performance.now(), previous = anchor.current;
+    // Count response transit conservatively; rechecks must never extend the countdown.
+    const server = Math.max(Date.parse(saved.serverTime) + Math.max(0, client - requestedAt), previous ? previous.server + client - previous.client : 0);
+    anchor.current = { server, client }; latest.current = saved;
+    setServerNow(server); setPayment(saved); setError(false);
   }, [attemptId, businessId]);
 
   useEffect(() => {
     const controller = new AbortController(); active.current = controller;
     async function load() {
+      const requestedAt = performance.now();
       try {
         const response = await fetch(endpoint, { cache: "no-store", signal: controller.signal });
         const result = await response.json();
         if (!response.ok || !result.success || !result.attempt) throw new Error();
-        if (!controller.signal.aborted && active.current === controller) accept(result.attempt);
+        if (!controller.signal.aborted && active.current === controller) accept(result.attempt, requestedAt);
       } catch { if (!controller.signal.aborted) { setPayment(null); setError(true); } }
       finally { if (active.current === controller) active.current = null; }
     }
     void load();
     const { data } = createClient().auth.onAuthStateChange(event => {
       if (event === "INITIAL_SESSION" || event === "TOKEN_REFRESHED") return;
-      active.current?.abort(); active.current = null; identity.current = null; setPayment(null); setError(true);
+      active.current?.abort(); active.current = null; identity.current = null; latest.current = null; anchor.current = null; setPayment(null); setError(true);
     });
     const timer = setInterval(() => { const clock = anchor.current; if (clock) setServerNow(clock.server + performance.now() - clock.client); }, 1000);
     const recheck = () => { if (!document.hidden && navigator.onLine !== false && !active.current) setRevision(value => value + 1); };
@@ -50,18 +58,35 @@ export function BakongPaymentView({ attemptId, businessId }: { attemptId: string
   }, [endpoint, accept, revision]);
 
   const check = useCallback(async () => {
-    if (active.current || navigator.onLine === false) return;
+    if (closing.current || active.current || navigator.onLine === false) return;
     const controller = new AbortController(); active.current = controller;
+    const requestedAt = performance.now();
     setBusy(true); setError(false);
     try {
       const response = await fetch(endpoint, { method: "POST", cache: "no-store", signal: controller.signal,
         headers: { "Content-Type": "application/json" }, body: JSON.stringify({ businessId, action: "check" }) });
       const result = await response.json();
       if (!response.ok || !result.success || !result.attempt) throw new Error();
-      if (!controller.signal.aborted && active.current === controller) accept(result.attempt);
+      if (!controller.signal.aborted && active.current === controller) accept(result.attempt, requestedAt);
     } catch { if (!controller.signal.aborted) { setPayment(null); setError(true); } }
     finally { if (active.current === controller) { active.current = null; setBusy(false); } }
   }, [endpoint, businessId, accept]);
+
+  useEffect(() => {
+    const saved = latest.current, clock = anchor.current;
+    if (qrClosed || closing.current || !saved || !clock || saved.state !== "pending") return;
+    const close = () => {
+      if (closing.current || latest.current?.state !== "pending") return;
+      closing.current = true;
+      setServerNow(Math.max(Date.parse(saved.expiresAt), clock.server + performance.now() - clock.client));
+      // Closing a QR is navigation only: the saved obligation and reconciliation remain intact.
+      router.replace(`/dashboard/subscription?bakong_closed=${encodeURIComponent(attemptId)}&purchase_business=${encodeURIComponent(saved.businessId)}`);
+    };
+    const remaining = Date.parse(saved.expiresAt) - (clock.server + performance.now() - clock.client);
+    if (remaining <= 0) { close(); return; }
+    const timer = setTimeout(close, remaining);
+    return () => clearTimeout(timer);
+  }, [payment, qrClosed, router, attemptId]);
 
   useEffect(() => {
     if (!payment || !payment.canCheck || automaticChecks.current >= 3 || payment.automaticChecksRemaining <= 0 || !["pending", "verified"].includes(payment.state)) return;
@@ -100,13 +125,13 @@ export function BakongPaymentView({ attemptId, businessId }: { attemptId: string
         <p className="mt-2 text-3xl font-bold tabular-nums">{payment.currency} {payment.amount}</p>
         <p className="mt-2 break-all text-xs text-slate-500">{t("Reference", "លេខយោង")}: {payment.reference}</p>
         {payment.transactionReference ? <p className="mt-2 break-all text-xs text-slate-500">{t("Transaction", "ប្រតិបត្តិការ")}: {payment.transactionReference}</p> : null}
-        {payment.state === "pending" && expires > 0 && payment.qrImage ? <div className="mt-5 text-center">
+        {payment.state === "pending" && !qrClosed && expires > 0 && payment.qrImage ? <div className="mt-5 text-center">
           {/* The QR is private attempt data, delivered as an inline image; no external asset request. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img className="mx-auto h-auto w-full max-w-[280px]" width={280} height={280} src={payment.qrImage} alt={t("Scan Bakong KHQR to pay", "ស្កេន Bakong KHQR ដើម្បីទូទាត់")} />
           <p className="mt-2 text-sm tabular-nums">{Math.floor(expires / 60)}:{String(expires % 60).padStart(2, "0")}</p>
         </div> : null}
-        {payment.state === "pending" && expires === 0 && !payment.reconciliationRequired ? <p className="mt-4 text-sm text-amber-800">{t("QR expired. Check payment before trying again.", "QR ផុតកំណត់។ ពិនិត្យការទូទាត់មុនព្យាយាមម្ដងទៀត។")}</p> : null}
+        {payment.state === "pending" && (qrClosed || expires === 0) && !payment.reconciliationRequired ? <p role="status" className="mt-4 text-sm text-amber-800">{t("QR closed. Your payment attempt is saved for verification. Do not pay again.", "QR បានបិទ។ ការទូទាត់របស់អ្នកត្រូវបានរក្សាទុកសម្រាប់ផ្ទៀងផ្ទាត់។ កុំទូទាត់ម្ដងទៀត។")}</p> : null}
         {payment.state === "verified" ? <p className="mt-4 text-sm">{t("Activation pending. No new payment needed.", "កំពុងរង់ចាំបើកដំណើរការ។ មិនចាំបាច់បង់ម្ដងទៀត។")}</p> : null}
         {payment.state === "review" ? <p className="mt-4 text-sm">{t("TENH support must review this payment. Do not pay again.", "ក្រុម TENH ត្រូវពិនិត្យការទូទាត់នេះ។ កុំបង់ម្ដងទៀត។")}</p> : null}
         {payment.application === "historical" ? <p className="mt-4 text-sm">{t("This payment belongs to an earlier subscription period.", "ការទូទាត់នេះជារបស់រយៈពេលជាវមុន។")}</p> : null}

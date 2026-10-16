@@ -62,6 +62,7 @@ export default async function SubscriptionPaymentPage({ searchParams }: PaymentP
         <PaymentAttemptView
           kind={bakongAttemptId ? "bakong" : manualRequestId ? "manual" : "payway"}
           attemptId={bakongAttemptId || manualRequestId || returnTransactionId}
+          businessId={bakongAttemptId ? purchaseBusinessId : undefined}
         />
       </div>
     );

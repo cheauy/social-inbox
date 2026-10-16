@@ -18,6 +18,8 @@ const success = () => ({ responseCode: 0, errorCode: null, data: { hash: 'a'.rep
 test('official pinned merchant SDK emits a unique exact-amount dynamic QR with millisecond expiry', () => {
   const now = Date.now(), one = generateBakongQr(config, randomUUID(), 999, now), two = generateBakongQr(config, randomUUID(), 999, now);
   const decoded = BakongKHQR.decode(one.qr).data;
+  assert.equal(QR_LIFETIME_MS, 15 * 60 * 1000);
+  assert.equal(one.expiresAt, new Date(now + 900000).toISOString());
   assert.equal(decoded.merchantType, '30'); assert.equal(decoded.bakongAccountID, config.accountId);
   assert.equal(decoded.transactionAmount, '9.99'); assert.equal(decoded.transactionCurrency, '840');
   assert.equal(decoded.billNumber, one.reference); assert.ok(one.reference.length <= 25);
