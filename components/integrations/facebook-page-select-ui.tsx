@@ -435,13 +435,13 @@ export function FacebookPageSelectUi({
       <div className="sticky bottom-0 z-20 mt-4 border-t border-slate-200 bg-white/95 pt-3 pb-1 backdrop-blur">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <Link href="/api/facebook/oauth/connect" className="inline-flex items-center gap-2 text-sm font-bold text-blue-600 hover:text-blue-700">
+            <a href="/api/facebook/oauth/connect" className="inline-flex items-center gap-2 text-sm font-bold text-blue-600 hover:text-blue-700">
               <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                 <path d="M20 12a8 8 0 1 1-2.34-5.66" strokeLinecap="round" />
                 <path d="M20 4v6h-6" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
               {isKhmer ? "ភ្ជាប់សិទ្ធិ Page ឡើងវិញ" : "Reconnect Page access"}
-            </Link>
+            </a>
             <p className="mt-1 text-xs text-slate-500">
               {isKhmer ? "ប្រសិនបើអ្នកមិនឃើញ Page របស់អ្នក សូមភ្ជាប់ឡើងវិញដើម្បីធ្វើបច្ចុប្បន្នភាពបញ្ជី។" : "If you don't see your Page, reconnect to refresh the list."}
             </p>

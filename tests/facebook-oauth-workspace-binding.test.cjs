@@ -1,6 +1,9 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { loader } = require('./tenh-seven/harness.cjs');
+const { readFileSync } = require('node:fs');
+const { ROOT, loader, database } = require('./tenh-seven/harness.cjs');
+const ts = require('typescript');
 
 // All credentials are fixed synthetic fixtures inside the loader sandbox.
 // No environment file, live provider, database, or browser is used.
@@ -8,6 +11,16 @@ function fixture() {
   let now = Date.parse('2026-10-03T12:00:00Z'), userId = 'user-A', manage = true;
   const jar = new Map([['tenh_active_business_id', 'A']]);
   const writes = [], graph = [], seenCodes = new Set();
+  const cookieExpiries = new Map();
+  const db = database({ social_accounts: [] });
+  const from = db.from.bind(db);
+  db.from = name => {
+    const query = from(name), insert = query.insert.bind(query);
+    query.returns = () => query;
+    query.insert = data => insert({ id: 'account-A', ...data });
+    return query;
+  };
+  let authReads = 0;
   const members = new Map([
     ['A', { id: 'member-A', business_id: 'A', role: 'owner' }],
     ['B', { id: 'member-B', business_id: 'B', role: 'owner' }],
@@ -42,12 +55,13 @@ function fixture() {
     },
   };
   const load = loader({
-    'next/server': { NextResponse: { redirect: response, json: (data, init) => Response.json(data, init) } },
+    'next/server': { NextResponse: Object.assign(class extends Response {}, { redirect: response, json: (data, init) => Response.json(data, init) }), after() {} },
     'next/headers': { cookies: async () => ({
       get: name => jar.has(name) ? { value: jar.get(name) } : undefined,
       set: write,
     }) },
     '@/lib/auth/get-current-member': { getCurrentMember: async strict => {
+      authReads++;
       assert.equal(strict, true, 'every entry and callback must retain strict auth');
       const member = members.get(jar.get('tenh_active_business_id'));
       return member ? { success: true, user: { id: userId }, member } : {
@@ -57,22 +71,39 @@ function fixture() {
     '@/lib/auth/require-permission': { memberHasPermission: async (_, key, level) => {
       assert.equal(key, 'channels'); assert.equal(level, 'manage'); return manage;
     } },
-    '@/lib/supabase/admin': { supabaseAdmin: { from: () => { throw new Error('Unexpected database query.'); } } },
+    '@/lib/supabase/admin': { supabaseAdmin: db },
+    '@/lib/facebook/facebook-authorized-pages': { getFacebookAuthorizedPages: async () => ({ pages: [
+      { id: 'page-A', name: 'Synthetic Page', access_token: 'synthetic-page-token' },
+    ] }) },
+    '@/lib/channels/trial-channel-access': { assertTrialChannelAccess: async () => {} },
+    '@/lib/channels/expired-trial-claim': { loadExpiredTrialBusinessIds: async () => new Set() },
+    '@/lib/subscription/get-business-entitlements': { getBusinessEntitlements: async () => ({
+      success: true, data: { locked: false, managed: false },
+    }) },
+    '@/lib/facebook/facebook-connection-health': { ensureFacebookPageConnectionHealthy: async () => ({ healthy: true, accessToken: 'synthetic-page-token' }) },
+    '@/lib/facebook/facebook-thread-owner': { detectFacebookThreadOwner: async () => ({ controlled: false }) },
     '@/lib/facebook/facebook-origin': {
       FACEBOOK_COOKIE_DOMAIN: '.tenhchat.com', getFacebookAppOrigin: () => 'https://app.tenhchat.com',
     },
   }, sandbox);
   const sessions = load('lib/facebook/facebook-oauth-session.ts');
-  const request = url => ({ url, nextUrl: new URL(url), cookies: { getAll: () => [
+  const request = (url, headers) => ({ url, nextUrl: new URL(url), headers: new Headers(headers),
+    formData: async () => { const form = new FormData(); form.set('pageId', 'page-A'); return form; },
+    cookies: { getAll: () => [
     { name: 'sb-synthetic-auth-token', value: 'synthetic-native-session' },
     { name: 'tenh_active_business_id', value: jar.get('tenh_active_business_id') },
   ] } });
-  async function invoke(file, url, method = 'GET') {
+  async function invoke(file, url, method = 'GET', headers = {}) {
     writes.length = 0;
-    const result = await load(file)[method](request(url));
+    for (const [name, expiresAt] of cookieExpiries) if (now >= expiresAt) jar.delete(name);
+    const result = await load(file)[method](request(url, headers));
     // Apply Set-Cookie only after the response, as a browser does.
     for (const { name, value, attributes } of writes) {
-      if (attributes.maxAge === 0) jar.delete(name); else jar.set(name, value);
+      if (attributes.maxAge === 0) { jar.delete(name); cookieExpiries.delete(name); }
+      else {
+        jar.set(name, value);
+        if (typeof attributes.maxAge === 'number') cookieExpiries.set(name, now + attributes.maxAge * 1000);
+      }
     }
     return result;
   }
@@ -89,7 +120,8 @@ function fixture() {
   }
   const callback = (state, code = 'synthetic-code') => invoke('app/api/facebook/oauth/callback/route.ts',
     `https://app.tenhchat.com/api/facebook/oauth/callback?state=${encodeURIComponent(state ?? '')}&code=${code}`);
-  return { jar, writes, graph, members, sessions, start, callback, invoke, options,
+  return { jar, writes, graph, members, sessions, start, callback, invoke, options, db,
+    authReads: () => authReads,
     switchWorkspace: id => jar.set('tenh_active_business_id', id),
     switchUser: id => { userId = id; },
     revokePermission: () => { manage = false; },
@@ -221,4 +253,91 @@ test('missing existing encryption configuration fails closed without initiating 
   const { result } = await f.start();
   assert.match(errorMessage(result), /token-encryption configuration/);
   assert.equal(f.jar.has('tenh_facebook_oauth_state'), false); assert.equal(f.graph.length, 0);
+});
+
+test('both OAuth-start links use ordinary browser navigation', () => {
+  let count = 0;
+  for (const file of ['components/integrations/facebook-page-select-ui.tsx', 'app/dashboard/integrations/facebook/select/page.tsx']) {
+    const source = ts.createSourceFile(file, readFileSync(`${ROOT}/${file}`, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    function visit(node) {
+      if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
+        const href = node.attributes.properties.find(prop => ts.isJsxAttribute(prop) && prop.name.getText(source) === 'href');
+        if (href?.initializer && ts.isStringLiteral(href.initializer) && href.initializer.text === '/api/facebook/oauth/connect') {
+          count++;
+          assert.equal(node.tagName.getText(source), 'a', `${file}: OAuth must start only on navigation`);
+        }
+      }
+      ts.forEachChild(node, visit);
+    }
+    visit(source);
+  }
+  assert.equal(count, 2);
+});
+
+const prefetchHeaders = [
+  { 'Next-Router-Prefetch': '1', RSC: '1', 'Next-Router-Segment-Prefetch': '/_tree' },
+  { 'next-router-prefetch': '2' },
+  { Purpose: 'prefetch' },
+  { 'Sec-Purpose': 'prefetch' },
+  { 'sEc-PuRpOsE': 'Prefetch;prerender' },
+];
+for (const headers of prefetchHeaders) test(`callback, speculative ${JSON.stringify(headers)}, then Connect preserves the selection`, async () => {
+  const f = fixture(), { state } = await f.start();
+  const callback = await f.callback(state);
+  assert.equal(new URL(callback.headers.get('Location')).pathname, '/dashboard/integrations/facebook/select');
+  const selection = f.jar.get('tenh_facebook_oauth_session'), reads = f.authReads();
+  const prefetch = await f.invoke('app/api/facebook/oauth/connect/route.ts',
+    'https://app.tenhchat.com/api/facebook/oauth/connect?_rsc=synthetic-prefetch', 'GET', headers);
+  assert.equal(prefetch.status, 204);
+  assert.match(prefetch.headers.get('Cache-Control'), /no-store/);
+  assert.equal(prefetch.headers.get('Location'), null);
+  assert.equal(f.authReads(), reads);
+  assert.equal(f.writes.length, 0);
+  assert.equal(f.jar.get('tenh_facebook_oauth_session'), selection);
+  assert.equal(f.jar.has('tenh_facebook_oauth_state'), false);
+  assert.equal(f.graph.length, 3);
+  assert.equal(f.db.history.length, 0);
+  const connected = await f.invoke('app/api/facebook/oauth/select/route.ts', 'https://app.tenhchat.com/api/facebook/oauth/select', 'POST');
+  assert.equal(connected.status, 303);
+  assert.equal(new URL(connected.headers.get('Location')).searchParams.get('facebook'), 'connected');
+  assert.equal(f.db.tables.social_accounts[0].business_id, 'A');
+  assert.equal(f.db.tables.social_accounts[0].platform_account_id, 'page-A');
+  assert.equal(f.jar.has('tenh_facebook_oauth_session'), false);
+});
+
+test('speculative requests neither require auth nor replace an authorization already in progress', async () => {
+  const f = fixture(), { state } = await f.start();
+  const pending = f.jar.get('tenh_facebook_oauth_state'), reads = f.authReads();
+  f.members.delete('A');
+  const result = await f.invoke('app/api/facebook/oauth/connect/route.ts', 'https://app.tenhchat.com/api/facebook/oauth/connect', 'GET', { Purpose: 'prefetch' });
+  assert.equal(result.status, 204);
+  assert.equal(f.authReads(), reads);
+  assert.equal(f.writes.length, 0);
+  assert.equal(f.jar.get('tenh_facebook_oauth_state'), pending);
+  assert.equal(f.sessions.decodeFacebookOAuthState(pending).state, state);
+});
+
+for (const headers of [{ 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Dest': 'document' }, { RSC: '1' }, { Purpose: 'navigate' }]) {
+  test(`real reconnect remains authorized and replaces the old selection: ${JSON.stringify(headers)}`, async () => {
+    const f = fixture(), first = await f.start(); await f.callback(first.state);
+    const result = await f.invoke('app/api/facebook/oauth/connect/route.ts', 'https://app.tenhchat.com/api/facebook/oauth/connect', 'GET', headers);
+    assert.equal(new URL(result.headers.get('Location')).hostname, 'www.facebook.com');
+    assert.notEqual(new URL(result.headers.get('Location')).searchParams.get('state'), first.state);
+    assert.equal(f.jar.has('tenh_facebook_oauth_session'), false);
+    f.revokePermission();
+    assert.match(errorMessage(await f.invoke('app/api/facebook/oauth/connect/route.ts', 'https://app.tenhchat.com/api/facebook/oauth/connect', 'GET', headers)), /do not have permission/);
+  });
+}
+
+test('selection survives just before the real cookie deadline and expires at 15 minutes', async () => {
+  for (const elapsed of [899_999, 900_000]) {
+    const f = fixture(), { state } = await f.start(); await f.callback(state);
+    f.advance(elapsed);
+    const result = await f.invoke('app/api/facebook/oauth/select/route.ts', 'https://app.tenhchat.com/api/facebook/oauth/select', 'POST');
+    if (elapsed < 900_000) assert.equal(new URL(result.headers.get('Location')).searchParams.get('facebook'), 'connected');
+    else {
+      assert.equal(errorMessage(result), 'Your Facebook connection session expired. Start again.');
+      assert.equal(f.db.history.length, 0);
+    }
+  }
 });

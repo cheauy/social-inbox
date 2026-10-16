@@ -57,6 +57,18 @@ function getFacebookLoginForBusinessConfigId() {
 export async function GET(
   request: NextRequest,
 ) {
+  // Speculative GETs must not restart OAuth or clear a valid Page selection.
+  if (
+    request.headers.has("next-router-prefetch") ||
+    /\bprefetch\b/i.test(request.headers.get("purpose") ?? "") ||
+    /\bprefetch\b/i.test(request.headers.get("sec-purpose") ?? "")
+  ) {
+    return new NextResponse(null, {
+      status: 204,
+      headers: { "Cache-Control": "private, no-store" },
+    });
+  }
+
   const authResult = await getCurrentMember(true);
 
   if (!authResult.success) {

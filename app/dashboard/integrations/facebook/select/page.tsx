@@ -271,7 +271,7 @@ export default async function FacebookPageSelectPage() {
                   km="Facebook មិនបានត្រឡប់ Page ណាមួយដែលអនុញ្ញាតសម្រាប់ TENH ទេ។ សូមភ្ជាប់សិទ្ធិ Page ម្តងទៀត ហើយជ្រើសរើសយ៉ាងហោចណាស់មួយ Page នៅក្នុង Facebook។"
                 />
               </div>
-              <Link
+              <a
                 href="/api/facebook/oauth/connect"
                 className="inline-flex rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
               >
@@ -279,7 +279,7 @@ export default async function FacebookPageSelectPage() {
                   en="Reconnect Page access"
                   km="ភ្ជាប់សិទ្ធិ Page ម្តងទៀត"
                 />
-              </Link>
+              </a>
             </div>
           ) : (
             <FacebookPageSelectUi
