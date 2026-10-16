@@ -13,6 +13,7 @@ import type { BakongPaymentView } from "./types";
 import { decimalMinorUnits } from "./money";
 import { getPendingBakongPayment } from "@/lib/billing/pending-bakong-payment";
 import { PAYMENT_CANCELLATION_ENABLED } from "@/lib/billing/payment-cancellation-feature";
+import { requireKhqrCheckoutSchema } from "@/lib/billing/require-khqr-checkout-schema";
 
 export const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 export const BAKONG_HEADERS = { "Cache-Control": "private, no-store, max-age=0", Vary: "Cookie, Origin" };
@@ -105,6 +106,7 @@ export async function prepareBakongPayment(actor: BakongActor, body: Record<stri
   const selection = { planCode: text(body.planCode), billingCycle: text(body.billingCycle), connections: body.connections ?? null,
     users: body.users ?? null, renewSame: body.renewSame === true, customUpgrade: body.customUpgrade === true,
     extensionBillingCycle: text(body.extensionBillingCycle) || "none" };
+  if (PAYMENT_CANCELLATION_ENABLED) await requireKhqrCheckoutSchema();
   const saved = await supabaseAdmin.from("bakong_payment_attempts").select("*").eq("business_id", actor.businessId)
     .eq("user_id", actor.userId).eq("intent_id", intent).maybeSingle();
   if (saved.error) throw new BakongError(503, "PAYMENT_UNAVAILABLE");

@@ -36,7 +36,7 @@ function postgresClient(db) {
 
 // The retained future-feature tests opt in only inside this isolated migrated fixture.
 async function fixture(environment = 'sandbox', accountType = 'merchant', lifecycleEnabled = true) {
-  const ctx = await database(true, true, true, lifecycleEnabled);
+  const ctx = await database(true, true, true, lifecycleEnabled ? 'atomic' : false);
   const seeded = await ctx.trial(), userId = randomUUID(), memberId = randomUUID();
   await ctx.db.query("insert into team_members(id,user_id,business_id,role,is_active) values($1,$2,$3,'owner',true)", [memberId,userId,seeded.businessId]);
   const state = { userId, admin: false, calls: 0, observation: 'paid', losePrepare: false };

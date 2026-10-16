@@ -9,6 +9,8 @@ const START = Date.now(), LIFETIME = 900000;
 async function fixture(options = {}) {
   const dom = new JSDOM('<div id="root"></div>', { url: 'https://fixture.invalid/dashboard/subscription/payment' });
   Object.defineProperty(dom.window.document, 'hidden', { configurable: true, value: false });
+  dom.window.HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };
+  dom.window.HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); };
   if (options.locks) Object.defineProperty(dom.window.navigator, 'locks', { configurable: true, value: options.locks });
   const previous = {};
   for (const [key, value] of Object.entries({ window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true })) {
@@ -18,7 +20,7 @@ async function fixture(options = {}) {
     id: ID, businessId: BUSINESS, userId: 'synthetic-user', memberId: 'synthetic-member', workspaceName: 'Synthetic workspace',
     recipientName: 'SYNTHETIC RECEIVER',
     planCode: 'custom', billingCycle: '12-months', amount: '32.53', currency: 'USD', reference: 'SYNTHETIC', transactionReference: null,
-    environment: 'production', state: 'pending', application: 'none', qrImage: 'data:image/png;base64,c3ludGhldGlj',
+    environment: 'production', state: 'pending', application: 'none', checkout: 'open', qrImage: 'data:image/png;base64,c3ludGhldGlj',
     createdAt: new Date(START).toISOString(), expiresAt: new Date(START + LIFETIME).toISOString(), nextCheckAt: new Date(START + 300000).toISOString(),
     serverTime: new Date(START + clock).toISOString(), invoiceId: null, canCheck: true, automaticChecksRemaining: 3,
     ...options.record,
@@ -28,6 +30,12 @@ async function fixture(options = {}) {
   const router = { replace: href => navigations.push(href) };
   const fetcher = async (url, init = {}) => {
     const method = init.method ?? 'GET'; requests.push({ url, method });
+    // Explicit opt-in is confined to isolated future-lifecycle tests; the runtime gate remains false.
+    if (options.cancellation && url === '/api/subscription/cancel-payment') {
+      assert.equal(method, 'POST');
+      assert.deepEqual(JSON.parse(init.body), { kind: 'bakong', paymentId: ID, businessId: BUSINESS, action: 'cancel', confirmed: true });
+      return options.cancelResponse ? options.cancelResponse(record) : Response.json({ success: true, outcome: 'checkout_closed' });
+    }
     assert.ok(url.startsWith('/api/bakong/payments/'), 'no creation, workspace mutation, provider or external requests');
     assert.ok(url.includes(`purchase_business=${BUSINESS}`));
     if (method === 'POST') {
@@ -44,7 +52,8 @@ async function fixture(options = {}) {
     '@/lib/supabase/client': { createClient: () => ({ auth: { onAuthStateChange: fn => {
       authListeners.add(fn); return { data: { subscription: { unsubscribe: () => authListeners.delete(fn) } } };
     } } }) },
-  }, { window: dom.window, document: dom.window.document, navigator: dom.window.navigator, fetch: fetcher, AbortController,
+    '@/lib/billing/payment-cancellation-feature': { PAYMENT_CANCELLATION_ENABLED: options.cancellation === true },
+  }, { window: dom.window, document: dom.window.document, HTMLElement: dom.window.HTMLElement, navigator: dom.window.navigator, fetch: fetcher, AbortController,
     performance: { now: () => clock }, setTimeout: (fn, delay) => schedule(fn, delay), clearTimeout: id => timers.delete(id),
     setInterval: (fn, delay) => schedule(fn, delay, true), clearInterval: id => timers.delete(id) });
   const { BakongPaymentView } = load('components/subscription/bakong-payment-view.tsx');
@@ -95,7 +104,8 @@ test('KHQR card uses the saved QR, server receiver and exact amount with actions
     const qr = card.querySelector('img[alt="Scan Bakong KHQR to pay"]');
     assert.equal(qr.getAttribute('src'), f.record.qrImage); assert.ok(qr.parentElement.classList.contains('p-3'));
     assert.ok(card.querySelector('.border-dashed')); assert.equal(card.querySelector('button, a'), null);
-    assert.equal(f.dom.window.document.querySelector('[class*="animate-spin"]'), null, 'waiting is not active verification');
+    assert.ok(f.dom.window.document.querySelector('[class*="animate-spin"]'), 'waiting uses a decorative indicator without claiming verification');
+    assert.equal(f.dom.window.document.querySelector('section').getAttribute('aria-busy'), 'false');
     assert.ok(![...f.dom.window.document.querySelectorAll('button')].some(button => /Check payment|Refresh status/.test(button.textContent)));
     assert.equal(f.requests.filter(request => request.method === 'POST').length, 0);
   } finally { await f.close(); }
@@ -113,7 +123,7 @@ test('KHQR waiting and actual verification use one passive status area below the
     await f.advance(300000); await f.advance(0); await f.advance(0);
     assert.match(status.textContent, /Checking payment/); assert.ok(status.querySelector('[class*="animate-spin"]'));
     await act(async () => finish());
-    assert.match(status.textContent, /Waiting for payment/); assert.equal(status.querySelector('[class*="animate-spin"]'), null);
+    assert.match(status.textContent, /Waiting for payment/); assert.ok(status.querySelector('[class*="animate-spin"]'));
     assert.equal(f.record.expiresAt, new Date(START + LIFETIME).toISOString());
   } finally { await f.close(); }
 });
@@ -196,7 +206,8 @@ test('closed QR on Subscription keeps reconciliation reachable and honors saved 
     await f.render({ qrClosed: true });
     assert.equal(f.navigations.length, 0); assert.equal(f.dom.window.document.querySelector('img'), null);
     assert.match(f.dom.window.document.body.textContent, /saved payment remains available for verification/);
-    await f.advance(300000); assert.equal(f.requests.filter(r => r.method === 'POST').length, 1);
+    await f.advance(300000); assert.equal(f.requests.filter(r => r.method === 'POST').length, 0, 'closed QR status does not spend an automatic inquiry');
+    await f.refresh(); assert.equal(f.requests.filter(r => r.method === 'POST').length, 1, 'explicit reconciliation remains available subject to server capacity');
     await f.advance(300000); assert.equal(f.requests.filter(r => r.method === 'POST').length, 1);
     assert.equal(f.record.state, 'pending');
   } finally { await f.close(); }

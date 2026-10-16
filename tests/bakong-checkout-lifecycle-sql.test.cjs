@@ -191,3 +191,42 @@ test('an unknown installed contract rolls the whole migration back', async () =>
     assert.equal((await one(ctx, "select to_regprocedure('public.tenh_bakong_blocking_attempt(uuid)') n")).n, null);
   } finally { await ctx.db.close(); }
 });
+
+// Characterization of rejected drafts, not acceptance of safe production behavior.
+test('unsafe lifecycle draft reproducer: one owner can reserve the whole inquiry budget by closing 30 fresh checkouts', async () => {
+  const ctx = await setup();
+  try {
+    let p = await prepare(ctx);
+    const actor = p.userId;
+    for (let i = 0; i < 30; i++) {
+      assert.equal(p.userId, actor);
+      assert.equal((await cancel(ctx, p)).outcome, 'checkout_closed');
+      if (i < 29) p = await again(ctx, p);
+    }
+    assert.equal((await one(ctx, "select tenh_bakong_private.reserved_inquiries('sandbox') n")).n, 90);
+    assert.equal((await one(ctx, 'select count(*)::int n from tenh_bakong_private.provider_calls')).n, 0);
+    const capacity = (await one(ctx, "select tenh_bakong_capacity($1,'sandbox','merchant@devb',90) r", [p.fingerprint])).r;
+    assert.equal(capacity.canIssue, false, 'one actor prevents unrelated issuance without making any bank call');
+  } finally { await ctx.db.close(); }
+});
+
+test('unsafe recovery draft reproducer: known late funds cannot be resolved by the existing reconcile helper', async () => {
+  const ctx = await setup();
+  try {
+    const p = await prepare(ctx, { environment: 'production', approvedCapacity: true });
+    await cancel(ctx, p);
+    const late = (await settle(ctx, p, '9'.repeat(64))).result;
+    assert.equal(late.state, 'review');assert.ok(late.verified_hash);
+    let calls = 0;
+    const forbidden = () => { calls++; throw new Error('No provider or privileged write allowed'); };
+    const { checkBakongPayment } = loader({
+      'server-only': {}, '@/lib/supabase/server': { createClient: forbidden },
+      '@/lib/supabase/admin': { supabaseAdmin: { rpc: forbidden, from: forbidden } },
+      '@/lib/bakong/config': { getBakongConfig: forbidden },
+      '@/lib/bakong/provider': { checkBakongTransaction: forbidden, generateBakongQr: forbidden },
+    })('lib/bakong/payments.ts');
+    assert.equal(await checkBakongPayment(late, p.userId), late);
+    assert.equal(calls, 0, 'the early verified_hash return does not run an operator resolution');
+    assert.equal((await again(ctx, p)).attempt.id, p.attempt.id, 'review still blocks fresh checkout');
+  } finally { await ctx.db.close(); }
+});

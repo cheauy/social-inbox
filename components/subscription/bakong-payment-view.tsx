@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
@@ -22,6 +22,28 @@ export function BakongPaymentView({ attemptId, businessId, qrClosed = false }: {
   const verificationClock = useRef<{ server: number; client: number } | null>(null);
   const latest = useRef<Payment | null>(null), closing = useRef(false);
   const refreshRequested = useRef(false);
+  const dialog = useRef<HTMLDialogElement>(null), closeButton = useRef<HTMLButtonElement>(null);
+  const previousFocus = useRef<HTMLElement | null>(null), dismissed = useRef(false);
+  const titleId = useId(), descriptionId = useId();
+  const closeWindow = useCallback(() => {
+    if (dismissed.current) return;
+    dismissed.current = true; closing.current = true; refreshRequested.current = false;
+    active.current?.abort();
+    dialog.current?.close();
+    if (previousFocus.current?.isConnected) previousFocus.current.focus({ preventScroll: true });
+    router.replace("/dashboard/subscription");
+  }, [router]);
+  useEffect(() => {
+    const current = dialog.current, previous = document.activeElement;
+    if (!current) return;
+    if (previous instanceof window.HTMLElement && previous !== document.body && !current.contains(previous)) previousFocus.current = previous;
+    if (!current.open) current.showModal();
+    closeButton.current?.focus({ preventScroll: true });
+    return () => {
+      current.close();
+      if (previousFocus.current?.isConnected) previousFocus.current.focus({ preventScroll: true });
+    };
+  }, []);
   const endpoint = `/api/bakong/payments/${encodeURIComponent(attemptId)}?purchase_business=${encodeURIComponent(businessId ?? "")}`;
   const accept = useCallback((saved: Payment, requestedAt: number) => {
     if (saved.id !== attemptId || saved.businessId !== businessId || !saved.userId || !saved.memberId ||
@@ -74,6 +96,7 @@ export function BakongPaymentView({ attemptId, businessId, qrClosed = false }: {
 
   const check = useCallback(async (automatic = false) => {
     if (closing.current || active.current || navigator.onLine === false || !latest.current?.canCheck || !identity.current) return;
+    if (automatic && latest.current.state === "pending" && (qrClosed || ["cancelled", "expired"].includes(latest.current.checkout))) return;
     const controller = new AbortController(); active.current = controller;
     let timedOut = false;
     const deadline = setTimeout(() => { timedOut = true; controller.abort(); }, 30000);
@@ -92,7 +115,7 @@ export function BakongPaymentView({ attemptId, businessId, qrClosed = false }: {
           const now = clock.server + performance.now() - clock.client;
           const due = Math.max(Date.parse(saved.createdAt) + 300000, Date.parse(saved.nextCheckAt));
           if (!saved.canCheck || document.hidden || navigator.onLine === false ||
-            (saved.state !== "verified" && (saved.state !== "pending" || saved.automaticChecksRemaining <= 0 || due > now || (!qrClosed && Date.parse(saved.expiresAt) <= now)))) return;
+            (saved.state !== "verified" && (saved.state !== "pending" || qrClosed || ["cancelled", "expired"].includes(saved.checkout) || saved.automaticChecksRemaining <= 0 || due > now || Date.parse(saved.expiresAt) <= now))) return;
         }
         if (controller.signal.aborted || closing.current) return;
         const requestedAt = performance.now(); setBusy(true); setError(false);
@@ -128,11 +151,13 @@ export function BakongPaymentView({ attemptId, businessId, qrClosed = false }: {
   useEffect(() => {
     const clock = verificationClock.current;
     if (!payment || !clock || !payment.canCheck || payment.automaticChecksRemaining <= 0 || !["pending", "verified"].includes(payment.state)) return;
+    // Closed QRs have no reserved future inquiries. Saved status stays readable; reconciliation is explicit.
+    if (payment.state === "pending" && (qrClosed || ["cancelled", "expired"].includes(payment.checkout))) return;
     const due = Math.max(Date.parse(payment.createdAt) + 300000, Date.parse(payment.nextCheckAt));
     const delay = Math.max(0, due - (clock.server + performance.now() - clock.client));
     const timer = setTimeout(() => { if (!document.hidden && navigator.onLine !== false) void check(true); }, delay);
     return () => clearTimeout(timer);
-  }, [payment, check]);
+  }, [payment, check, qrClosed]);
 
   async function continueToSubscription() {
     if (!payment || active.current) return;
@@ -156,18 +181,39 @@ export function BakongPaymentView({ attemptId, businessId, qrClosed = false }: {
   const closed = Boolean(payment && payment.state === "pending" && !payment.transactionReference && !payment.reconciliationRequired && (checkoutClosed || qrClosed || expires === 0));
   const checking = busy && !error && payment?.state === "pending" && !qrClosed && expires > 0 &&
     payment.canCheck && payment.automaticChecksRemaining > 0 && !payment.reconciliationRequired;
-  const canRecover = payment?.canCheck && (payment.state !== "pending" || qrClosed || expires <= 600);
+  const waiting = showQr && !error && !payment?.reconciliationRequired && !checking;
+  const canRecover = payment?.canCheck && (payment.state !== "pending" || checkoutClosed || qrClosed || expires <= 600);
   const title = error ? t("Unable to confirm payment", "មិនអាចបញ្ជាក់ការទូទាត់") : checking ? t("Checking payment…", "កំពុងពិនិត្យការទូទាត់…") :
     closed && payment?.checkout === "cancelled" ? t("Payment cancelled", "បានបោះបង់ការទូទាត់") : closed ? t("QR expired", "QR ផុតកំណត់") : !payment ? t("Payment status", "ស្ថានភាពទូទាត់") : payment.state === "test_paid" ? t("Test payment confirmed", "បានបញ្ជាក់ការទូទាត់សាកល្បង") :
     payment.application === "active" ? t("Subscription active", "ការជាវសកម្ម") : (payment.state === "review" || payment.reconciliationRequired) ? t("Payment needs review", "ការទូទាត់ត្រូវការពិនិត្យ") :
     payment.state === "verified" || payment.state === "applied" ? t("Payment received", "បានទទួលការទូទាត់") : t("Waiting for payment", "កំពុងរង់ចាំការទូទាត់");
-  return <section className="mx-auto w-full max-w-md space-y-4 p-3 sm:p-6" aria-busy={busy}>
+  return <dialog ref={dialog} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descriptionId}
+    tabIndex={-1}
+    onCancel={event => { if (event.target === event.currentTarget) { event.preventDefault(); closeWindow(); } }}
+    onKeyDown={event => {
+      if (event.defaultPrevented || event.key !== "Tab") return;
+      const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], summary, [tabindex="0"]')).filter(element => element.getClientRects().length > 0);
+      const first = controls[0], last = controls[controls.length - 1];
+      if (!first) { event.preventDefault(); event.currentTarget.focus(); }
+      else if (event.shiftKey && (document.activeElement === first || document.activeElement === event.currentTarget)) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && (document.activeElement === last || document.activeElement === event.currentTarget)) { event.preventDefault(); first.focus(); }
+    }}
+    className="fixed inset-0 m-auto max-h-[calc(100dvh-2*max(0.5rem,env(safe-area-inset-top),env(safe-area-inset-bottom)))] w-[calc(100%-2*max(0.5rem,env(safe-area-inset-left),env(safe-area-inset-right)))] max-w-md flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white p-0 text-slate-950 shadow-2xl open:flex backdrop:bg-slate-950/45 backdrop:backdrop-blur-[2px]">
+    <h2 id={titleId} className="sr-only">{t("Scan to pay", "ស្កេនដើម្បីទូទាត់")}</h2>
+    <p id={descriptionId} className="sr-only">{t("Closing this window keeps your saved payment unchanged.", "ការបិទផ្ទាំងនេះរក្សាការទូទាត់ដែលបានរក្សាទុកដដែល។")}</p>
+    <div className="flex shrink-0 items-center justify-end gap-2 px-2 pt-2 sm:px-4">
+      {showQr ? <p className="text-right text-xs tabular-nums text-slate-500 sm:text-sm">{t("Expires in", "ផុតកំណត់ក្នុង")} {Math.floor(expires / 60)}:{String(expires % 60).padStart(2, "0")}</p> : null}
+      <button ref={closeButton} type="button" onClick={closeWindow} aria-label={t("Close payment window", "បិទផ្ទាំងទូទាត់")}
+        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
+        <span aria-hidden="true" className="text-2xl leading-none">×</span>
+      </button>
+    </div>
+    <section className="min-h-0 min-w-0 overflow-y-auto overscroll-contain px-2 pb-4 sm:px-6 sm:pb-6" aria-busy={busy}>
     <div className="min-w-0">
-      <p className="text-xs font-bold uppercase tracking-wide text-blue-600">Bakong KHQR</p>
       <div className="mt-2 flex items-center justify-end gap-3">
         {payment?.state === "pending" && !closed && !payment.reconciliationRequired && !busy && !error ? <CancelPaymentButton key={`${payment.id}:${payment.businessId}`} kind="bakong" paymentId={payment.id} businessId={payment.businessId}
           onResult={outcome => {
-            if (outcome === "checkout_closed" || outcome === "expired") { closing.current = true; router.replace("/dashboard/subscription"); }
+            if (outcome === "checkout_closed" || outcome === "expired") closeWindow();
             else setRevision(value => value + 1);
           }} /> : null}
       </div>
@@ -176,11 +222,8 @@ export function BakongPaymentView({ attemptId, businessId, qrClosed = false }: {
       {payment ? <>
         {payment.reconciliationReason === "CANCELLATION_PAYMENT_REVIEW" ? <p role="status" className="mt-3 text-sm text-amber-800">{t("A payment arrived after this checkout was cancelled. TENH support will review it. Do not pay again.", "មានការទូទាត់មកដល់ក្រោយបោះបង់។ ក្រុម TENH នឹងពិនិត្យ។ កុំទូទាត់ម្ដងទៀត។")}</p> : null}
         {payment.reconciliationReason === "INQUIRY_LIMIT_REVIEW" ? <p role="status" className="mt-3 text-sm text-amber-800">{t("The verification limit has been reached. Your saved payment needs support review. Do not pay again.", "ដល់កម្រិតផ្ទៀងផ្ទាត់ហើយ។ ការបង់ប្រាក់ដែលបានរក្សាទុកត្រូវការជំនួយពិនិត្យ។ កុំបង់ម្តងទៀត។")}</p> : null}
-        <p className="mt-3 break-words text-sm text-slate-600">{payment.workspaceName} · {payment.planCode} · {payment.billingCycle}</p>
         {!showQr ? <p className="mt-2 text-3xl font-bold tabular-nums">{payment.currency} {payment.amount}</p> : null}
-        <p className="mt-2 break-all text-xs text-slate-500">{t("Reference", "លេខយោង")}: {payment.reference}</p>
-        {payment.transactionReference ? <p className="mt-2 break-all text-xs text-slate-500">{t("Transaction", "ប្រតិបត្តិការ")}: {payment.transactionReference}</p> : null}
-        {showQr ? <figure aria-label={t("KHQR payment card", "កាតទូទាត់ KHQR")} className="mt-5 overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_8px_30px_rgba(15,23,42,0.06)]">
+        {showQr ? <figure aria-label={t("KHQR payment card", "កាតទូទាត់ KHQR")} className="mt-1 overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_8px_30px_rgba(15,23,42,0.06)]">
           <div className="relative flex justify-center bg-[#e2232f] py-4 sm:py-5">
             {/* Keep the supplied logo at its original aspect ratio and the QR itself untouched. */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -202,9 +245,8 @@ export function BakongPaymentView({ attemptId, businessId, qrClosed = false }: {
             </div>
           </div>
         </figure> : null}
-        {showQr ? <p className="mt-3 text-center text-sm tabular-nums text-slate-500">{t("Expires in", "ផុតកំណត់ក្នុង")} {Math.floor(expires / 60)}:{String(expires % 60).padStart(2, "0")}</p> : null}
         <div role="status" aria-live="polite" aria-atomic="true" className="mt-4 flex min-h-12 w-full items-center justify-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center text-sm font-semibold text-slate-700">
-          {checking ? <span aria-hidden="true" className="h-5 w-5 shrink-0 rounded-full border-2 border-slate-200 border-t-red-600 motion-safe:animate-spin motion-reduce:animate-none" /> : null}
+          {checking || waiting ? <span aria-hidden="true" className="h-5 w-5 shrink-0 rounded-full border-2 border-slate-200 border-t-red-600 motion-safe:animate-spin motion-reduce:animate-none" /> : null}
           <p>{title}</p>
         </div>
         {closed ? <p role="status" className="mt-4 text-sm text-slate-700">{t("This QR is closed. Your saved payment remains available for verification. Do not pay again while it is unresolved.", "QR នេះបានបិទ។ ការទូទាត់ដែលបានរក្សាទុកនៅតែអាចផ្ទៀងផ្ទាត់បាន។ កុំទូទាត់ម្ដងទៀត ខណៈមិនទាន់ដោះស្រាយ។")}</p> : null}
@@ -221,9 +263,15 @@ export function BakongPaymentView({ attemptId, businessId, qrClosed = false }: {
           {payment.application === "active" ? <button type="button" className={button} disabled={busy} onClick={() => void continueToSubscription()}>{t("Continue", "បន្ត")}</button> : null}
           {payment.invoiceId ? <Link className={button} href={`/dashboard/subscription/invoices/${encodeURIComponent(payment.invoiceId)}`}>{t("TENH Receipt", "បង្កាន់ដៃ TENH")}</Link> : null}
         </div>
+        <details className="mt-3 text-xs text-slate-500">
+          <summary className="min-h-11 cursor-pointer py-3 font-medium focus-visible:outline-2 focus-visible:outline-blue-600">{t("Payment details", "ព័ត៌មានការទូទាត់")}</summary>
+          <p className="break-words">{payment.workspaceName} · {payment.planCode} · {payment.billingCycle}</p>
+          <p className="mt-2 break-all">{t("Reference", "លេខយោង")}: {payment.reference}</p>
+          {payment.transactionReference ? <p className="mt-2 break-all">{t("Transaction", "ប្រតិបត្តិការ")}: {payment.transactionReference}</p> : null}
+        </details>
       </> : null}
       {error ? <div role="alert" className="mt-4 text-sm text-red-700"><p>{t("Payment confirmation is temporarily unavailable. Your attempt is saved.", "ការបញ្ជាក់ការទូទាត់មិនអាចប្រើបានបណ្ដោះអាសន្ន។ ប្រតិបត្តិការរបស់អ្នកត្រូវបានរក្សាទុក។")}</p><button type="button" className={`${button} mt-2`} disabled={busy} onClick={() => setRevision(value => value + 1)}>{t("Try again", "ព្យាយាមម្ដងទៀត")}</button></div> : null}
     </div>
-    <Link className={button} href="/dashboard/subscription">{t("Back to subscription", "ត្រឡប់ទៅការជាវ")}</Link>
-  </section>;
+    </section>
+  </dialog>;
 }

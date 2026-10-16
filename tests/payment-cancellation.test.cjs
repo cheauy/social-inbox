@@ -10,6 +10,7 @@ function service(options={}) {
     '@/lib/supabase/admin':{supabaseAdmin:{rpc:async(name,args)=>{
       calls.push({name,args});
       if(options.rpcError)return{data:null,error:{message:'unavailable'}};
+      if(name==='tenh_khqr_checkout_capabilities')return{data:options.oldSchema?{version:0}:{version:1,accounting:'open-checkout-reservations',originalPlanResolution:'explicit-admin',qrCountCap:false},error:null};
       return{data:name==='tenh_request_payment_cancellation'?{outcome:options.outcome??'processing',claimed:options.claimed??true}:{outcome:args.p_closed?'cancelled':'reconciliation_required'},error:null};
     }}},
     '@/lib/payway/finalize-payment':{verifyAndFinalizePayWayTransaction:async()=>{calls.push({name:'verify'});if(options.verifyError)throw Error('timeout');return{paymentState:options.status??'pending',providerStatus:options.providerStatus??'PENDING'};}},
@@ -37,8 +38,11 @@ test('uncertain/in-progress verification never closes the provider or discards t
 test('manual and KHQR never call PayWay or claim provider cancellation',async()=>{
   for(const kind of ['manual','bakong']){
     const f=service({outcome:kind==='manual'?'withdrawn':'reconciliation_required',claimed:false});
-    assert.equal(await f.cancel(kind),kind==='manual'?'withdrawn':'reconciliation_required');assert.equal(f.calls.length,1);
+    assert.equal(await f.cancel(kind),kind==='manual'?'withdrawn':'reconciliation_required');assert.equal(f.calls.length,kind==='bakong'?2:1);
   }
+});
+test('enabled KHQR cancellation fails before writing against an older or partial schema',async()=>{
+  const f=service({oldSchema:true});await assert.rejects(f.cancel('bakong'),/schema is unavailable/);assert.deepEqual(f.calls.map(call=>call.name),['tenh_khqr_checkout_capabilities']);
 });
 test('PayWay close acknowledgement rejects a mismatched transaction and unconfirmed provider status',async()=>{
   for(const [status,closed] of [[{code:'00',tran_id:'synthetic'},true],[{code:'00',tran_id:'other'},false],[{code:'99'},false]]){

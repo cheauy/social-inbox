@@ -94,7 +94,10 @@ test('a hanging request times out and queued network recovery reads the persiste
  const f=await fixture({response:(record,method,init)=>method==='POST'?new Promise((resolve,reject)=>init.signal.addEventListener('abort',()=>reject(new DOMException('Aborted','AbortError')),{once:true})):Response.json({success:true,attempt:record})});
  try{
   await f.render();await tick(f,300000);assert.equal(posts(f),1);await f.network(true);
-  await tick(f,30000);assert.equal(posts(f),1);assert.equal(f.dom.window.document.querySelector('[class*="animate-spin"]'),null);
+  await tick(f,30000);assert.equal(posts(f),1);
+  const status=f.dom.window.document.querySelector('[aria-live="polite"]');
+  assert.match(status.textContent,/Waiting for payment/);assert.ok(status.querySelector('[class*="animate-spin"]'));
+  assert.doesNotMatch(status.textContent,/Checking payment/);
   assert.equal(f.dom.window.document.querySelector('section').getAttribute('aria-busy'),'false');
  }finally{await f.close();}
 });
@@ -110,5 +113,16 @@ test('an expired QR cannot auto-verify from its original checkout or gain a fres
  const f=await fixture({elapsed:LIFETIME+1});try{
   await f.render();await tick(f);await f.reload();await f.network(true);await tick(f);
   assert.equal(posts(f),0);assert.equal(f.dom.window.document.querySelector('figure'),null);assert.equal(f.record.state,'pending');
+ }finally{await f.close();}
+});
+
+test('closure discovered during automatic preflight stops spending; explicit closed-status reconciliation remains available',async()=>{
+ const f=await fixture();try{
+  await f.render();f.setRecord({checkout:'cancelled',qrImage:null});
+  await tick(f,300000);assert.equal(posts(f),0);assert.equal(f.dom.window.document.querySelector('figure'),null);
+  assert.match(f.dom.window.document.body.textContent,/Payment cancelled/);
+  await f.network(true);await f.visibility(false);await tick(f,1000);assert.equal(posts(f),0);
+  await f.refresh();assert.equal(posts(f),1,'only explicit reconciliation requests a provider check');
+  assert.equal(f.record.checkout,'cancelled');assert.equal(f.record.state,'pending');
  }finally{await f.close();}
 });

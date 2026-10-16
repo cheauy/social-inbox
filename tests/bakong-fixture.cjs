@@ -23,7 +23,8 @@ async function database(installBakong = true, repairRequestTime = true, installG
     if (installGeneral && repairRequestTime) await db.exec(fs.readFileSync('db/migrations/20261016043734_bakong_scoped_pilot.sql', 'utf8'));
     if (repairRequestTime) await db.exec(fs.readFileSync('db/migrations/20261016063606_bakong_request_time.sql', 'utf8'));
     if (installGeneral && repairRequestTime) await db.exec(fs.readFileSync('db/migrations/20261016070506_bakong_general_authorization.sql', 'utf8'));
-    if (installLifecycle) await lifecycle(db);
+    if (installLifecycle === 'atomic') await atomicLifecycle(db);
+    else if (installLifecycle) await lifecycle(db);
   }
   return { db, trial: () => moduleFixture.exports.trial(db) };
 }
@@ -37,6 +38,11 @@ async function lifecycle(db) {
     add column if not exists proof_size_bytes bigint`);
   await db.exec(fs.readFileSync('db/migrations/20261016083154_payment_cancellation_safety.sql', 'utf8'));
   await db.exec(fs.readFileSync('db/migrations/20261016093000_bakong_checkout_lifecycle.sql', 'utf8'));
+}
+async function atomicLifecycle(db) {
+  // Match the already installed CHAT columns; the proposal itself adds no missing legacy columns.
+  await db.exec("alter table team_members add column if not exists permissions jsonb default '{}'");
+  await db.exec(fs.readFileSync('db/proposals/20261016111054_khqr_checkout_cancellation_atomic.sql', 'utf8'));
 }
 async function prepare(ctx, options = {}) {
   const seeded = await ctx.trial(), businessId = seeded.businessId;

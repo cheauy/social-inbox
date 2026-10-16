@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
 import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
 import type { CancellationOutcome } from "@/lib/billing/cancel-payment";
@@ -16,7 +16,15 @@ export function CancelPaymentButton({ kind, paymentId, businessId, submitted = f
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const submitting = useRef(false);
+  const completed = useRef<CancellationOutcome | null>(null);
   const trigger = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (open || pending || !completed.current) return;
+    const outcome = completed.current;
+    completed.current = null;
+    // Let the confirmation release its modal focus before the caller dismisses the checkout.
+    onResult(outcome);
+  }, [open, pending, onResult]);
   async function confirm() {
     if (submitting.current) return;
     submitting.current = true;
@@ -31,8 +39,8 @@ export function CancelPaymentButton({ kind, paymentId, businessId, submitted = f
       if (!response.ok || !result.success || !["cancelled", "checkout_closed", "expired", "withdrawn", "paid", "processing", "reconciliation_required"].includes(result.outcome)) {
         throw new Error(t("Unable to confirm cancellation. Refresh the payment status. Do not pay again while it is uncertain.", "មិនអាចបញ្ជាក់ការបោះបង់បានទេ។ សូមផ្ទុកស្ថានភាពឡើងវិញ ហើយកុំទូទាត់ម្ដងទៀត ខណៈស្ថានភាពមិនច្បាស់។"));
       }
+      completed.current = result.outcome;
       setOpen(false);
-      onResult(result.outcome);
     } catch {
       setError(t("Unable to confirm cancellation. Refresh the payment status. Do not pay again while it is uncertain.", "មិនអាចបញ្ជាក់ការបោះបង់បានទេ។ សូមផ្ទុកស្ថានភាពឡើងវិញ ហើយកុំទូទាត់ម្ដងទៀត ខណៈស្ថានភាពមិនច្បាស់។"));
     } finally {
