@@ -21,10 +21,11 @@
     "qrcode": "1.5.4",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "sharp": "0.34.5"
+    "sharp": "0.35.5"
   },
   "overrides": {
-    "bakong-khqr": { "axios": "1.20.0" }
+    "bakong-khqr": { "axios": "1.20.0" },
+    "next": { "sharp": "$sharp" }
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

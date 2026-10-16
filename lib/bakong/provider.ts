@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { BakongKHQR, MerchantInfo, khqrData } from "bakong-khqr";
+import { BakongKHQR, IndividualInfo, MerchantInfo, khqrData } from "bakong-khqr";
 import type { BakongConfig } from "./config";
 import { centsDecimal, decimalMinorUnits } from "./money";
 
@@ -10,9 +10,13 @@ export function generateBakongQr(config: BakongConfig, id: string, cents: number
   const amount = centsDecimal(cents);
   if (amount.length > 13 || !/^[0-9a-f-]{36}$/i.test(id)) throw new Error("Invalid payment reference or amount.");
   const expiresAt = now + QR_LIFETIME_MS;
-  const response = new BakongKHQR().generateMerchant(new MerchantInfo(config.accountId, config.merchantName,
-    config.merchantCity, config.merchantId, config.acquiringBank, { currency: khqrData.currency.usd,
-      amount: Number(amount), billNumber: reference, expirationTimestamp: expiresAt }));
+  const options = { currency: khqrData.currency.usd, amount: Number(amount), billNumber: reference, expirationTimestamp: expiresAt };
+  const khqr = new BakongKHQR();
+  const response = config.accountType === "individual"
+    ? khqr.generateIndividual(new IndividualInfo(config.accountId, config.merchantName, config.merchantCity,
+        { ...options, ...(config.acquiringBank ? { acquiringBank: config.acquiringBank } : {}) }))
+    : khqr.generateMerchant(new MerchantInfo(config.accountId, config.merchantName,
+        config.merchantCity, config.merchantId, config.acquiringBank, options));
   if (response.status.code !== 0 || !response.data?.qr || response.data.md5 !== createHash("md5").update(response.data.qr).digest("hex")) {
     throw new Error("KHQR generation failed.");
   }

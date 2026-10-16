@@ -34,14 +34,14 @@ function postgresClient(db) {
   } };
 }
 
-async function fixture(environment = 'sandbox') {
+async function fixture(environment = 'sandbox', accountType = 'merchant') {
   const ctx = await database(), seeded = await ctx.trial(), userId = randomUUID(), memberId = randomUUID();
   await ctx.db.query("insert into team_members(id,user_id,business_id,role,is_active) values($1,$2,$3,'owner',true)", [memberId,userId,seeded.businessId]);
   const state = { userId, admin: false, calls: 0, observation: 'paid', losePrepare: false };
   const env = { NODE_ENV: 'production', TENH_APP_ORIGIN: 'https://app.tenhchat.com', BAKONG_ENVIRONMENT: environment,
     BAKONG_API_CONTRACT: 'v1-md5', BAKONG_API_BASE_URL: environment === 'production' ? 'https://api-bakong.nbc.gov.kh' : 'https://sit-api-bakong.nbc.gov.kh',
-    BAKONG_ACCOUNT_TYPE: 'merchant', BAKONG_ACCOUNT_ID: 'merchant@devb', BAKONG_MERCHANT_ID: '12345',
-    BAKONG_MERCHANT_NAME: 'TENH CHAT', BAKONG_MERCHANT_CITY: 'Phnom Penh', BAKONG_ACQUIRING_BANK: 'DEV BANK',
+    BAKONG_ACCOUNT_TYPE: accountType, BAKONG_ACCOUNT_ID: accountType === 'individual' ? 'individual@devb' : 'merchant@devb', BAKONG_MERCHANT_ID: accountType === 'merchant' ? '12345' : '',
+    BAKONG_MERCHANT_NAME: 'TENH CHAT', BAKONG_MERCHANT_CITY: 'Phnom Penh', BAKONG_ACQUIRING_BANK: accountType === 'merchant' ? 'DEV BANK' : '',
     BAKONG_API_TOKEN: 'synthetic-private-api-token', BAKONG_CHECKOUT_ENABLED: 'true' };
   const pg = postgresClient(ctx.db), rpc = pg.rpc.bind(pg);
   pg.rpc = async (name, args) => { const result = await rpc(name,args); if(result.error) state.lastRpcError=result.error; if (name === 'tenh_prepare_bakong_payment' && state.losePrepare && !result.error) { state.losePrepare = false; return { data: null, error: { code: 'NETWORK' } }; } return result; };
@@ -206,4 +206,31 @@ test('pre-existing active same-plan SQL purchase guard remains authoritative',as
     assert.match(f.state.lastRpcError.message,/already active for the current paid period/);
     assert.equal((await f.db.query('select count(*)::int n from billing_transactions')).rows[0].n,0);assert.equal(f.state.calls,0);
   }finally{await f.db.close();}
+});
+
+
+test('individual-account checkout retains production gating, saved QR identity and exactly-once settlement',async t=>{
+  for(const environment of ['sandbox','production'])await t.test(environment,async()=>{
+    const f=await fixture(environment,'individual');try{
+      assert.equal(f.config.accountType,'individual');assert.equal(f.config.merchantId,'');
+      if(environment==='production'){
+        const request=()=>f.checkout.POST(f.post('/api/bakong/checkout',f.body));
+        assert.equal((await request()).status,503,'an individual account is not automatically production eligible');
+        const merchantFingerprint=require('node:crypto').createHash('sha256').update(f.env.BAKONG_API_TOKEN).digest('hex');
+        await f.db.query("insert into tenh_bakong_private.capacity_reviews values($1,$2,'production',true,100,100,20,'synthetic merchant-only review',$3,now())",[merchantFingerprint,f.config.accountId,f.userId]);
+        assert.equal((await request()).status,503,'a merchant configuration review cannot approve an individual configuration');
+        assert.equal(f.state.calls,0);await f.capacity();
+      }
+      const started=await f.start();
+      const before=(await f.db.query('select qr,md5 from bakong_payment_attempts where id=$1',[started.attemptId])).rows[0];
+      assert.equal(require('bakong-khqr').BakongKHQR.decode(before.qr).data.merchantType,'29');
+      assert.equal((await f.start()).attemptId,started.attemptId);
+      assert.deepEqual((await f.db.query('select qr,md5 from bakong_payment_attempts where id=$1',[started.attemptId])).rows[0],before);
+      const forged=await f.checkout.POST(f.post('/api/bakong/checkout',{...f.body,accountType:'merchant'}));assert.equal(forged.status,400);
+      await Promise.all([f.check(started.attemptId),f.check(started.attemptId)]);
+      const result=await(await f.read(started.attemptId)).json();
+      assert.equal(result.attempt.state,environment==='sandbox'?'test_paid':'applied');assert.equal(f.state.calls,1);
+      assert.equal(result.attempt.application,environment==='sandbox'?'none':'active');
+    }finally{await f.db.close();}
+  });
 });

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const test = require('node:test'), assert = require('node:assert/strict');
-const { randomUUID } = require('node:crypto');
+const { randomUUID, createHash } = require('node:crypto');
 const { loader } = require('./tenh-seven/harness.cjs');
 const load = loader({ 'server-only': {} }, { process, TextDecoder });
 const { getBakongConfig } = load('lib/bakong/config.ts');
@@ -9,6 +9,7 @@ const { decimalMinorUnits } = load('lib/bakong/money.ts');
 const { BakongKHQR } = require('bakong-khqr');
 const { paymentProvenance, paymentMethodLabel, paymentVerificationLabel } = load('lib/billing/payment-display.ts');
 const config = { token: 'synthetic-secret-not-real', fingerprint: 'f'.repeat(64), accountId: 'merchant@devb', merchantName: 'TENH CHAT',
+  accountType: 'merchant',
   merchantCity: 'Phnom Penh', merchantId: '12345', acquiringBank: 'DEV BANK', environment: 'sandbox',
   baseUrl: 'https://sit-api-bakong.nbc.gov.kh', dailyBudget: 90, checkoutRequested: true };
 const expected = { md5: 'd'.repeat(32), recipient: config.accountId, amount: '9.99', environment: 'production' };
@@ -27,6 +28,34 @@ test('official pinned merchant SDK emits a unique exact-amount dynamic QR with m
   assert.throws(() => generateBakongQr(config, 'forged-id', 999));
 });
 
+test('individual accounts generate dynamic USD KHQR without a merchant ID or acquiring bank', () => {
+  const values = { BAKONG_ENVIRONMENT: 'sandbox', BAKONG_API_BASE_URL: config.baseUrl, BAKONG_ACCOUNT_TYPE: 'individual',
+    BAKONG_API_CONTRACT: 'v1-md5', BAKONG_API_TOKEN: config.token, BAKONG_ACCOUNT_ID: 'individual@devb',
+    BAKONG_MERCHANT_ID: '', BAKONG_MERCHANT_NAME: 'Individual payee', BAKONG_MERCHANT_CITY: 'Phnom Penh',
+    BAKONG_ACQUIRING_BANK: '', BAKONG_CHECKOUT_ENABLED: 'false' };
+  const before = Object.fromEntries(Object.keys(values).map(key => [key, process.env[key]]));
+  try {
+    Object.assign(process.env, values);
+    const individual = getBakongConfig();
+    assert.ok(individual, 'individual configuration is supported without merchant-only fields');
+    assert.equal(individual.accountType, 'individual'); assert.equal(individual.checkoutRequested, false);
+    assert.notEqual(individual.fingerprint, createHash('sha256').update(config.token).digest('hex'), 'merchant capacity approval cannot enable individual checkout');
+    const now = Date.now(), generated = generateBakongQr(individual, randomUUID(), 1300, now);
+    const decoded = BakongKHQR.decode(generated.qr).data;
+    assert.equal(decoded.merchantType, '29'); assert.equal(decoded.bakongAccountID, 'individual@devb');
+    assert.equal(decoded.merchantName, 'Individual payee'); assert.equal(decoded.transactionCurrency, '840');
+    assert.equal(decimalMinorUnits(decoded.transactionAmount, 'USD'), BigInt(1300)); assert.equal(decoded.billNumber, generated.reference);
+    assert.equal(decoded.expirationTimestamp, String(now + QR_LIFETIME_MS));
+    assert.equal(decoded.merchantID ?? decoded.merchantId ?? null, null);
+    process.env.BAKONG_MERCHANT_NAME = ''; assert.equal(getBakongConfig(), null);
+    process.env.BAKONG_MERCHANT_NAME = values.BAKONG_MERCHANT_NAME;
+    process.env.BAKONG_ACQUIRING_BANK = 'X'.repeat(33); assert.equal(getBakongConfig(), null);
+    process.env.BAKONG_ACQUIRING_BANK = 'DEV BANK';
+    const withBank = BakongKHQR.decode(generateBakongQr(getBakongConfig(), randomUUID(), 1300).qr).data;
+    assert.equal(withBank.acquiringBank, 'DEV BANK');
+  } finally { for (const [key, value] of Object.entries(before)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } }
+});
+
 test('configuration requires explicit contract, environment, merchant fields and server secret; account ID alone never enables', () => {
   const values = { BAKONG_ENVIRONMENT: 'sandbox', BAKONG_API_BASE_URL: config.baseUrl, BAKONG_ACCOUNT_TYPE: 'merchant',
     BAKONG_API_CONTRACT: 'v1-md5', BAKONG_API_TOKEN: config.token, BAKONG_ACCOUNT_ID: config.accountId,
@@ -36,7 +65,7 @@ test('configuration requires explicit contract, environment, merchant fields and
   try {
     Object.assign(process.env, values); assert.equal(getBakongConfig().checkoutRequested, false);
     for (const [key, value] of [['BAKONG_API_TOKEN', ''], ['BAKONG_API_BASE_URL', 'https://attacker.invalid'],
-      ['BAKONG_ENVIRONMENT', 'production'], ['BAKONG_ACCOUNT_TYPE', 'individual'], ['BAKONG_API_CONTRACT', 'guessed-v2'],
+      ['BAKONG_ENVIRONMENT', 'production'], ['BAKONG_ACCOUNT_TYPE', 'unknown'], ['BAKONG_API_CONTRACT', 'guessed-v2'],
       ['BAKONG_MERCHANT_NAME', 'X'.repeat(26)], ['BAKONG_DAILY_REQUEST_BUDGET', '1.5'], ['BAKONG_MERCHANT_ID', '']]) {
       process.env[key] = value; assert.equal(getBakongConfig(), null, key); process.env[key] = values[key];
     }
