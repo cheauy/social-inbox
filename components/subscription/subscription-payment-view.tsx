@@ -1,7 +1,7 @@
 "use client";
 
 import Script from "next/script";
-import { QrCode } from "lucide-react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { PaymentAttemptView, paymentAttemptUrl } from "./payment-attempt-view";
 import {
@@ -1611,8 +1611,10 @@ function PaymentCheckout({
                   onClick={() => { setCheckoutMethod("bakong"); setCheckoutError(null); }}
                   className={`rounded-2xl border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${checkoutMethod === "bakong" ? "border-blue-500 bg-blue-50/45 ring-1 ring-blue-100" : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"}`}>
                   <div className="flex items-center gap-4">
-                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-red-50 text-red-700"><QrCode size={26} aria-hidden="true" /></div>
-                    <div className="min-w-0 flex-1"><p className="text-base font-extrabold text-slate-950">Bakong KHQR</p>
+                    <div className="flex h-14 w-14 shrink-0 items-center justify-center">
+                      <Image src="/images/khqr.png" alt="" width={1248} height={514} sizes="56px" className="h-auto w-14 object-contain" />
+                    </div>
+                    <div className="min-w-0 flex-1"><p className="text-base font-extrabold text-slate-950">KHQR</p>
                       <p className="mt-1 text-sm leading-5 text-slate-500">{t("Scan to pay with your banking app.", "ស្កេនដើម្បីទូទាត់ជាមួយកម្មវិធីធនាគាររបស់អ្នក។")}</p>
                       {bakongAvailability?.environment === "sandbox" && bakongAvailability.enabled ? <span className="text-xs font-bold text-amber-700">{t("Test payment", "ការទូទាត់សាកល្បង")}</span> : null}
                     </div>
@@ -1681,7 +1683,7 @@ function PaymentCheckout({
               </div>
 
               {checkoutMethod === "bakong" ? <div className="mt-5 rounded-[22px] border border-slate-200 bg-slate-50/70 p-4">
-                <p className="text-xs font-bold uppercase tracking-wide text-red-700">Bakong KHQR</p>
+                <p className="text-xs font-bold uppercase tracking-wide text-red-700">KHQR</p>
                 <p className="mt-2 text-2xl font-black">{formatUsdFromCents(totalCents)}</p>
                 <button type="button" className="mt-4 min-h-11 w-full rounded-xl bg-blue-600 px-5 py-3 font-bold text-white focus-visible:outline-2 focus-visible:outline-offset-2 disabled:bg-slate-300 sm:w-auto" disabled={checkoutLoading || !bakongAvailability?.enabled} onClick={() => void startBakong()}>{checkoutLoading ? t("Preparing…", "កំពុងរៀបចំ…") : t("Show QR", "បង្ហាញ QR")}</button>
                 {checkoutError ? <p role="alert" className="mt-3 text-sm text-red-700">{checkoutError}</p> : null}

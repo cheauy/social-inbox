@@ -6,7 +6,7 @@ export async function GET(request: Request) {
   try {
     const params = new URL(request.url).searchParams;
     const actor = await bakongActor(params.get("purchase_business") ?? "");
-    const [readiness, pending, resume] = await Promise.all([bakongReadiness(), pendingBakong(actor.businessId), resumeBakongIntent(actor, params.get("purchase_intent"))]);
+    const [readiness, pending, resume] = await Promise.all([bakongReadiness(actor), pendingBakong(actor.businessId), resumeBakongIntent(actor, params.get("purchase_intent"))]);
     return bakongJson({ success: true, ...readiness, pendingAttemptId: pending ?? null, resumeAttemptId: resume ?? null,
       businessId: actor.businessId, userId: actor.userId, memberId: actor.memberId });
   } catch (error) { return bakongFailure(error); }

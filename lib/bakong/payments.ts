@@ -18,7 +18,8 @@ export const BAKONG_HEADERS = { "Cache-Control": "private, no-store, max-age=0",
 export type BakongAttempt = { id: string; business_id: string; user_id: string; member_id: string; intent_id: string;
   environment: "sandbox" | "production"; credential_fingerprint: string; recipient: string; amount: number | string;
   currency: "USD"; reference: string; qr: string; md5: string; expires_at: string; selection: Record<string, unknown>;
-  state: BakongPaymentView["state"]; verified_hash: string | null; next_check_at: string; reason: string | null; check_count: number };
+  state: BakongPaymentView["state"]; verified_hash: string | null; next_check_at: string; reason: string | null; check_count: number;
+  pilot_authorization_id?: string | null };
 export class BakongError extends Error { constructor(public status: number, public code: string) { super(code); } }
 export const bakongJson = (body: unknown, status = 200) => Response.json(body, { status, headers: BAKONG_HEADERS });
 export function bakongFailure(error: unknown) {
@@ -49,9 +50,19 @@ export async function loadBakongAttempt(id: string, businessId: string) {
   return result.data as BakongAttempt;
 }
 
-export async function bakongReadiness() {
+async function pilotStatus(config: NonNullable<ReturnType<typeof getBakongConfig>>, actor: Pick<BakongActor, "userId" | "memberId" | "businessId">, attemptId: string | null = null) {
+  const result = await supabaseAdmin.rpc("tenh_bakong_pilot_status", { p_actor: actor.userId, p_business: actor.businessId,
+    p_member: actor.memberId, p_fingerprint: config.fingerprint, p_recipient: config.accountId, p_attempt: attemptId });
+  return result.error ? null : result.data as { eligible: boolean; canIssue: boolean; canVerify: boolean; inquiriesRemaining: number; pilot: boolean } | null;
+}
+
+export async function bakongReadiness(actor?: BakongActor) {
   const config = getBakongConfig();
-  if (!config || !config.checkoutRequested) return { enabled: false, environment: config?.environment ?? null };
+  if (!config) return { enabled: false, environment: null };
+  if (!config.checkoutRequested) {
+    const pilot = config.pilotRequested && config.environment === "production" && actor ? await pilotStatus(config, actor) : null;
+    return { enabled: pilot?.eligible === true && pilot.canIssue === true, environment: config.environment };
+  }
   const capacity = await supabaseAdmin.rpc("tenh_bakong_capacity", { p_fingerprint: config.fingerprint,
     p_environment: config.environment, p_recipient: config.accountId, p_budget: config.dailyBudget });
   return { enabled: !capacity.error && capacity.data?.eligible === true && capacity.data?.canIssue === true, environment: config.environment };
@@ -89,7 +100,7 @@ export async function prepareBakongPayment(actor: BakongActor, body: Record<stri
   const pending = await pendingBakong(actor.businessId);
   if (pending) return loadBakongAttempt(pending, actor.businessId);
   const config = getBakongConfig();
-  if (!config || !(await bakongReadiness()).enabled) throw new BakongError(503, "BAKONG_NOT_ENABLED");
+  if (!config || !(await bakongReadiness(actor)).enabled) throw new BakongError(503, "BAKONG_NOT_ENABLED");
   if (selection.renewSame && !actor.owner) throw new BakongError(403, "OWNER_REQUIRED");
   if (selection.renewSame && selection.customUpgrade) throw new BakongError(400, "INVALID_SELECTION");
   await syncBusinessSubscriptionLifecycle(actor.businessId);
@@ -124,6 +135,8 @@ export async function checkBakongPayment(attempt: BakongAttempt, actorUserId: st
   if (attempt.verified_hash || attempt.state === "applied" || attempt.state === "test_paid") return attempt;
   const config = getBakongConfig();
   if (!config || config.environment !== attempt.environment || config.accountId !== attempt.recipient) throw new BakongError(503, "RECONCILIATION_CONFIGURATION_REQUIRED");
+  // Revocation/expiry and the lifetime inquiry cap are enforced again by the database claim.
+  if (attempt.pilot_authorization_id && !config.pilotRequested) throw new BakongError(503, "BAKONG_NOT_ENABLED");
   const claim = await supabaseAdmin.rpc("tenh_claim_bakong_check", { p_attempt: attempt.id, p_fingerprint: config.fingerprint, p_budget: config.dailyBudget });
   if (claim.error || !claim.data) throw new BakongError(503, "CHECK_UNAVAILABLE");
   if (!claim.data.claimed) {
@@ -162,17 +175,22 @@ export async function bakongPaymentView(attempt: BakongAttempt, actor: Pick<Bako
   if (!minor) throw new BakongError(503, "INVALID_SAVED_AMOUNT");
   let showQr = false;
   const config = getBakongConfig();
+  const pilot = config?.environment === "production" && attempt.pilot_authorization_id
+    ? await pilotStatus(config, { ...actor, businessId: attempt.business_id }, attempt.id) : null;
   if (attempt.state === "pending" && config?.checkoutRequested && config.environment === attempt.environment && config.accountId === attempt.recipient) {
     const capacity = await supabaseAdmin.rpc("tenh_bakong_capacity", { p_fingerprint: config.fingerprint, p_environment: config.environment,
       p_recipient: config.accountId, p_budget: config.dailyBudget });
     showQr = !capacity.error && capacity.data?.eligible === true && capacity.data?.canVerify === true;
   }
+  if (attempt.pilot_authorization_id) showQr = attempt.state === "pending" && config?.pilotRequested === true && pilot?.canVerify === true;
+  const pilotBlocked = Boolean(attempt.pilot_authorization_id) && (!config?.pilotRequested || pilot?.canVerify !== true);
   return { id: attempt.id, businessId: attempt.business_id, userId: actor.userId, memberId: actor.memberId,
     workspaceName: business.data?.name ?? "TENH workspace", planCode: billing.data.plan_code, billingCycle: billing.data.billing_cycle,
     amount: `${minor.slice(0, -2)}.${minor.slice(-2)}`, currency: attempt.currency, reference: attempt.reference, transactionReference: attempt.verified_hash,
     environment: attempt.environment, state: attempt.state, application, invoiceId,
     qrImage: showQr && Date.parse(attempt.expires_at) > Date.now() ? await QRCode.toDataURL(attempt.qr, { width: 280, margin: 2 }) : null,
     expiresAt: attempt.expires_at, nextCheckAt: attempt.next_check_at, serverTime: new Date().toISOString(),
-    automaticChecksRemaining: Math.max(0, 3 - attempt.check_count),
-    canCheck: attempt.state === "pending" || attempt.state === "verified" || (attempt.state === "review" && !attempt.verified_hash) };
+    automaticChecksRemaining: attempt.pilot_authorization_id ? pilot?.inquiriesRemaining ?? 0 : Math.max(0, 3 - attempt.check_count),
+    reconciliationRequired: pilotBlocked && !attempt.verified_hash,
+    canCheck: attempt.state === "verified" || (!pilotBlocked && (attempt.state === "pending" || (attempt.state === "review" && !attempt.verified_hash))) };
 }

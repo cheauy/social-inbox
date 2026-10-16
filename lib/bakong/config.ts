@@ -5,7 +5,7 @@ export type BakongConfig = {
   accountType: "individual" | "merchant";
   token: string; fingerprint: string; accountId: string; merchantId: string; merchantName: string;
   merchantCity: string; acquiringBank: string; environment: "sandbox" | "production";
-  baseUrl: string; checkoutRequested: boolean; dailyBudget: number;
+  baseUrl: string; checkoutRequested: boolean; pilotRequested: boolean; dailyBudget: number;
 };
 
 export function getBakongConfig(): BakongConfig | null {
@@ -30,5 +30,6 @@ export function getBakongConfig(): BakongConfig | null {
   // An individual account cannot reuse approval of the same token's merchant configuration.
   const fingerprint = createHash("sha256").update(accountType === "individual" ? `individual:${token}` : token).digest("hex");
   return { accountType, token, fingerprint, accountId, merchantId: accountType === "merchant" ? merchantId : "", merchantName,
-    merchantCity, acquiringBank, environment, baseUrl, dailyBudget, checkoutRequested: env.BAKONG_CHECKOUT_ENABLED === "true" };
+    merchantCity, acquiringBank, environment, baseUrl, dailyBudget, checkoutRequested: env.BAKONG_CHECKOUT_ENABLED === "true",
+    pilotRequested: env.BAKONG_PILOT_ENABLED === "true" };
 }

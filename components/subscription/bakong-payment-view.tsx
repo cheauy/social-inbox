@@ -106,10 +106,11 @@ export function BakongPaymentView({ attemptId, businessId }: { attemptId: string
           <img className="mx-auto h-auto w-full max-w-[280px]" width={280} height={280} src={payment.qrImage} alt={t("Scan Bakong KHQR to pay", "ស្កេន Bakong KHQR ដើម្បីទូទាត់")} />
           <p className="mt-2 text-sm tabular-nums">{Math.floor(expires / 60)}:{String(expires % 60).padStart(2, "0")}</p>
         </div> : null}
-        {payment.state === "pending" && expires === 0 ? <p className="mt-4 text-sm text-amber-800">{t("QR expired. Check payment before trying again.", "QR ផុតកំណត់។ ពិនិត្យការទូទាត់មុនព្យាយាមម្ដងទៀត។")}</p> : null}
+        {payment.state === "pending" && expires === 0 && !payment.reconciliationRequired ? <p className="mt-4 text-sm text-amber-800">{t("QR expired. Check payment before trying again.", "QR ផុតកំណត់។ ពិនិត្យការទូទាត់មុនព្យាយាមម្ដងទៀត។")}</p> : null}
         {payment.state === "verified" ? <p className="mt-4 text-sm">{t("Activation pending. No new payment needed.", "កំពុងរង់ចាំបើកដំណើរការ។ មិនចាំបាច់បង់ម្ដងទៀត។")}</p> : null}
         {payment.state === "review" ? <p className="mt-4 text-sm">{t("TENH support must review this payment. Do not pay again.", "ក្រុម TENH ត្រូវពិនិត្យការទូទាត់នេះ។ កុំបង់ម្ដងទៀត។")}</p> : null}
         {payment.application === "historical" ? <p className="mt-4 text-sm">{t("This payment belongs to an earlier subscription period.", "ការទូទាត់នេះជារបស់រយៈពេលជាវមុន។")}</p> : null}
+        {payment.reconciliationRequired ? <p role="status" className="mt-4 text-sm text-amber-800">{t("This payment is unresolved. TENH support must review the saved attempt. Do not pay again.", "ការទូទាត់នេះមិនទាន់ច្បាស់លាស់។ សូមទាក់ទង TENH ដើម្បីពិនិត្យ។ កុំបង់ប្រាក់ម្តងទៀត។")}</p> : null}
         <div className="mt-5 flex flex-wrap gap-2">
           {payment.canCheck ? <button type="button" className={button} disabled={busy || (payment.state !== "verified" && cooldown > 0)} onClick={() => void check()}>{t("Check payment", "ពិនិត្យការទូទាត់")}{cooldown > 0 && payment.state !== "verified" ? ` · ${Math.ceil(cooldown / 60)}m` : ""}</button> : null}
           {payment.application === "active" ? <button type="button" className={button} disabled={busy} onClick={() => void continueToSubscription()}>{t("Continue", "បន្ត")}</button> : null}
