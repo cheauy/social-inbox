@@ -1,0 +1,54 @@
+{
+  "baseCommit": "7c2fe6e7596e5b5742a99c82e23975fd27e0db62",
+  "files": [
+    {
+      "path": "app/api/bakong/admin/route.ts",
+      "sha256": "118e8d3da16019ee72150cb87d0ba114142698f49f249a91c5b33a8d2e515916"
+    },
+    {
+      "path": "components/billing/bakong-reconciliation-panel.tsx",
+      "sha256": "73a05ee75c05ada093fdce82dfa0c94c0074c4683e273c8f30bd04e6d6fe0718"
+    },
+    {
+      "path": "components/subscription/bakong-payment-view.tsx",
+      "sha256": "80d413a65748dfa78c9ebe9eb8bec75328377a0f3a3fd03f1a87ffe8d45aade1"
+    },
+    {
+      "path": "docs/config/bakong.env.example",
+      "sha256": "d81734e7dc9a13b41022c54ff4ee6b011557367cba4edceb1082346f313b24a6"
+    },
+    {
+      "path": "lib/bakong/payments.ts",
+      "sha256": "db648224a6206a00f02ab0635369cf499e00d3d666b9a14be1fe1ae1a47cf4de"
+    },
+    {
+      "path": "lib/bakong/types.ts",
+      "sha256": "6b82d3e5e73c9b643b0f3aad74f6c272dedca0a9b28ece39ca3b7389e668185d"
+    },
+    {
+      "path": "tests/bakong-expiry.test.cjs",
+      "sha256": "34e1d5650f93f9a74fad3cf9243c2dfb8dc2b04f4c9f782234e4d0db963ee415"
+    },
+    {
+      "path": "tests/bakong-fixture.cjs",
+      "sha256": "87c9863203e0765439fb0772c3360a77faead0eacad180d125360225a3b0a694"
+    },
+    {
+      "path": "tests/bakong-pilot.test.cjs",
+      "sha256": "19283b11bfeafd08b386a5fa6fe5c1315efa969190050b943e21840f56c5aa6a"
+    },
+    {
+      "path": "db/migrations/20261016070506_bakong_general_authorization.sql",
+      "sha256": "f52280a342d22696ae56692c900126d212a492f6169980a62e9ddfd48000b9fb"
+    },
+    {
+      "path": "tests/bakong-general.test.cjs",
+      "sha256": "97ffac9b3f3fb75562e72a626619f0a98eaa3c145240a650472a0bb6fe4b0c69"
+    },
+    {
+      "path": "tests/bakong-reconciliation.test.cjs",
+      "sha256": "4836814e1ad72685de2d9f089ba8452dd3cdc01378e7e5e9bf70a85a35e3cabc"
+    }
+  ]
+}
+

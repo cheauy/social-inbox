@@ -1,0 +1,16 @@
+{
+  "commit": "1250ede2c4eed1a802317f54724f480ae6c07bc5",
+  "githubStatus": {
+    "statuses": [
+      {
+        "context": "Vercel",
+        "state": "pending",
+        "target_url": "https://vercel.com/chea-uy/social-inbox/7PdNPT5yQQu64LA8vrXmrQe8QY4x"
+      }
+    ]
+  },
+  "vercelProjectAccess": "403 Forbidden; scope chea-uy",
+  "productionEnablement": "unverified",
+  "authenticatedProductionCheckout": "not tested"
+}
+

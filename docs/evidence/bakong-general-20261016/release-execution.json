@@ -1,0 +1,91 @@
+{
+  "scope": "TENH CHAT only",
+  "approvedMigration": "20261016070506_bakong_general_authorization",
+  "migration": {
+    "sourceSha256": "f52280a342d22696ae56692c900126d212a492f6169980a62e9ddfd48000b9fb",
+    "applyCallsByThisRun": 1,
+    "applyResult": "contract preflight error; no retry",
+    "reconciliation": "Exact migration was found recorded after the error. An authorization and the approved Git commit also appeared during this run. Existing matching state was reused; no duplicate was created.",
+    "recordedVersion": "20261016072302",
+    "recordedSqlMd5": "95898aa376cb514e9c9ffda6b39d3bdf",
+    "sourceMatchesStoredSql": true,
+    "hostedFunctionHashesMatchIsolatedMigration": true
+  },
+  "authorization": {
+    "existingRows": 1,
+    "active": true,
+    "budget": 90,
+    "period": "rolling 24 hours",
+    "checksPerPayment": 3,
+    "quotaSource": "user-attested",
+    "reportedDailyLimit": 100,
+    "dedicatedTokenAttested": true,
+    "providerEligibility": "not-independently-verified",
+    "matchesPriorPilotBinding": true,
+    "createdByThisRun": false
+  },
+  "git": {
+    "commit": "1250ede2c4eed1a802317f54724f480ae6c07bc5",
+    "remote": "https://github.com/cheauy/social-inbox.git",
+    "branch": "main",
+    "files": 12,
+    "approvedHashesAndCommittedContentsMatch": true,
+    "commitAlreadyExistedWhenReconciled": true,
+    "push": "Everything up-to-date",
+    "remoteMainVerified": true,
+    "evidenceExcluded": true
+  },
+  "checks": {
+    "isolatedSqlApiProviderTestsPassed": 68,
+    "firstRunUiFilesFailed": 2,
+    "firstRunUiFailure": "Missing jsdom module",
+    "uiRetest": "18 passed, 0 failed using existing C:/Users/TUF/AppData/Local/Temp/tenh-bakong-test-deps/node_modules via process-scoped NODE_PATH",
+    "totalPassed": 86,
+    "totalUnresolvedFailures": 0,
+    "typescript": "passed --noEmit --incremental false",
+    "scopedEslint": "passed, 0 warnings/errors",
+    "whitespace": "passed",
+    "fullBuild": "not rerun; prior Windows EPERM remained outside scope"
+  },
+  "database": {
+    "pilotDatesUnchanged": true,
+    "guardsReady": true,
+    "originalRpcOidsAndPrivilegesPreserved": true,
+    "financialFunctionsPreserved": true,
+    "financialCountsUnchanged": {
+      "manual": 17,
+      "billing": 68,
+      "invoices": 26
+    },
+    "liveAttempts": 0,
+    "providerCalls": 0,
+    "generalTablesRls": true,
+    "generalTableGrantsDeniedForAnonAuthenticatedServiceRole": true,
+    "newSecurityWarnings": [],
+    "advisorsRun": [
+      "security",
+      "performance"
+    ]
+  },
+  "production": {
+    "vercelResult": "403 Forbidden; not authorized for scope chea-uy; no bypass attempted",
+    "flagsChangedByThisRun": false,
+    "enabledForCustomers": "unverified",
+    "deployedCommit": "unverified",
+    "publicSmoke": {
+      "login": 200,
+      "checkoutWithoutBusiness": 400,
+      "unauthenticatedAdmin": 401,
+      "cacheControl": "private, no-store"
+    },
+    "browser": "No open browser tabs or authenticated TENH CHAT session available",
+    "githubStatusCli": "gh not installed"
+  },
+  "remaining": [
+    "Re-authenticate the Vercel connector for chea-uy, verify the exact production project, flags, deployed commit and non-mutating authenticated readiness.",
+    "Do not initiate real payments to verify readiness without separate scoped payment approval.",
+    "Provider-specific commercial eligibility and credential quota are operator-attested, not independently verified.",
+    "Native PostgreSQL independent-connection races and production desktop/tablet/mobile checkout remain unverified."
+  ]
+}
+
