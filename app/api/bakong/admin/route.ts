@@ -1,7 +1,7 @@
 import { getBillingAdminUser } from "@/lib/billing/require-billing-admin";
 import { validateAuthMutationRequest } from "@/lib/auth/mutation-request";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { bakongFailure, bakongJson, checkBakongPayment, UUID, type BakongAttempt } from "@/lib/bakong/payments";
+import { bakongFailure, bakongJson, bakongInquiryStatus, checkBakongPayment, UUID, type BakongAttempt } from "@/lib/bakong/payments";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
@@ -10,7 +10,7 @@ export async function GET(request: Request) {
   try {
     const cursor = new URL(request.url).searchParams.get("before");
     let query = supabaseAdmin.from("bakong_payment_attempts")
-      .select("id,business_id,amount,currency,environment,state,reference,verified_hash,reason,created_at")
+      .select("*")
       .in("state", ["pending", "verified", "review"]).order("created_at", { ascending: false }).order("id", { ascending: false }).limit(51);
     if (cursor) {
       if (!/^[A-Za-z0-9_-]{1,300}$/.test(cursor)) return bakongJson({ success: false }, 400);
@@ -26,10 +26,13 @@ export async function GET(request: Request) {
     if (businesses.error) throw new Error();
     const names = new Map((businesses.data ?? []).map(row => [row.id, row.name]));
     const last = rows.at(-1);
-    return bakongJson({ success: true, items: rows.map(row => ({ id: row.id, businessId: row.business_id,
+    const inquiries = await Promise.all(rows.map(row => bakongInquiryStatus(row as BakongAttempt)));
+    return bakongJson({ success: true, items: rows.map((row, index) => ({ id: row.id, businessId: row.business_id,
       workspaceName: names.get(row.business_id) ?? "TENH workspace", amount: String(row.amount), currency: row.currency,
       environment: row.environment, state: row.state, reference: row.reference, transactionReference: row.verified_hash,
-      reason: row.reason, createdAt: row.created_at })),
+      reason: inquiries[index].reason ?? row.reason, canCheck: inquiries[index].canCheck,
+      inquiriesRemaining: inquiries[index].inquiriesRemaining, reconciliationRequired: inquiries[index].reconciliationRequired,
+      createdAt: row.created_at })),
       nextCursor: (result.data?.length ?? 0) > 50 && last ? Buffer.from(JSON.stringify({ id: last.id, createdAt: last.created_at })).toString("base64url") : null });
   } catch (error) { return bakongFailure(error); }
 }

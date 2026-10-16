@@ -2,7 +2,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
 type Item = { id: string; businessId: string; workspaceName: string; amount: string; currency: string; environment: string;
-  state: string; reference: string; transactionReference: string | null; reason: string | null };
+  state: string; reference: string; transactionReference: string | null; reason: string | null;
+  canCheck: boolean; inquiriesRemaining: number; reconciliationRequired: boolean };
 export function BakongReconciliationPanel() {
   const language = useWorkspaceLanguageId();
   const t = (en: string, km: string) => language === "km" ? km : en;
@@ -51,8 +52,9 @@ export function BakongReconciliationPanel() {
         <p className="mt-1 break-all text-xs">{item.reference}</p>
         {item.transactionReference ? <p className="mt-1 break-all text-xs text-slate-500">{item.transactionReference}</p> : null}
         {item.reason ? <p className="mt-1 break-words text-xs text-amber-800">{item.reason}</p> : null}
+        {item.reconciliationRequired ? <p className="mt-1 text-xs text-amber-800">{t("Saved payment needs review. Do not ask the customer to pay again.", "ការបង់ប្រាក់ដែលបានរក្សាទុកត្រូវការពិនិត្យ។ កុំស្នើឱ្យអតិថិជនបង់ម្តងទៀត។")}</p> : null}
       </div>
-      <button type="button" className="min-h-11 shrink-0 rounded-xl border border-slate-200 px-3 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-blue-600 disabled:opacity-50" disabled={busy !== null || loading} onClick={() => void act(item.id)}>{busy === item.id ? t("Checking…", "កំពុងពិនិត្យ…") : t("Reconcile", "ផ្ទៀងផ្ទាត់")}</button>
+      <button type="button" className="min-h-11 shrink-0 rounded-xl border border-slate-200 px-3 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-blue-600 disabled:opacity-50" disabled={busy !== null || loading || !item.canCheck} onClick={() => void act(item.id)}>{busy === item.id ? t("Checking…", "កំពុងពិនិត្យ…") : t("Reconcile", "ផ្ទៀងផ្ទាត់")}</button>
     </li>)}</ul>
     {cursor ? <button type="button" className="mt-3 min-h-11 rounded-xl border px-4 text-sm" disabled={busy !== null} onClick={() => void act()}>{t("Load more", "ផ្ទុកបន្ថែម")}</button> : null}
   </section>;

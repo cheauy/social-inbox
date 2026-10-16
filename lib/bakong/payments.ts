@@ -152,6 +152,25 @@ export async function checkBakongPayment(attempt: BakongAttempt, actorUserId: st
   return result.state === "verified" ? checkBakongPayment(result, actorUserId) : result;
 }
 
+export async function bakongInquiryStatus(attempt: BakongAttempt, actor?: Pick<BakongActor, "userId" | "memberId">) {
+  const unavailable = { canCheck: false, inquiriesRemaining: 0, reconciliationRequired: true,
+    reason: "RECONCILIATION_CONFIGURATION_REQUIRED", nextCheckAt: attempt.next_check_at };
+  if (attempt.state === "verified") return { ...unavailable, canCheck: true, reconciliationRequired: false, reason: null };
+  if (attempt.state === "applied" || attempt.state === "test_paid") return { ...unavailable, reconciliationRequired: false, reason: null };
+  const config = getBakongConfig();
+  if (!config || config.environment !== attempt.environment || config.accountId !== attempt.recipient ||
+    (attempt.pilot_authorization_id && !config.pilotRequested)) return unavailable;
+  const result = await supabaseAdmin.rpc("tenh_bakong_inquiry_status", { p_attempt: attempt.id,
+    p_fingerprint: config.fingerprint, p_budget: config.dailyBudget });
+  if (result.error || !result.data) throw new BakongError(503, "PAYMENT_UNAVAILABLE");
+  // Keep the original pilot's named owner scope in customer views; billing admins use their separate route.
+  if (attempt.pilot_authorization_id && actor && (await pilotStatus(config, { ...actor, businessId: attempt.business_id }, attempt.id))?.eligible !== true) {
+    return { ...unavailable, reason: "PILOT_AUTHORIZATION_REVIEW" };
+  }
+  return result.data as { canCheck: boolean; inquiriesRemaining: number; reconciliationRequired: boolean;
+    reason: string | null; nextCheckAt?: string };
+}
+
 export async function bakongPaymentView(attempt: BakongAttempt, actor: Pick<BakongActor, "userId" | "memberId" | "owner">): Promise<BakongPaymentView> {
   const [billing, business] = await Promise.all([
     supabaseAdmin.from("billing_transactions").select("*").eq("id", attempt.id).eq("business_id", attempt.business_id).eq("provider", "bakong").maybeSingle(),
@@ -173,24 +192,16 @@ export async function bakongPaymentView(attempt: BakongAttempt, actor: Pick<Bako
   }
   const minor = decimalMinorUnits(attempt.amount, "USD")?.toString().padStart(3, "0");
   if (!minor) throw new BakongError(503, "INVALID_SAVED_AMOUNT");
-  let showQr = false;
   const config = getBakongConfig();
-  const pilot = config?.environment === "production" && attempt.pilot_authorization_id
-    ? await pilotStatus(config, { ...actor, businessId: attempt.business_id }, attempt.id) : null;
-  if (attempt.state === "pending" && config?.checkoutRequested && config.environment === attempt.environment && config.accountId === attempt.recipient) {
-    const capacity = await supabaseAdmin.rpc("tenh_bakong_capacity", { p_fingerprint: config.fingerprint, p_environment: config.environment,
-      p_recipient: config.accountId, p_budget: config.dailyBudget });
-    showQr = !capacity.error && capacity.data?.eligible === true && capacity.data?.canVerify === true;
-  }
-  if (attempt.pilot_authorization_id) showQr = attempt.state === "pending" && config?.pilotRequested === true && pilot?.canVerify === true;
-  const pilotBlocked = Boolean(attempt.pilot_authorization_id) && (!config?.pilotRequested || pilot?.canVerify !== true);
+  const inquiry = await bakongInquiryStatus(attempt, actor);
+  const showQr = attempt.state === "pending" && inquiry.canCheck &&
+    (attempt.pilot_authorization_id ? config?.pilotRequested : config?.checkoutRequested);
   return { id: attempt.id, businessId: attempt.business_id, userId: actor.userId, memberId: actor.memberId,
     workspaceName: business.data?.name ?? "TENH workspace", planCode: billing.data.plan_code, billingCycle: billing.data.billing_cycle,
     amount: `${minor.slice(0, -2)}.${minor.slice(-2)}`, currency: attempt.currency, reference: attempt.reference, transactionReference: attempt.verified_hash,
     environment: attempt.environment, state: attempt.state, application, invoiceId,
     qrImage: showQr && Date.parse(attempt.expires_at) > Date.now() ? await QRCode.toDataURL(attempt.qr, { width: 280, margin: 2 }) : null,
-    expiresAt: attempt.expires_at, nextCheckAt: attempt.next_check_at, serverTime: new Date().toISOString(),
-    automaticChecksRemaining: attempt.pilot_authorization_id ? pilot?.inquiriesRemaining ?? 0 : Math.max(0, 3 - attempt.check_count),
-    reconciliationRequired: pilotBlocked && !attempt.verified_hash,
-    canCheck: attempt.state === "verified" || (!pilotBlocked && (attempt.state === "pending" || (attempt.state === "review" && !attempt.verified_hash))) };
+    expiresAt: attempt.expires_at, nextCheckAt: inquiry.nextCheckAt ?? attempt.next_check_at, serverTime: new Date().toISOString(),
+    automaticChecksRemaining: inquiry.inquiriesRemaining, reconciliationRequired: inquiry.reconciliationRequired,
+    reconciliationReason: inquiry.reason, canCheck: inquiry.canCheck };
 }

@@ -7,4 +7,5 @@ export type BakongPaymentView = {
   qrImage: string | null; expiresAt: string; serverTime: string; nextCheckAt: string;
   invoiceId: string | null; canCheck: boolean; automaticChecksRemaining: number;
   reconciliationRequired?: boolean;
+  reconciliationReason?: string | null;
 };

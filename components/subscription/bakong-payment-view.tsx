@@ -112,7 +112,7 @@ export function BakongPaymentView({ attemptId, businessId, qrClosed = false }: {
   const expires = payment ? Math.max(0, Math.ceil((Date.parse(payment.expiresAt) - now) / 1000)) : 0;
   const cooldown = payment ? Math.max(0, Math.ceil((Date.parse(payment.nextCheckAt) - now) / 1000)) : 0;
   const title = !payment ? t("Payment status", "ស្ថានភាពទូទាត់") : payment.state === "test_paid" ? t("Test payment confirmed", "បានបញ្ជាក់ការទូទាត់សាកល្បង") :
-    payment.application === "active" ? t("Subscription active", "ការជាវសកម្ម") : payment.state === "review" ? t("Payment needs review", "ការទូទាត់ត្រូវការពិនិត្យ") :
+    payment.application === "active" ? t("Subscription active", "ការជាវសកម្ម") : (payment.state === "review" || payment.reconciliationRequired) ? t("Payment needs review", "ការទូទាត់ត្រូវការពិនិត្យ") :
     payment.state === "verified" || payment.state === "applied" ? t("Payment received", "បានទទួលការទូទាត់") : t("Waiting for payment", "កំពុងរង់ចាំការទូទាត់");
   return <section className="mx-auto w-full max-w-xl space-y-4 p-4 sm:p-6" aria-busy={busy}>
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -121,6 +121,7 @@ export function BakongPaymentView({ attemptId, businessId, qrClosed = false }: {
       {payment?.environment === "sandbox" ? <p className="mt-3 rounded-lg bg-amber-50 p-3 font-bold text-amber-800">{t("Test payment · no paid access", "ការទូទាត់សាកល្បង · គ្មានសិទ្ធិបង់ប្រាក់")}</p> : null}
       {!payment && !error ? <p role="status" className="mt-4 text-sm">{t("Loading…", "កំពុងផ្ទុក…")}</p> : null}
       {payment ? <>
+        {payment.reconciliationReason === "INQUIRY_LIMIT_REVIEW" ? <p role="status" className="mt-3 text-sm text-amber-800">{t("The verification limit has been reached. Your saved payment needs support review. Do not pay again.", "ដល់កម្រិតផ្ទៀងផ្ទាត់ហើយ។ ការបង់ប្រាក់ដែលបានរក្សាទុកត្រូវការជំនួយពិនិត្យ។ កុំបង់ម្តងទៀត។")}</p> : null}
         <p className="mt-3 break-words text-sm text-slate-600">{payment.workspaceName} · {payment.planCode} · {payment.billingCycle}</p>
         <p className="mt-2 text-3xl font-bold tabular-nums">{payment.currency} {payment.amount}</p>
         <p className="mt-2 break-all text-xs text-slate-500">{t("Reference", "លេខយោង")}: {payment.reference}</p>
@@ -135,7 +136,7 @@ export function BakongPaymentView({ attemptId, businessId, qrClosed = false }: {
         {payment.state === "verified" ? <p className="mt-4 text-sm">{t("Activation pending. No new payment needed.", "កំពុងរង់ចាំបើកដំណើរការ។ មិនចាំបាច់បង់ម្ដងទៀត។")}</p> : null}
         {payment.state === "review" ? <p className="mt-4 text-sm">{t("TENH support must review this payment. Do not pay again.", "ក្រុម TENH ត្រូវពិនិត្យការទូទាត់នេះ។ កុំបង់ម្ដងទៀត។")}</p> : null}
         {payment.application === "historical" ? <p className="mt-4 text-sm">{t("This payment belongs to an earlier subscription period.", "ការទូទាត់នេះជារបស់រយៈពេលជាវមុន។")}</p> : null}
-        {payment.reconciliationRequired ? <p role="status" className="mt-4 text-sm text-amber-800">{t("This payment is unresolved. TENH support must review the saved attempt. Do not pay again.", "ការទូទាត់នេះមិនទាន់ច្បាស់លាស់។ សូមទាក់ទង TENH ដើម្បីពិនិត្យ។ កុំបង់ប្រាក់ម្តងទៀត។")}</p> : null}
+        {payment.reconciliationRequired && payment.reconciliationReason !== "INQUIRY_LIMIT_REVIEW" ? <p role="status" className="mt-4 text-sm text-amber-800">{t("This payment is unresolved. TENH support must review the saved attempt. Do not pay again.", "ការទូទាត់នេះមិនទាន់ច្បាស់លាស់។ សូមទាក់ទង TENH ដើម្បីពិនិត្យ។ កុំបង់ប្រាក់ម្តងទៀត។")}</p> : null}
         <div className="mt-5 flex flex-wrap gap-2">
           {payment.canCheck ? <button type="button" className={button} disabled={busy || (payment.state !== "verified" && cooldown > 0)} onClick={() => void check()}>{t("Check payment", "ពិនិត្យការទូទាត់")}{cooldown > 0 && payment.state !== "verified" ? ` · ${Math.ceil(cooldown / 60)}m` : ""}</button> : null}
           {payment.application === "active" ? <button type="button" className={button} disabled={busy} onClick={() => void continueToSubscription()}>{t("Continue", "បន្ត")}</button> : null}

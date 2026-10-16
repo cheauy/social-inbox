@@ -6,7 +6,7 @@ const { loader } = require('./tenh-seven/harness.cjs');
 const load = loader({ 'server-only': {} });
 const { getTrustedPlan, buildPurchaseRecord } = load('lib/billing/subscription-purchase.ts');
 
-async function database(installBakong = true, repairRequestTime = true) {
+async function database(installBakong = true, repairRequestTime = true, installGeneral = true) {
   const filename = path.resolve('tests/payway-application-baseline.test.cjs');
   const source = fs.readFileSync(filename, 'utf8');
   const moduleFixture = { exports: {} };
@@ -20,7 +20,9 @@ async function database(installBakong = true, repairRequestTime = true) {
   await db.exec(fs.readFileSync('db/migrations/20261015113000_payment_application_baselines.sql', 'utf8'));
   if (installBakong) {
     await db.exec(fs.readFileSync('db/migrations/20261015140343_bakong_subscription_payments.sql', 'utf8'));
+    if (installGeneral && repairRequestTime) await db.exec(fs.readFileSync('db/migrations/20261016043734_bakong_scoped_pilot.sql', 'utf8'));
     if (repairRequestTime) await db.exec(fs.readFileSync('db/migrations/20261016063606_bakong_request_time.sql', 'utf8'));
+    if (installGeneral && repairRequestTime) await db.exec(fs.readFileSync('db/migrations/20261016070506_bakong_general_authorization.sql', 'utf8'));
   }
   return { db, trial: () => moduleFixture.exports.trial(db) };
 }

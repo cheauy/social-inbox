@@ -184,6 +184,20 @@ test('auth revocation clears the private payment and cannot initiate an expiry r
   } finally { await f.close(); }
 });
 
+test('exhausted shared inquiry allowance shows review, hides QR/checks and never starts a new payment', async () => {
+  const f = await fixture({ record: { qrImage: null, canCheck: false, automaticChecksRemaining: 0,
+    reconciliationRequired: true, reconciliationReason: 'INQUIRY_LIMIT_REVIEW' } });
+  try {
+    await f.render(); assert.match(f.dom.window.document.body.textContent, /Payment needs review/);
+    assert.match(f.dom.window.document.body.textContent, /verification limit has been reached/);
+    assert.match(f.dom.window.document.body.textContent, /Do not pay again/);
+    assert.equal(f.dom.window.document.querySelector('img'), null);
+    assert.ok(![...f.dom.window.document.querySelectorAll('button')].some(button => button.textContent.includes('Check payment')));
+    await f.advance(300000); assert.equal(f.requests.filter(request => request.method === 'POST').length, 0);
+    assert.equal(f.record.state, 'pending');
+  } finally { await f.close(); }
+});
+
 test('real route wiring preserves the saved workspace on reload and closed status on Subscription', async () => {
   const marker = () => null;
   const denied = () => { throw Error('Unexpected checkout/auth/database execution'); };

@@ -18,7 +18,6 @@ const pricing = loader()('lib/billing/subscription-purchase.ts');
 
 async function fixture() {
   const f = await moduleFixture.exports.fixture('production', 'individual');
-  await f.db.exec(sql);
   await f.db.query("update business_subscriptions set business_id=$1,status='active',plan_code='pro',billing_cycle='12-months',member_limit=8,channel_limit=12,current_period_start='2026-08-21T10:03:56.418985Z',current_period_end=$2,last_paid_amount=566.4,last_paid_currency='USD',pricing_version='v3.11.31.21',pricing_snapshot='{}' where business_id=$3", [BUSINESS, END, f.seeded.businessId]);
   await f.db.query('update team_members set business_id=$1,user_id=$2 where id=$3', [BUSINESS, USER, f.memberId]);
   f.seeded.businessId = BUSINESS; f.state.userId = USER;
@@ -29,11 +28,11 @@ async function fixture() {
     const subscription = await f.subscription();
     const trusted = pricing.getTrustedPlan('custom', '12-months', 13, 8, false, true, 'none', subscription);
     assert.ok(trusted);
-    const r = await f.db.query(`with stamp as (select clock_timestamp() t)
+    const r = await f.db.query(`with stamp as (select clock_timestamp()-make_interval(secs=>$9::integer) t)
       insert into tenh_bakong_private.pilot_authorizations(user_id,business_id,member_id,credential_fingerprint,recipient,baseline,approved_quote,approved_max_cents,
       approved_by,approval_reference,authorized_at,issue_until,inquiry_until,quota_source,reported_daily_limit,dedicated_token_attested,provider_eligibility,attestation_reference)
       select $1,$2,$3,$4,$5,tenh_compat_subscription_identity($6),$7,$8,$1,'synthetic explicit pilot approval',t,t+interval '30 minutes',t+interval '1 hour','user-attested',100,true,'not-independently-verified','synthetic user statement' from stamp returning id`,
-    [USER, BUSINESS, f.memberId, patch.fingerprint ?? f.config.fingerprint, patch.recipient ?? f.config.accountId, subscription, trusted.customUpgradeQuote, trusted.quote.totalCents]);
+    [USER, BUSINESS, f.memberId, patch.fingerprint ?? f.config.fingerprint, patch.recipient ?? f.config.accountId, subscription, trusted.customUpgradeQuote, trusted.quote.totalCents, patch.ageSeconds ?? 0]);
     return r.rows[0].id;
   };
   f.clearCooldown = () => f.db.exec("update tenh_bakong_private.request_budgets set blocked_until=null; update bakong_payment_attempts set next_check_at=clock_timestamp()-interval '1 second',lease_until=null");
@@ -193,7 +192,7 @@ test('provider-verified evidence survives invoice failure and remains applicable
 });
 
 test('migration keeps existing normal preparation, verification and application contracts intact', async () => {
-  const ctx = await database();
+  const ctx = await database(true, true, false);
   try {
     const signatures = ['public.tenh_complete_bakong_check(uuid,uuid,jsonb,uuid)','public.tenh_apply_bakong_payment(uuid,uuid)',
       'public.tenh_activate_verified_payway_payment(text,numeric,numeric,text,text,integer,text,jsonb,boolean)','public.tenh_approve_manual_payment(uuid,uuid,text,text)'];
@@ -239,7 +238,7 @@ test('browser and service roles cannot manufacture, extend or erase pilot approv
 });
 
 test('unknown installed preparation contract aborts the whole draft migration', async () => {
-  const ctx = await database();
+  const ctx = await database(true, true, false);
   try {
     const signature = 'public.tenh_prepare_bakong_payment(jsonb,uuid,uuid,uuid,jsonb,text,text,text,text,text,text,timestamptz,integer)';
     const original = (await ctx.db.query('select pg_get_functiondef($1::regprocedure) body', [signature])).rows[0].body;
