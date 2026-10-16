@@ -31,6 +31,7 @@ function route(seed = saved(), options = {}) {
   db.rpc = async (name, args) => { rpc.push({ name, args: { ...args } }); return { data: name === 'tenh_get_manual_payment_upload' ? options.preparedRow ?? null : seed.recoveryEvents ?? [],
     error: options.rpcError ? { message: 'unavailable' } : null }; };
   const api = loader({ 'next/server': { NextResponse: { json: (data, init) => Response.json(data, init) } },
+    '@/lib/billing/payment-cancellation-feature': { PAYMENT_CANCELLATION_ENABLED: options.lifecycleEnabled ?? true },
     '@/lib/supabase/admin': { supabaseAdmin: db },
     '@/lib/supabase/server': { createClient: async () => ({ auth: { getUser: async () => ({ data: { user: options.signedOut ? null : { id: 'user-1' } }, error: null }) } }) },
     '@/lib/auth/require-permission': { memberHasPermission: async () => !options.denied },

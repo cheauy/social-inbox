@@ -3,6 +3,7 @@ import { memberHasPermission } from "@/lib/auth/require-permission";
 import { describePaymentAttempt } from "@/lib/billing/payment-attempt";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { PAYMENT_CANCELLATION_ENABLED } from "@/lib/billing/payment-cancellation-feature";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,8 +55,8 @@ export async function GET(request: Request) {
       !(await memberHasPermission(membership.data, "billing", "manage"))) {
       return NextResponse.json({ success: false, error: "Payment attempt was not found." }, { status: 404, headers });
     }
-    const cancellation = await supabaseAdmin.from("payment_cancellations").select("outcome")
-      .eq("kind", source).eq("payment_id", manualId ?? transactionId).eq("business_id", payment.business_id).maybeSingle();
+    const cancellation = PAYMENT_CANCELLATION_ENABLED ? await supabaseAdmin.from("payment_cancellations").select("outcome")
+      .eq("kind", source).eq("payment_id", manualId ?? transactionId).eq("business_id", payment.business_id).maybeSingle() : { data: null, error: null };
     if (cancellation.error) throw new Error("Cancellation status unavailable.");
     if (cancellation.data && ["processing", "reconciliation_required", "withdrawn"].includes(cancellation.data.outcome) && payment.status !== "approved") {
       const attempt = describePaymentAttempt({ source, payment: { ...payment, status: "recovery_required" }, invoice: null, subscription: null, businessName: null });

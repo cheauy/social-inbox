@@ -117,13 +117,13 @@ export function BakongPaymentView({ attemptId, businessId, qrClosed = false }: {
       closing.current = true;
       setServerNow(Math.max(Date.parse(saved.expiresAt), clock.server + performance.now() - clock.client));
       // Expiry closes this checkout only. Its record stays in Billing history; a new plan selection issues a new QR.
-      router.replace("/dashboard/subscription");
+      router.replace(`/dashboard/subscription?bakong_closed=${encodeURIComponent(attemptId)}&purchase_business=${encodeURIComponent(businessId ?? "")}`);
     };
     const remaining = Date.parse(saved.expiresAt) - (clock.server + performance.now() - clock.client);
     if (remaining <= 0) { close(); return; }
     const timer = setTimeout(close, remaining);
     return () => clearTimeout(timer);
-  }, [payment, qrClosed, router]);
+  }, [payment, qrClosed, router, attemptId, businessId]);
 
   useEffect(() => {
     const clock = verificationClock.current;
@@ -157,16 +157,14 @@ export function BakongPaymentView({ attemptId, businessId, qrClosed = false }: {
   const checking = busy && !error && payment?.state === "pending" && !qrClosed && expires > 0 &&
     payment.canCheck && payment.automaticChecksRemaining > 0 && !payment.reconciliationRequired;
   const canRecover = payment?.canCheck && (payment.state !== "pending" || qrClosed || expires <= 600);
-  const title = error ? t("Payment status unavailable", "មិនអាចបង្ហាញស្ថានភាពទូទាត់បាន") : checking ? t("Checking payment status…", "កំពុងពិនិត្យស្ថានភាពទូទាត់…") :
+  const title = error ? t("Unable to confirm payment", "មិនអាចបញ្ជាក់ការទូទាត់") : checking ? t("Checking payment…", "កំពុងពិនិត្យការទូទាត់…") :
     closed && payment?.checkout === "cancelled" ? t("Payment cancelled", "បានបោះបង់ការទូទាត់") : closed ? t("QR expired", "QR ផុតកំណត់") : !payment ? t("Payment status", "ស្ថានភាពទូទាត់") : payment.state === "test_paid" ? t("Test payment confirmed", "បានបញ្ជាក់ការទូទាត់សាកល្បង") :
     payment.application === "active" ? t("Subscription active", "ការជាវសកម្ម") : (payment.state === "review" || payment.reconciliationRequired) ? t("Payment needs review", "ការទូទាត់ត្រូវការពិនិត្យ") :
     payment.state === "verified" || payment.state === "applied" ? t("Payment received", "បានទទួលការទូទាត់") : t("Waiting for payment", "កំពុងរង់ចាំការទូទាត់");
   return <section className="mx-auto w-full max-w-md space-y-4 p-3 sm:p-6" aria-busy={busy}>
     <div className="min-w-0">
       <p className="text-xs font-bold uppercase tracking-wide text-blue-600">Bakong KHQR</p>
-      <div role="status" aria-live="polite" aria-atomic="true" className="mt-2 flex items-center gap-3">
-        {checking ? <span aria-hidden="true" className="h-5 w-5 shrink-0 rounded-full border-2 border-slate-200 border-t-red-600 motion-safe:animate-spin motion-reduce:animate-none" /> : null}
-        <h1 className="min-w-0 flex-1 text-2xl font-bold text-slate-950">{title}</h1>
+      <div className="mt-2 flex items-center justify-end gap-3">
         {payment?.state === "pending" && !closed && !payment.reconciliationRequired && !busy && !error ? <CancelPaymentButton key={`${payment.id}:${payment.businessId}`} kind="bakong" paymentId={payment.id} businessId={payment.businessId}
           onResult={outcome => {
             if (outcome === "checkout_closed" || outcome === "expired") { closing.current = true; router.replace("/dashboard/subscription"); }
@@ -205,7 +203,11 @@ export function BakongPaymentView({ attemptId, businessId, qrClosed = false }: {
           </div>
         </figure> : null}
         {showQr ? <p className="mt-3 text-center text-sm tabular-nums text-slate-500">{t("Expires in", "ផុតកំណត់ក្នុង")} {Math.floor(expires / 60)}:{String(expires % 60).padStart(2, "0")}</p> : null}
-        {closed ? <p role="status" className="mt-4 text-sm text-slate-700">{t("Don't pay with this QR. Select a plan again for a new QR. Your current plan is unchanged.", "កុំប្រើ QR នេះទូទាត់។ ជ្រើសគម្រោងម្ដងទៀតដើម្បីទទួល QR ថ្មី។ គម្រោងបច្ចុប្បន្នមិនផ្លាស់ប្តូរទេ។")}</p> : null}
+        <div role="status" aria-live="polite" aria-atomic="true" className="mt-4 flex min-h-12 w-full items-center justify-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center text-sm font-semibold text-slate-700">
+          {checking ? <span aria-hidden="true" className="h-5 w-5 shrink-0 rounded-full border-2 border-slate-200 border-t-red-600 motion-safe:animate-spin motion-reduce:animate-none" /> : null}
+          <p>{title}</p>
+        </div>
+        {closed ? <p role="status" className="mt-4 text-sm text-slate-700">{t("This QR is closed. Your saved payment remains available for verification. Do not pay again while it is unresolved.", "QR នេះបានបិទ។ ការទូទាត់ដែលបានរក្សាទុកនៅតែអាចផ្ទៀងផ្ទាត់បាន។ កុំទូទាត់ម្ដងទៀត ខណៈមិនទាន់ដោះស្រាយ។")}</p> : null}
         {payment.state === "verified" ? <p className="mt-4 text-sm">{t("Activation pending. No new payment needed.", "កំពុងរង់ចាំបើកដំណើរការ។ មិនចាំបាច់បង់ម្ដងទៀត។")}</p> : null}
         {payment.state === "review" ? <p className="mt-4 text-sm">{t("TENH support must review this payment. Do not pay again.", "ក្រុម TENH ត្រូវពិនិត្យការទូទាត់នេះ។ កុំបង់ម្ដងទៀត។")}</p> : null}
         {payment.application === "historical" ? <p className="mt-4 text-sm">{t("This payment belongs to an earlier subscription period.", "ការទូទាត់នេះជារបស់រយៈពេលជាវមុន។")}</p> : null}
@@ -220,7 +222,7 @@ export function BakongPaymentView({ attemptId, businessId, qrClosed = false }: {
           {payment.invoiceId ? <Link className={button} href={`/dashboard/subscription/invoices/${encodeURIComponent(payment.invoiceId)}`}>{t("TENH Receipt", "បង្កាន់ដៃ TENH")}</Link> : null}
         </div>
       </> : null}
-      {error ? <div role="alert" className="mt-4 text-sm text-red-700"><p>{t("Unable to check payment. Your attempt is saved.", "មិនអាចពិនិត្យការទូទាត់។ ប្រតិបត្តិការរបស់អ្នកត្រូវបានរក្សាទុក។")}</p><button type="button" className={`${button} mt-2`} disabled={busy} onClick={() => setRevision(value => value + 1)}>{t("Try again", "ព្យាយាមម្ដងទៀត")}</button></div> : null}
+      {error ? <div role="alert" className="mt-4 text-sm text-red-700"><p>{t("Payment confirmation is temporarily unavailable. Your attempt is saved.", "ការបញ្ជាក់ការទូទាត់មិនអាចប្រើបានបណ្ដោះអាសន្ន។ ប្រតិបត្តិការរបស់អ្នកត្រូវបានរក្សាទុក។")}</p><button type="button" className={`${button} mt-2`} disabled={busy} onClick={() => setRevision(value => value + 1)}>{t("Try again", "ព្យាយាមម្ដងទៀត")}</button></div> : null}
     </div>
     <Link className={button} href="/dashboard/subscription">{t("Back to subscription", "ត្រឡប់ទៅការជាវ")}</Link>
   </section>;

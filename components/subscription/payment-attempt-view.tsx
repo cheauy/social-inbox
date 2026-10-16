@@ -31,6 +31,7 @@ function AttemptStatus({ kind, attemptId, businessId }: Props) {
   const [error, setError] = useState<number | null>(null);
   const [actionError, setActionError] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [verifying, setVerifying] = useState(false);
   const [revision, setRevision] = useState(0);
   const [file, setFile] = useState<File | null>(null);
   const inFlight = useRef(false);
@@ -46,6 +47,7 @@ function AttemptStatus({ kind, attemptId, businessId }: Props) {
       if (event === "INITIAL_SESSION" || event === "TOKEN_REFRESHED") return;
       identityEpoch.current += 1;
       setAttempt(null);
+      setVerifying(false);
       setRevision(value => value + 1);
     });
     const recheck = () => {
@@ -86,12 +88,17 @@ function AttemptStatus({ kind, attemptId, businessId }: Props) {
       inFlight.current = true;
       polls += 1;
       let shouldPoll = true;
+      let timedOut = false;
+      const deadline = setTimeout(() => { timedOut = true; controller.abort(); }, 30000);
       try {
         let saved = await read();
         if (controller.signal.aborted || epoch !== identityEpoch.current) return;
+        setAttempt(saved);
         if (kind === "payway" && (["pending", "processing", "draft", "created"].includes(saved.status) ||
             (verifyTerminal && !["approved", "recovery_required"].includes(saved.status)))) {
           const verify = new URLSearchParams({ tran_id: attemptId, purchase_business: saved.businessId, preserve_workspace: "1" });
+          setVerifying(true);
+          setError(null);
           const response = await fetch(`/api/payway/status?${verify}`, { method: "POST", cache: "no-store", signal: controller.signal });
           if (!response.ok) throw response.status;
           // Verification is server-controlled; resolve its saved result through the same read path.
@@ -103,7 +110,7 @@ function AttemptStatus({ kind, attemptId, businessId }: Props) {
         if (saved.status !== "prepared") setActionError(false);
         shouldPoll = ["pending", "processing", "submitted", "draft", "created"].includes(saved.status) || saved.application === "pending";
       } catch (failure) {
-        if (controller.signal.aborted || epoch !== identityEpoch.current) return;
+        if ((controller.signal.aborted && !timedOut) || epoch !== identityEpoch.current) return;
         const status = typeof failure === "number" ? failure : 503;
         setError(status);
         if ([401, 403, 404, 409].includes(status)) {
@@ -111,7 +118,9 @@ function AttemptStatus({ kind, attemptId, businessId }: Props) {
           shouldPoll = false;
         }
       } finally {
+        clearTimeout(deadline);
         inFlight.current = false;
+        if (mounted.current && epoch === identityEpoch.current) setVerifying(false);
       }
       if (!controller.signal.aborted && shouldPoll && polls < 20) {
         timer = setTimeout(refresh, Math.min(30000, 4000 * Math.pow(1.4, polls - 1)));
@@ -189,14 +198,14 @@ function AttemptStatus({ kind, attemptId, businessId }: Props) {
   const pending = attempt && ["submitted", "pending", "processing", "draft", "created"].includes(attempt.status);
   const cycle = getBillingCycleDefinition(attempt?.billingCycle);
   const term = cycle ? isKhmer ? cycle.months === 12 ? "1 ឆ្នាំ" : `${cycle.months} ខែ` : cycle.label : attempt?.billingCycle;
-  const title = !attempt ? t("Payment status", "ស្ថានភាពការទូទាត់")
+  const title = verifying ? t("Checking payment…", "កំពុងពិនិត្យការទូទាត់…") : !attempt ? t("Preparing payment…", "កំពុងរៀបចំការទូទាត់…")
     : attempt.status === "prepared" ? t("Upload interrupted", "ការផ្ទុកបានផ្អាក")
-    : attempt.status === "submitted" ? t("Payment submitted", "បានដាក់ស្នើការទូទាត់")
+    : attempt.status === "submitted" ? t("Submitted for review", "បានដាក់ស្នើសម្រាប់ការពិនិត្យ")
     : attempt.application === "active" ? t("Subscription active", "ការជាវសកម្ម")
     : attempt.application === "scheduled" ? t("Scheduled", "បានកំណត់ពេល")
     : attempt.application === "review" || attempt.status === "recovery_required" ? t("Payment needs review", "ការទូទាត់ត្រូវការពិនិត្យ")
     : attempt.status === "approved" ? attempt.environment === "sandbox" ? t("Test payment approved", "ការទូទាត់សាកល្បងបានអនុម័ត") : t("Payment received", "បានទទួលការទូទាត់")
-    : pending ? t("Awaiting confirmation", "កំពុងរង់ចាំការបញ្ជាក់")
+    : pending ? t("Waiting for payment", "កំពុងរង់ចាំការទូទាត់")
     : ({ rejected: t("Payment rejected", "ការទូទាត់ត្រូវបានបដិសេធ"), declined: t("Payment declined", "ការទូទាត់ត្រូវបានបដិសេធ"), failed: t("Payment failed", "ការទូទាត់បរាជ័យ"), cancelled: t("Cancelled", "បានបោះបង់"), expired: t("Payment request expired", "សំណើទូទាត់ផុតកំណត់") }[attempt.status] ?? t("Payment needs review", "ការទូទាត់ត្រូវការពិនិត្យ"));
   const detail = attempt?.status === "submitted" ? t("Awaiting review", "កំពុងរង់ចាំការពិនិត្យ")
     : attempt?.application === "pending" && attempt.status === "approved" ? t("Activation pending", "កំពុងរង់ចាំការបើកដំណើរការ")
@@ -204,10 +213,11 @@ function AttemptStatus({ kind, attemptId, businessId }: Props) {
     : attempt?.status === "prepared" ? t("Choose the same file to resume this request.", "ជ្រើសឯកសារដដែល ដើម្បីបន្តសំណើនេះ។")
     : attempt?.application === "review" ? t("Keep this reference. Do not pay again.", "រក្សាលេខយោងនេះ។ កុំទូទាត់ម្ដងទៀត។") : null;
 
-  return <section className="mx-auto w-full max-w-2xl p-4 sm:p-6" aria-busy={busy}>
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8">
-      <div className="flex items-start justify-between gap-3">
-        <h1 className="min-w-0 text-2xl font-bold text-slate-950">{title}</h1>
+  return <section className="mx-auto w-full max-w-md p-4 sm:p-6" aria-busy={busy || verifying}>
+    <div className="min-w-0">
+      <div role="status" aria-live="polite" aria-atomic="true" className="flex min-h-12 items-center justify-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center text-sm font-semibold text-slate-700">
+        {verifying && !error ? <span aria-hidden="true" className="h-5 w-5 shrink-0 rounded-full border-2 border-slate-200 border-t-blue-600 motion-safe:animate-spin motion-reduce:animate-none" /> : null}
+        <p>{title}</p>
         {attempt && ["pending", "prepared", "submitted"].includes(attempt.status) && attempt.application !== "review" ?
           <CancelPaymentButton key={`${kind}:${attempt.id}:${attempt.businessId}`} kind={kind} paymentId={attempt.id} businessId={attempt.businessId} submitted={attempt.status === "submitted"}
             onResult={outcome => {
@@ -218,23 +228,26 @@ function AttemptStatus({ kind, attemptId, businessId }: Props) {
       {detail ? <p role="status" className="mt-2 text-sm text-slate-600">{detail}</p> : null}
       {attempt ? <>
         <p className={`mt-4 inline-block rounded-lg px-3 py-1 text-sm font-semibold ${attempt.environment === "sandbox" ? "bg-violet-100 text-violet-800" : "bg-slate-100 text-slate-700"}`}>{paymentEnvironmentLabel(attempt.environment, isKhmer)}</p>
-        <dl className="mt-5 grid gap-4 text-sm sm:grid-cols-2">
+        <details className="mt-5 text-sm">
+          <summary className="cursor-pointer py-2 font-medium">{t("Payment details", "ព័ត៌មានការទូទាត់")}</summary>
+          <dl className="mt-3 grid gap-4 sm:grid-cols-2">
           {[ [t("Workspace", "កន្លែងធ្វើការ"), attempt.businessName], [t("Plan / term", "គម្រោង / រយៈពេល"), `${attempt.planCode.toUpperCase()} · ${term}`], [t("Amount", "ចំនួនទឹកប្រាក់"), attempt.amount !== null && attempt.currency ? new Intl.NumberFormat("en-US", { style: "currency", currency: attempt.currency }).format(attempt.amount) : t("Unavailable", "មិនមាន")], [t("Reference", "លេខយោង"), attempt.reference ?? attempt.id] ].map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-slate-500">{label}</dt><dd className="mt-1 break-words font-semibold text-slate-900">{value}</dd></div>)}
           {attempt.effectiveAt && attempt.application === "scheduled" ? <div><dt>{t("Effective date", "ថ្ងៃចាប់ផ្តើម")}</dt><dd>{new Date(attempt.effectiveAt).toLocaleDateString()}</dd></div> : null}
         </dl>
+        </details>
         {attempt.status === "prepared" ? <div className="mt-5 space-y-3">
           {attempt.upload ? <p className="break-words text-sm text-slate-600">{attempt.upload.fileName}</p> : null}
           <label className="block text-sm font-medium">{t("Payment proof", "ភស្តុតាងការទូទាត់")}<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="mt-2 block w-full max-w-full text-sm" disabled={busy} onChange={event => setFile(event.target.files?.[0] ?? null)} /></label>
           <button type="button" className={buttonClass} disabled={!file || busy} onClick={() => void recoverUpload()}>{t("Resume upload", "បន្តផ្ទុក")}</button>{" "}
           <button type="button" className={buttonClass} disabled={busy} onClick={() => void recoverUpload(true)}>{t("Cancel upload", "បោះបង់ការផ្ទុក")}</button>
         </div> : null}
-      </> : !error ? <p role="status" className="mt-4 text-sm">{t("Loading payment…", "កំពុងផ្ទុកការទូទាត់…")}</p> : null}
+      </> : null}
       {error ? <p role="alert" className="mt-4 text-sm text-red-700">{error === 401 ? t("Sign in to view this payment.", "ចូលគណនីដើម្បីមើលការទូទាត់នេះ។") : [403, 404, 409].includes(error) ? t("Payment unavailable.", "មិនអាចមើលការទូទាត់បាន។") : t("Unable to check status. Try again.", "មិនអាចពិនិត្យស្ថានភាព។ សូមព្យាយាមម្ដងទៀត។")}</p> : null}
       {actionError ? <p role="alert" className="mt-4 text-sm text-red-700">{t("Upload not confirmed. Check status or retry with the same file.", "ការផ្ទុកមិនទាន់បញ្ជាក់។ ពិនិត្យស្ថានភាព ឬព្យាយាមដោយឯកសារដដែល។")}</p> : null}
       <div className="mt-6 flex flex-wrap gap-3">
         {attempt?.application === "active" ? <button type="button" className={`${buttonClass} bg-blue-600 text-white`} disabled={busy} onClick={() => void continueToSubscription()}>{t("Continue", "បន្ត")}</button> : null}
         {attempt?.invoiceId ? <a className={buttonClass} href={`/dashboard/subscription/invoices/${encodeURIComponent(attempt.invoiceId)}?return_to=${encodeURIComponent(paymentAttemptUrl(kind, attemptId, attempt.businessId))}`}>{t("TENH Receipt", "បង្កាន់ដៃ TENH")}</a> : null}
-        {error === 401 ? <a className={buttonClass} href="/login">{t("Sign in", "ចូលគណនី")}</a> : <button type="button" className={buttonClass} disabled={busy} onClick={() => { requestedVerification.current = true; setRevision(value => value + 1); }}>{t("Check status", "ពិនិត្យស្ថានភាព")}</button>}
+        {error === 401 ? <a className={buttonClass} href="/login">{t("Sign in", "ចូលគណនី")}</a> : error ? <button type="button" className={buttonClass} disabled={busy || verifying} onClick={() => { requestedVerification.current = true; setRevision(value => value + 1); }}>{t("Try again", "ព្យាយាមម្ដងទៀត")}</button> : null}
         <a className={buttonClass} href="/dashboard/subscription">{t("Back to subscription", "ត្រឡប់ទៅការជាវ")}</a>
       </div>
     </div>

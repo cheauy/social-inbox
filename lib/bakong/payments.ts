@@ -12,6 +12,7 @@ import { generateBakongQr, checkBakongTransaction } from "./provider";
 import type { BakongPaymentView } from "./types";
 import { decimalMinorUnits } from "./money";
 import { getPendingBakongPayment } from "@/lib/billing/pending-bakong-payment";
+import { PAYMENT_CANCELLATION_ENABLED } from "@/lib/billing/payment-cancellation-feature";
 
 export const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 export const BAKONG_HEADERS = { "Cache-Control": "private, no-store, max-age=0", Vary: "Cookie, Origin" };
@@ -74,6 +75,7 @@ export async function pendingBakong(businessId: string) {
 
 /** Checkout lifecycle only. Settlement is tracked separately by state and verified_hash. */
 export async function bakongCheckout(attempt: Pick<BakongAttempt, "id" | "business_id" | "expires_at">): Promise<BakongPaymentView["checkout"]> {
+  if (!PAYMENT_CANCELLATION_ENABLED) return Date.parse(attempt.expires_at) > Date.now() ? "open" : "expired";
   const closed = await supabaseAdmin.from("payment_cancellations").select("outcome").eq("kind", "bakong")
     .eq("payment_id", attempt.id).eq("business_id", attempt.business_id).maybeSingle();
   if (closed.error) throw new BakongError(503, "PAYMENT_UNAVAILABLE");
@@ -90,7 +92,7 @@ export async function resumeBakongIntent(actor: BakongActor, intent: string | nu
     .eq("user_id", actor.userId).eq("intent_id", intent).maybeSingle();
   if (saved.error) throw new BakongError(503, "PAYMENT_UNAVAILABLE");
   if (!saved.data) return { attemptId: null, closed: false };
-  const closed = unpaid(saved.data) && await bakongCheckout(saved.data) !== "open";
+  const closed = PAYMENT_CANCELLATION_ENABLED && unpaid(saved.data) && await bakongCheckout(saved.data) !== "open";
   return { attemptId: closed ? null : saved.data.id as string, closed };
 }
 
@@ -108,7 +110,7 @@ export async function prepareBakongPayment(actor: BakongActor, body: Record<stri
   if (saved.error) throw new BakongError(503, "PAYMENT_UNAVAILABLE");
   if (saved.data) {
     if (Object.keys(selection).some(key => JSON.stringify(saved.data.selection?.[key]) !== JSON.stringify(selection[key as keyof typeof selection]))) throw new BakongError(400, "PURCHASE_INTENT_CHANGED");
-    if (unpaid(saved.data) && await bakongCheckout(saved.data) !== "open") throw new BakongError(409, "CHECKOUT_CLOSED");
+    if (PAYMENT_CANCELLATION_ENABLED && unpaid(saved.data) && await bakongCheckout(saved.data) !== "open") throw new BakongError(409, "CHECKOUT_CLOSED");
     return saved.data as BakongAttempt;
   }
   const pending = await pendingBakong(actor.businessId);

@@ -1,13 +1,21 @@
 import "server-only";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { PAYMENT_CANCELLATION_ENABLED } from "@/lib/billing/payment-cancellation-feature";
 
 /**
  * Shared by all checkout writers; the database claim guard (tenh_bakong_blocking_attempt) also
- * covers insert races. Only an open KHQR checkout or received funds awaiting application/review
- * block a workspace. Expired or customer-closed unpaid QRs never block a new purchase.
+ * covers insert races. Until the lifecycle release is approved, preserve the installed guard:
+ * every unresolved KHQR blocks a new purchase. The reviewed future branch is retained below.
  */
 export async function getPendingBakongPayment(businessId: string): Promise<string | null> {
   const failure = () => new Error("Unable to check the workspace's unresolved payment.");
+  if (!PAYMENT_CANCELLATION_ENABLED) {
+    // Match the installed database guard: every unresolved KHQR remains blocking, including expired QRs.
+    const saved = await supabaseAdmin.from("billing_transactions").select("id").eq("business_id", businessId)
+      .eq("provider", "bakong").eq("status", "pending").order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (saved.error) throw failure();
+    return saved.data?.id ?? null;
+  }
   const pending = await supabaseAdmin.from("billing_transactions").select("id").eq("business_id", businessId)
     .eq("provider", "bakong").eq("status", "pending").order("created_at", { ascending: true });
   if (pending.error) throw failure();

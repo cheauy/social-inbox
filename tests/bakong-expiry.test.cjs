@@ -101,6 +101,23 @@ test('KHQR card uses the saved QR, server receiver and exact amount with actions
   } finally { await f.close(); }
 });
 
+test('KHQR waiting and actual verification use one passive status area below the QR and original countdown', async () => {
+  let finish;
+  const f = await fixture({ response: (record, method) => method === 'POST' ? new Promise(resolve => { finish = () => resolve(Response.json({ success: true, attempt: record })); }) : Response.json({ success: true, attempt: record }) });
+  try {
+    await f.render();
+    const card = f.dom.window.document.querySelector('figure'), status = f.dom.window.document.querySelector('[aria-live="polite"]');
+    assert.ok(card.compareDocumentPosition(status) & 4); assert.ok(status.classList.contains('rounded-xl'));
+    assert.match(status.textContent, /Waiting for payment/); assert.equal(status.querySelector('button'), null);
+    assert.equal(f.dom.window.document.querySelector('h1'), null);
+    await f.advance(300000); await f.advance(0); await f.advance(0);
+    assert.match(status.textContent, /Checking payment/); assert.ok(status.querySelector('[class*="animate-spin"]'));
+    await act(async () => finish());
+    assert.match(status.textContent, /Waiting for payment/); assert.equal(status.querySelector('[class*="animate-spin"]'), null);
+    assert.equal(f.record.expiresAt, new Date(START + LIFETIME).toISOString());
+  } finally { await f.close(); }
+});
+
 test('automatic inquiry uses POST only after five visible online minutes, not the initial status GET', async () => {
   const f = await fixture({ record: { nextCheckAt: new Date(START).toISOString() } });
   try {
@@ -130,7 +147,7 @@ test('QR closes at its saved absolute 15-minute deadline and replaces the route 
     await f.advance(1);
     assert.equal(f.dom.window.document.querySelector('img'), null);
     // Expiry closes the checkout and returns to Subscription without an expired-payment panel.
-    assert.deepEqual(f.navigations, ['/dashboard/subscription']);
+    assert.deepEqual(f.navigations, [`/dashboard/subscription?bakong_closed=${ID}&purchase_business=${BUSINESS}`]);
     await f.advance(10000); assert.equal(f.navigations.length, 1);
     assert.equal(f.record.state, 'pending'); assert.equal(f.record.expiresAt, new Date(START + LIFETIME).toISOString());
   } finally { await f.close(); }
@@ -178,7 +195,7 @@ test('closed QR on Subscription keeps reconciliation reachable and honors saved 
   try {
     await f.render({ qrClosed: true });
     assert.equal(f.navigations.length, 0); assert.equal(f.dom.window.document.querySelector('img'), null);
-    assert.match(f.dom.window.document.body.textContent, /Select a plan again for a new QR/);
+    assert.match(f.dom.window.document.body.textContent, /saved payment remains available for verification/);
     await f.advance(300000); assert.equal(f.requests.filter(r => r.method === 'POST').length, 1);
     await f.advance(300000); assert.equal(f.requests.filter(r => r.method === 'POST').length, 1);
     assert.equal(f.record.state, 'pending');
@@ -203,7 +220,7 @@ test('a pending inquiry racing expiry keeps the saved result available on Subscr
     await f.render();
     await f.refresh();
     assert.equal(typeof release, 'function');
-    assert.match(f.dom.window.document.body.textContent, /Checking payment status/);
+    assert.match(f.dom.window.document.body.textContent, /Checking payment/);
     const spinner = f.dom.window.document.querySelector('[class*="animate-spin"]');
     assert.ok(spinner); assert.ok(spinner.classList.contains('motion-reduce:animate-none'));
     const status = spinner.closest('[role="status"]'); assert.equal(status.getAttribute('aria-live'), 'polite');
@@ -233,7 +250,7 @@ test('an offline or failed inquiry hides the QR at expiry without discarding the
   try {
     await f.render();
     await f.refresh();
-    assert.match(f.dom.window.document.body.textContent, /Payment status unavailable/);
+    assert.match(f.dom.window.document.body.textContent, /confirmation is temporarily unavailable/);
     assert.equal(f.dom.window.document.querySelector('[class*="animate-spin"]'), null);
     await f.advance(1000); assert.equal(f.navigations.length, 1); assert.equal(f.record.state, 'pending');
     assert.equal(f.dom.window.document.querySelector('img'), null);

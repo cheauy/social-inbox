@@ -14,7 +14,7 @@ function server(options = {}) {
     { id: 'removed', user_id: 'user', business_id: 'removed', role: 'owner', is_active: false },
     { id: 'unrelated', user_id: 'other', business_id: 'other', role: 'owner', is_active: true },
   ], payment_cancellations: [], manual_payment_requests: [], manual_payment_uploads: [], billing_transactions: [], bakong_payment_attempts: [], ...options.seed });
-  const load = loader({ '@/lib/supabase/admin': { supabaseAdmin: db }, '@/lib/supabase/server': {
+  const load = loader({ '@/lib/billing/payment-cancellation-feature': { PAYMENT_CANCELLATION_ENABLED: options.lifecycleEnabled ?? true }, '@/lib/supabase/admin': { supabaseAdmin: db }, '@/lib/supabase/server': {
     createClient: async () => ({ auth: { getUser: async () => ({ data: { user: options.unauthenticated ? null : { id: 'user' } }, error: null }) } }),
   } }, { URLSearchParams });
   return { db, get: () => load('app/api/subscription/pending-payments/route.ts').GET(new Request('https://app.tenhchat.com/api/subscription/pending-payments')) };

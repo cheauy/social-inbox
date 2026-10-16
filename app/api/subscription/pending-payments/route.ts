@@ -3,6 +3,7 @@ import { billingCurrency, billingNumber } from "@/lib/billing/payment-display";
 import type { SubscriptionPendingPayment } from "@/lib/billing/subscription-pending-payments";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { PAYMENT_CANCELLATION_ENABLED } from "@/lib/billing/payment-cancellation-feature";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,7 +39,7 @@ export async function GET() {
           .in("business_id", businesses).in("provider", ["payway", "bakong"]).in("status", ["draft", "pending", "submitted", "cancelled"]),
         supabaseAdmin.from("bakong_payment_attempts").select("id,business_id,expires_at,state,verified_hash")
           .in("business_id", businesses).in("state", ["pending", "review", "verified"]),
-        supabaseAdmin.from("payment_cancellations").select("kind,payment_id,outcome").in("business_id", businesses),
+        PAYMENT_CANCELLATION_ENABLED ? supabaseAdmin.from("payment_cancellations").select("kind,payment_id,outcome").in("business_id", businesses) : { data: [], error: null },
       ]);
       if ([manual, uploads, billing, bakong, cancellations].some(result => result.error)) throw new Error("Payment lookup failed");
       const cancelled = new Map((cancellations.data ?? []).map(row => [`${row.kind}:${row.payment_id}`, row.outcome]));

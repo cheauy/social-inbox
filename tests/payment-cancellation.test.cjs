@@ -6,6 +6,7 @@ const businessId='10000000-0000-4000-8000-000000000001';
 function service(options={}) {
   const calls=[];
   const load=loader({
+    '@/lib/billing/payment-cancellation-feature':{PAYMENT_CANCELLATION_ENABLED:true},
     '@/lib/supabase/admin':{supabaseAdmin:{rpc:async(name,args)=>{
       calls.push({name,args});
       if(options.rpcError)return{data:null,error:{message:'unavailable'}};

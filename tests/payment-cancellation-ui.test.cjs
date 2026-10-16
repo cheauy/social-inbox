@@ -10,7 +10,7 @@ async function fixture(options={}){
   dom.window.HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};
   dom.window.HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');};
   const requests=[],results=[];let resolve,reject;
-  const load=loader({react:React,'@/components/display/workspace-language-text':{useWorkspaceLanguageId:()=>options.language??'en'}},
+  const load=loader({react:React,'@/lib/billing/payment-cancellation-feature':{PAYMENT_CANCELLATION_ENABLED:true},'@/components/display/workspace-language-text':{useWorkspaceLanguageId:()=>options.language??'en'}},
     {window:dom.window,document:dom.window.document,HTMLElement:dom.window.HTMLElement,fetch:(url,init)=>{
       requests.push({url,body:JSON.parse(init.body)});return new Promise((ok,fail)=>{resolve=ok;reject=fail;});
     }});

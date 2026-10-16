@@ -2,6 +2,8 @@
 
 This is a local implementation and forward migration draft. No production migration, provider operation or deployment has been performed.
 
+Emergency compatibility release: `PAYMENT_CANCELLATION_ENABLED` remains `false`. Status readers use the installed schema, cancellation controls/RPC calls are disabled, and every unresolved KHQR still blocks another purchase under the existing database guard. Keep this code gate disabled until both migrations, shared reservation limits and an audited operator resolution procedure have been reviewed. Future-feature tests explicitly opt in inside isolated migrated fixtures; that does not enable the deployed feature.
+
 ## Provider limits
 
 - **ABA PayWay:** a durable database claim precedes verification and the existing signed Close Transaction request. Only a confirmed close can finish cancellation. PROCESSING, conflicting evidence, timeouts and lost acknowledgements remain for reconciliation. Browser cancel-return GETs only navigate; they cannot authorize cancellation.
