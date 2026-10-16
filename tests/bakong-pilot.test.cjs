@@ -29,9 +29,10 @@ async function fixture() {
     const subscription = await f.subscription();
     const trusted = pricing.getTrustedPlan('custom', '12-months', 13, 8, false, true, 'none', subscription);
     assert.ok(trusted);
-    const r = await f.db.query(`insert into tenh_bakong_private.pilot_authorizations(user_id,business_id,member_id,credential_fingerprint,recipient,baseline,approved_quote,approved_max_cents,
-      approved_by,approval_reference,issue_until,inquiry_until,quota_source,reported_daily_limit,dedicated_token_attested,provider_eligibility,attestation_reference)
-      values($1,$2,$3,$4,$5,tenh_compat_subscription_identity($6),$7,$8,$1,'synthetic explicit pilot approval',clock_timestamp()+interval '30 minutes',clock_timestamp()+interval '1 hour','user-attested',100,true,'not-independently-verified','synthetic user statement') returning id`,
+    const r = await f.db.query(`with stamp as (select clock_timestamp() t)
+      insert into tenh_bakong_private.pilot_authorizations(user_id,business_id,member_id,credential_fingerprint,recipient,baseline,approved_quote,approved_max_cents,
+      approved_by,approval_reference,authorized_at,issue_until,inquiry_until,quota_source,reported_daily_limit,dedicated_token_attested,provider_eligibility,attestation_reference)
+      select $1,$2,$3,$4,$5,tenh_compat_subscription_identity($6),$7,$8,$1,'synthetic explicit pilot approval',t,t+interval '30 minutes',t+interval '1 hour','user-attested',100,true,'not-independently-verified','synthetic user statement' from stamp returning id`,
     [USER, BUSINESS, f.memberId, patch.fingerprint ?? f.config.fingerprint, patch.recipient ?? f.config.accountId, subscription, trusted.customUpgradeQuote, trusted.quote.totalCents]);
     return r.rows[0].id;
   };
@@ -108,7 +109,7 @@ test('parallel preparation and a lost reply preserve one issued quote and a life
     assert.equal(one.attemptId, two.attemptId);
     const row = (await f.db.query('select * from tenh_bakong_private.pilot_authorizations')).rows[0];
     assert.equal(row.attempt_id, one.attemptId);
-    assert.ok(Number(row.issued_quote.amount) * 100 <= row.approved_max_cents);
+    assert.ok(Math.round(Number(row.issued_quote.amount) * 100) <= row.approved_max_cents);
     assert.equal(row.issued_quote.target_member_limit, 8); assert.equal(row.issued_quote.target_channel_limit, 13);
     const view = (await (await f.read(one.attemptId)).json()).attempt;
     assert.match(view.qrImage, /^data:image\/png;base64,/);

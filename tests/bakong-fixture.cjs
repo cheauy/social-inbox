@@ -6,17 +6,22 @@ const { loader } = require('./tenh-seven/harness.cjs');
 const load = loader({ 'server-only': {} });
 const { getTrustedPlan, buildPurchaseRecord } = load('lib/billing/subscription-purchase.ts');
 
-async function database(installBakong = true) {
+async function database(installBakong = true, repairRequestTime = true) {
   const filename = path.resolve('tests/payway-application-baseline.test.cjs');
   const source = fs.readFileSync(filename, 'utf8');
   const moduleFixture = { exports: {} };
   vm.runInNewContext(source.slice(0, source.indexOf("test('late normal PayWay")) + '\nmodule.exports={database,trial};',
     { require: createRequire(filename), module: moduleFixture, process, console, __dirname: path.dirname(filename), __filename: filename });
   const db = await moduleFixture.exports.database(false);
+  // Match hosted billing: every writer must supply this UTC timestamp, with no fallback default.
+  await db.exec('alter table billing_transactions add column request_time text not null');
   await db.exec('drop table manual_payment_uploads; alter table team_members add primary key(id); alter table team_members add column created_at timestamptz default now(); alter table businesses add primary key(id);');
   await db.exec(fs.readFileSync('db/migrations/20261015104508_manual_payment_upload_lifecycle.sql', 'utf8'));
   await db.exec(fs.readFileSync('db/migrations/20261015113000_payment_application_baselines.sql', 'utf8'));
-  if (installBakong) await db.exec(fs.readFileSync('db/migrations/20261015140343_bakong_subscription_payments.sql', 'utf8'));
+  if (installBakong) {
+    await db.exec(fs.readFileSync('db/migrations/20261015140343_bakong_subscription_payments.sql', 'utf8'));
+    if (repairRequestTime) await db.exec(fs.readFileSync('db/migrations/20261016063606_bakong_request_time.sql', 'utf8'));
+  }
   return { db, trial: () => moduleFixture.exports.trial(db) };
 }
 async function prepare(ctx, options = {}) {
