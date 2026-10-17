@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
 import type { PaymentAttempt } from "@/lib/billing/payment-attempt";
 import { paymentEnvironmentLabel } from "@/lib/billing/payment-display";
@@ -10,7 +11,7 @@ import { BakongPaymentView } from "./bakong-payment-view";
 import { CancelPaymentButton } from "./cancel-payment-button";
 import { PaymentSuccessCard } from "./payment-success-card";
 
-type Props = { kind: "manual" | "payway" | "bakong"; attemptId: string; businessId?: string | null };
+type Props = { kind: "manual" | "payway" | "bakong"; attemptId: string; businessId?: string | null; checkoutClosed?: boolean };
 const buttonClass = "inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-50";
 
 export function paymentAttemptUrl(kind: Props["kind"], id: string, businessId?: string | null) {
@@ -25,7 +26,8 @@ export function PaymentAttemptView(props: Props) {
   return <AttemptStatus key={`${props.kind}:${props.attemptId}:${props.businessId ?? ""}`} {...props} />;
 }
 
-function AttemptStatus({ kind, attemptId, businessId }: Props) {
+function AttemptStatus({ kind, attemptId, businessId, checkoutClosed = false }: Props) {
+  const router = useRouter();
   const isKhmer = useWorkspaceLanguageId() === "km";
   const t = (en: string, km: string) => isKhmer ? km : en;
   const [attempt, setAttempt] = useState<PaymentAttempt | null>(null);
@@ -41,14 +43,115 @@ function AttemptStatus({ kind, attemptId, businessId }: Props) {
   const mounted = useRef(true);
   const identityEpoch = useRef(0);
   const requestedVerification = useRef(false);
+  const latestAttempt = useRef<PaymentAttempt | null>(null);
+  const clock = useRef<{ server: number; client: number } | null>(null);
+  const expiryRequested = useRef(false);
+  const expiryChecking = useRef(false);
+  const expiryController = useRef<AbortController | null>(null);
+  const replaced = useRef(false);
+  const [remaining, setRemaining] = useState<number | null>(null);
+  const [observedProviderClose, setProviderClosed] = useState(false);
+  const providerClosed = checkoutClosed || observedProviderClose;
   const query = new URLSearchParams({ [kind === "manual" ? "manual_request" : "tran_id"]: attemptId });
   if (businessId) query.set("purchase_business", businessId);
   const endpoint = `/api/subscription/payment-status?${query}`;
 
   useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; expiryController.current?.abort(); };
+  }, []);
+
+  const acceptAttempt = useCallback((saved: PaymentAttempt) => {
+    const previous = latestAttempt.current;
+    // Reads cannot extend a checkout or let an older pending response replace
+    // a confirmed result already displayed for this identity.
+    if (previous?.checkoutExpiresAt && saved.checkoutExpiresAt !== previous.checkoutExpiresAt) throw 409;
+    if (previous?.status === "approved" && saved.status !== "approved") return previous;
+    if (saved.checkoutExpiresAt && Number.isFinite(Date.parse(saved.checkoutExpiresAt)) && saved.serverTime && Number.isFinite(Date.parse(saved.serverTime))) {
+      const client = performance.now();
+      clock.current = { server: Math.max(Date.parse(saved.serverTime), clock.current ? clock.current.server + client - clock.current.client : 0), client };
+    }
+    latestAttempt.current = saved;
+    setAttempt(saved);
+    return saved;
+  }, []);
+
+  const finishExpiredCheckout = useCallback(async () => {
+    if (!expiryRequested.current || inFlight.current || expiryChecking.current || replaced.current || !mounted.current || latestAttempt.current?.status === "approved") return;
+    expiryChecking.current = true;
+    const epoch = identityEpoch.current;
+    const controller = new AbortController();
+    expiryController.current = controller;
+    let timedOut = false;
+    const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, 10000);
+    try {
+      // One final saved-state read, after an outstanding verification completes.
+      // Countdown ticks never call the provider, cancel, or change access.
+      const response = await fetch(endpoint, { cache: "no-store", signal: controller.signal });
+      const result = await response.json() as { success?: boolean; attempt?: PaymentAttempt };
+      const saved = result.attempt;
+      if (controller.signal.aborted || !mounted.current || epoch !== identityEpoch.current) return;
+      if (response.ok && result.success && saved?.kind === kind && saved.id === attemptId && saved.businessId && (!businessId || saved.businessId === businessId)) {
+        acceptAttempt(saved);
+      }
+    } catch { /* A closed checkout remains available in saved history for reconciliation. */ }
+    finally {
+      clearTimeout(timeout);
+      expiryChecking.current = false;
+      if ((!controller.signal.aborted || timedOut) && mounted.current && epoch === identityEpoch.current && !replaced.current && latestAttempt.current?.status !== "approved") {
+        replaced.current = true;
+        router.replace("/dashboard/subscription");
+      }
+    }
+  }, [endpoint, kind, attemptId, businessId, acceptAttempt, router]);
+
+  useEffect(() => {
+    if (kind !== "payway" || !attempt?.checkoutExpiresAt || !clock.current || attempt.status === "approved") return;
+    const expires = Date.parse(attempt.checkoutExpiresAt);
+    if (!Number.isFinite(expires)) return;
+    function tick() {
+      const current = clock.current;
+      if (!current || !mounted.current) return;
+      const seconds = Math.max(0, Math.ceil((expires - (current.server + performance.now() - current.client)) / 1000));
+      setRemaining(seconds);
+      if (seconds === 0) {
+        expiryRequested.current = true;
+        void finishExpiredCheckout();
+      }
+    }
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, [kind, attempt?.checkoutExpiresAt, attempt?.status, finishExpiredCheckout]);
+
+  useEffect(() => {
+    if (kind !== "payway" || checkoutClosed || typeof window.MutationObserver !== "function") return;
+    // Observe only the provider's own mounted iframe being removed/hidden.
+    // This is presentation evidence, never financial verification.
+    let seenOpen = false;
+    function inspect() {
+      const frame = document.querySelector('#aba-checkout iframe[name="aba_webservice"]');
+      const container = document.getElementById("aba-checkout");
+      const sheet = document.getElementById("aba_checkout_sheet");
+      const open = Boolean(frame && container?.style.display !== "none" && sheet?.getAttribute("aria-hidden") !== "true");
+      if (open) seenOpen = true;
+      else if (seenOpen) setProviderClosed(true);
+    }
+    const observer = new window.MutationObserver(inspect);
+    inspect();
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["style", "class", "aria-hidden"] });
+    return () => observer.disconnect();
+  }, [kind, checkoutClosed]);
+
+  useEffect(() => {
     const { data } = createClient().auth.onAuthStateChange(event => {
       if (event === "INITIAL_SESSION" || event === "TOKEN_REFRESHED") return;
       identityEpoch.current += 1;
+      latestAttempt.current = null;
+      clock.current = null;
+      expiryRequested.current = false;
+      expiryController.current?.abort();
+      setRemaining(null);
       setAttempt(null);
       setVerifying(false);
       setRevision(value => value + 1);
@@ -66,7 +169,6 @@ function AttemptStatus({ kind, attemptId, businessId }: Props) {
   }, []);
 
   useEffect(() => {
-    mounted.current = true;
     const controller = new AbortController();
     const epoch = identityEpoch.current;
     const verifyTerminal = requestedVerification.current;
@@ -96,7 +198,12 @@ function AttemptStatus({ kind, attemptId, businessId }: Props) {
       try {
         let saved = await read();
         if (controller.signal.aborted || epoch !== identityEpoch.current) return;
-        setAttempt(saved);
+        saved = acceptAttempt(saved);
+        if (expiryRequested.current || (kind === "payway" && saved.checkoutExpiresAt && saved.serverTime && Date.parse(saved.checkoutExpiresAt) <= Date.parse(saved.serverTime))) {
+          expiryRequested.current = true;
+          shouldPoll = false;
+          return;
+        }
         if (kind === "payway" && (["pending", "processing", "draft", "created"].includes(saved.status) ||
             (verifyTerminal && !["approved", "recovery_required"].includes(saved.status)))) {
           const verify = new URLSearchParams({ tran_id: attemptId, purchase_business: saved.businessId, preserve_workspace: "1" });
@@ -108,7 +215,7 @@ function AttemptStatus({ kind, attemptId, businessId }: Props) {
           saved = await read();
         }
         if (controller.signal.aborted || epoch !== identityEpoch.current) return;
-        setAttempt(saved);
+        saved = acceptAttempt(saved);
         setCheckingStopped(false);
         setError(null);
         if (saved.status !== "prepared") setActionError(false);
@@ -125,8 +232,9 @@ function AttemptStatus({ kind, attemptId, businessId }: Props) {
         clearTimeout(deadline);
         inFlight.current = false;
         if (mounted.current && epoch === identityEpoch.current) setVerifying(false);
+        if (!controller.signal.aborted && epoch === identityEpoch.current && expiryRequested.current) void finishExpiredCheckout();
       }
-      if (!controller.signal.aborted && shouldPoll && polls < 20) {
+      if (!controller.signal.aborted && !expiryRequested.current && shouldPoll && polls < 20) {
         timer = setTimeout(refresh, Math.min(30000, 4000 * Math.pow(1.4, polls - 1)));
       } else if (!controller.signal.aborted && shouldPoll && mounted.current) {
         setCheckingStopped(true);
@@ -134,11 +242,11 @@ function AttemptStatus({ kind, attemptId, businessId }: Props) {
     }
     void refresh();
     return () => {
-      mounted.current = false;
       controller.abort();
+      expiryController.current?.abort();
       if (timer) clearTimeout(timer);
     };
-  }, [endpoint, kind, attemptId, businessId, revision]);
+  }, [endpoint, kind, attemptId, businessId, revision, acceptAttempt, finishExpiredCheckout]);
 
   async function continueToSubscription(destination: "/dashboard/inbox" | "/dashboard/subscription" = "/dashboard/subscription") {
     if (!attempt || inFlight.current) return;
@@ -204,7 +312,7 @@ function AttemptStatus({ kind, attemptId, businessId }: Props) {
 
   const pending = attempt && ["submitted", "pending", "processing", "draft", "created"].includes(attempt.status);
   const manualReview = kind === "manual" && attempt?.status === "submitted";
-  const checking = kind === "payway" && !error && !checkingStopped && (verifying || !attempt ||
+  const checking = kind === "payway" && !providerClosed && remaining !== 0 && !error && !checkingStopped && (verifying || !attempt ||
     (pending && attempt.application !== "review" && attempt.application !== "historical"));
   const cycle = getBillingCycleDefinition(attempt?.billingCycle);
   const term = cycle ? isKhmer ? cycle.months === 12 ? "1 ឆ្នាំ" : `${cycle.months} ខែ` : cycle.label : attempt?.billingCycle;
@@ -215,7 +323,7 @@ function AttemptStatus({ kind, attemptId, businessId }: Props) {
     : attempt.application === "scheduled" ? t("Scheduled", "បានកំណត់ពេល")
     : attempt.application === "review" || attempt.status === "recovery_required" ? t("Payment needs review", "ការទូទាត់ត្រូវការពិនិត្យ")
     : attempt.status === "approved" ? attempt.environment === "sandbox" ? t("Test payment approved", "ការទូទាត់សាកល្បងបានអនុម័ត") : t("Payment received", "បានទទួលការទូទាត់")
-    : pending ? t("Waiting for payment", "កំពុងរង់ចាំការទូទាត់")
+    : pending ? providerClosed ? t("Checkout closed", "បានបិទការទូទាត់") : t("Waiting for payment", "កំពុងរង់ចាំការទូទាត់")
     : ({ rejected: t("Payment rejected", "ការទូទាត់ត្រូវបានបដិសេធ"), declined: t("Payment declined", "ការទូទាត់ត្រូវបានបដិសេធ"), failed: t("Payment failed", "ការទូទាត់បរាជ័យ"), cancelled: t("Cancelled", "បានបោះបង់"), expired: t("Payment request expired", "សំណើទូទាត់ផុតកំណត់") }[attempt.status] ?? t("Payment needs review", "ការទូទាត់ត្រូវការពិនិត្យ"));
   const detail = attempt?.status === "submitted" ? t("Awaiting review", "កំពុងរង់ចាំការពិនិត្យ")
     : attempt?.application === "pending" && attempt.status === "approved" ? t("Activation pending", "កំពុងរង់ចាំការបើកដំណើរការ")
@@ -233,11 +341,16 @@ function AttemptStatus({ kind, attemptId, businessId }: Props) {
   }
 
   return <section className="mx-auto w-full max-w-md px-4 py-8 sm:py-12" aria-busy={busy || verifying}>
-    <div className="relative min-w-0 rounded-2xl border border-slate-200 bg-white px-5 pb-6 pt-12 shadow-[0_12px_40px_-20px_rgba(15,23,42,0.18)] sm:px-7 sm:pb-7 sm:pt-14">
+    <div data-payment-card className="relative min-w-0 rounded-2xl border border-slate-200 bg-white px-5 pb-6 pt-2 shadow-[0_12px_40px_-20px_rgba(15,23,42,0.18)] sm:px-7 sm:pb-7">
+      <div className="-mr-3 mb-5 flex min-h-11 items-center justify-end gap-2">
+        {kind === "payway" && attempt?.checkoutExpiresAt && remaining !== null ? <time dateTime={attempt.checkoutExpiresAt} aria-label={t("Checkout time remaining", "ពេលទូទាត់នៅសល់")} className="rounded-full bg-slate-50 px-3 py-1.5 text-sm font-semibold tabular-nums text-slate-600">
+          <span aria-hidden="true">{String(Math.floor(remaining / 60)).padStart(2, "0")}:{String(remaining % 60).padStart(2, "0")}</span><span className="sr-only">{remaining} {t("seconds", "វិនាទី")}</span>
+        </time> : null}
       <a href="/dashboard/subscription" aria-label={t("Close payment status", "បិទស្ថានភាពទូទាត់")}
-        className="absolute right-1.5 top-1.5 inline-flex h-11 w-11 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-50 hover:text-slate-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600">
+        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-50 hover:text-slate-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-5 w-5" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
       </a>
+      </div>
       <div role="status" aria-live="polite" aria-atomic="true" className="text-center">
         {checking ? <div aria-hidden="true" className="mx-auto mb-6 h-16 w-16 rounded-full border-[5px] border-teal-100 border-t-teal-600 motion-safe:animate-spin motion-reduce:animate-none" />
           : manualReview ? <div aria-hidden="true" className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-amber-50 text-amber-500">
@@ -255,12 +368,13 @@ function AttemptStatus({ kind, attemptId, businessId }: Props) {
         : t("Waiting for payment confirmation", "កំពុងរង់ចាំការបញ្ជាក់ការទូទាត់")}</p>
         : checkingStopped && pending ? <p role="status" className="mt-4 text-center text-sm leading-6 text-slate-600">{t("Confirmation is taking longer than expected. Check status or return later.", "ការបញ្ជាក់ចំណាយពេលយូរជាងធម្មតា។ សូមពិនិត្យស្ថានភាព ឬត្រឡប់មកវិញពេលក្រោយ។")}</p>
         : detail ? <p role="status" className="mt-3 text-center text-sm text-slate-600">{detail}</p> : null}
-    </div>
-    <div className="min-w-0 px-1">
+      {providerClosed && pending ? <p className="mt-4 text-center text-sm leading-6 text-slate-500">{t("The PayWay window was closed. Payment is still unconfirmed; keep this reference if you already paid.", "បានបិទផ្ទាំង PayWay។ ការទូទាត់មិនទាន់បានបញ្ជាក់។ សូមរក្សាលេខយោងនេះ បើអ្នកបានបង់រួច។")}</p> : null}
+      {remaining === 0 && attempt?.status !== "approved" ? <p role="status" className="mt-4 text-center text-sm text-slate-500">{t("Checkout time ended. Returning to subscription…", "អស់ពេលទូទាត់។ កំពុងត្រឡប់ទៅការជាវ…")}</p> : null}
       {attempt ? <>
-        {attempt.environment === "sandbox" ? <p className="mt-4 rounded-lg bg-violet-50 px-3 py-1 text-center text-xs font-semibold text-violet-800">{paymentEnvironmentLabel(attempt.environment, isKhmer)}</p> : null}
         <details className="mt-5 text-sm">
           <summary className="cursor-pointer py-2 font-medium">{t("Payment details", "ព័ត៌មានការទូទាត់")}</summary>
+          {attempt.environment === "sandbox" ? <p className="mb-3 text-xs font-medium text-violet-700">{paymentEnvironmentLabel(attempt.environment, isKhmer)}</p> : null}
+          {kind === "payway" && !attempt.checkoutExpiresAt ? <p className="mb-3 text-xs text-slate-500">{t("No checkout deadline was saved for this earlier attempt.", "ការទូទាត់ចាស់នេះមិនមានពេលកំណត់ដែលបានរក្សាទុកទេ។")}</p> : null}
           <dl className="mt-3 grid gap-4 sm:grid-cols-2">
           {[ [t("Workspace", "កន្លែងធ្វើការ"), attempt.businessName], [t("Plan / term", "គម្រោង / រយៈពេល"), `${attempt.planCode.toUpperCase()} · ${term}`], [t("Amount", "ចំនួនទឹកប្រាក់"), attempt.amount !== null && attempt.currency ? new Intl.NumberFormat("en-US", { style: "currency", currency: attempt.currency }).format(attempt.amount) : t("Unavailable", "មិនមាន")], [t("Reference", "លេខយោង"), attempt.reference ?? attempt.id] ].map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-slate-500">{label}</dt><dd className="mt-1 break-words font-semibold text-slate-900">{value}</dd></div>)}
           {attempt.effectiveAt && attempt.application === "scheduled" ? <div><dt>{t("Effective date", "ថ្ងៃចាប់ផ្តើម")}</dt><dd>{new Date(attempt.effectiveAt).toLocaleDateString()}</dd></div> : null}
@@ -285,7 +399,6 @@ function AttemptStatus({ kind, attemptId, businessId }: Props) {
               if (outcome === "cancelled") window.location.assign("/dashboard/subscription");
               else { setAttempt(saved => saved ? { ...saved, status: "recovery_required", application: "review" } : saved); setRevision(value => value + 1); }
             }} /> : null}
-        <a className={buttonClass} href="/dashboard/subscription">{t("Back to subscription", "ត្រឡប់ទៅការជាវ")}</a>
       </div>
     </div>
   </section>;

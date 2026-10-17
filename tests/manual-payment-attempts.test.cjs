@@ -394,3 +394,10 @@ test('a rejection race with zero affected rows cannot report success or notify',
   assert.equal(response.status,409);assert.equal(audited,false);
   assert.equal(db.history.some(x=>x.table==='member_notifications'),false);
 });
+
+test('Buy preflight discovers only the authorized workspace PayWay attempt without provider calls or writes',async()=>{
+ const h=fixture();h.db.tables.billing_transactions.push({id:'saved',business_id:business,provider:'payway',provider_transaction_id:'SAVED-PAYWAY',status:'pending'},
+  {id:'other',business_id:'different-workspace',provider:'payway',provider_transaction_id:'PRIVATE',status:'pending'});
+ const response=await h.invoke(null,'?mode=checkout');assert.equal(response.status,200);assert.equal(response.payWayAttemptId,'SAVED-PAYWAY');assert.deepEqual(h.effects,[]);assert.ok(h.db.history.every(r=>r.op==='read'));
+ h.db.failures.push({table:'billing_transactions'});assert.equal((await h.invoke(null,'?mode=checkout')).status,503);
+});

@@ -439,8 +439,18 @@ export async function GET(request: Request) {
     ticket = prepared.data as ManualUpload | null;
     if (requestId && !ticket) return manualError("Manual payment attempt was not found.", 404);
   }
+  // Checkout discovery covers the other retained payment method too. This is
+  // a saved-state read under the same authorized target workspace, with no
+  // provider inquiry, preparation, cancellation, or settlement inference.
+  const payWay = !requestId && url.searchParams.get("mode") === "checkout"
+    ? await supabaseAdmin.from("billing_transactions").select("provider_transaction_id")
+      .eq("business_id", businessId).eq("provider", "payway").in("status", ["pending", "processing", "draft", "created"])
+      .order("created_at", { ascending: false }).limit(1).maybeSingle()
+    : { data: null, error: null };
+  if (payWay.error) return manualError("Unable to check existing payments. Try again.", 503);
   return manualJson({ success: true, businessId, memberId, config: getManualPaymentConfig(),
     request: saved.data ? requestDto(saved.data as ManualRequestRow) : null,
+    payWayAttemptId: payWay.data?.provider_transaction_id ?? null,
     preparedAttempt: ticket ? preparedDto(ticket, memberId) : null });
 }
 

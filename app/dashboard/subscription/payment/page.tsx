@@ -68,6 +68,7 @@ export default async function SubscriptionPaymentPage({ searchParams }: PaymentP
           kind={bakongAttemptId ? "bakong" : manualRequestId ? "manual" : "payway"}
           attemptId={bakongAttemptId || manualRequestId || returnTransactionId}
           businessId={bakongAttemptId ? purchaseBusinessId : undefined}
+          {...(returnTransactionId && single(params.payway) === "closed" ? { checkoutClosed: true } : {})}
         />
       </div>
     );

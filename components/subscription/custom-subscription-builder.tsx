@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, type ChangeEvent } from "react";
+import { useBuyCheckout } from "./use-buy-checkout";
 import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
 import {
   TENH_BILLING_CYCLES,
@@ -114,8 +115,9 @@ export function CustomSubscriptionBuilder({
   const [connections, setConnections] = useState(3);
   const [users, setUsers] = useState(1);
   const [cycle, setCycle] = useState<BillingCycle>("monthly");
-  const [working, setWorking] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const checkout = useBuyCheckout();
+  const working = checkout.busy;
+  const error = checkout.error;
 
   const monthlyCents = useMemo(
     () => calculateCustomMonthlyCents(connections, users) ?? 0,
@@ -133,55 +135,16 @@ export function CustomSubscriptionBuilder({
 
   const grossTotalCents = monthlyCents * selectedCycle.months;
 
-  async function createSubscription() {
-    setError(null);
-    setWorking(true);
-
-    try {
-      const response = await fetch(
-        "/api/workspaces/create-subscription",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            planCode: "custom",
-            connections,
-            users,
-            billingCycle: cycle,
-          }),
-        },
-      );
-
-      const result = (await response.json()) as {
-        success?: boolean;
-        error?: string;
-        details?: string;
-        paymentUrl?: string;
-      };
-
-      if (!response.ok || !result.success || !result.paymentUrl) {
-        throw new Error(
-          result.error ??
-            result.details ??
-            t("Unable to create subscription.", "មិនអាចបង្កើតការជាវបានទេ។"),
-        );
-      }
-
-      window.location.assign(result.paymentUrl);
-    } catch (createError) {
-      setError(
-        createError instanceof Error
-          ? createError.message
-          : t("Unable to create subscription.", "មិនអាចបង្កើតការជាវបានទេ។"),
-      );
-      setWorking(false);
-    }
+  function createSubscription() {
+    void checkout.start({ planCode: "custom", connections, users, billingCycle: cycle });
   }
 
   const savingsCents = Math.max(0, grossTotalCents - totalCents);
 
   return (
-    <section
+    <>
+    {checkout.view}
+    {!checkout.opened ? <section
       id={embedded ? undefined : "custom-subscription"}
       className={`${
         embedded ? "" : "mt-6 "
@@ -435,11 +398,7 @@ export function CustomSubscriptionBuilder({
             </div>
           </div>
 
-          {error ? (
-            <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {error}
-            </div>
-          ) : null}
+
 
           <div className="mt-8 flex items-center gap-2 text-xs font-medium text-slate-400">
             <LockIcon />
@@ -536,17 +495,24 @@ export function CustomSubscriptionBuilder({
               </div>
             </div>
 
+            <label className="mt-5 block text-sm font-medium text-slate-600">{t("Payment method", "វិធីទូទាត់")}
+              <select value={checkout.method} disabled={working} onChange={event => checkout.setMethod(event.target.value as "payway" | "manual")} className="mt-2 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-slate-900">
+                <option value="payway">ABA PayWay</option><option value="manual">{t("Manual bank transfer", "ផ្ទេរប្រាក់តាមធនាគារដោយដៃ")}</option>
+              </select>
+            </label>
             <button
               type="button"
               disabled={working}
+              aria-busy={working}
               onClick={() => void createSubscription()}
               className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3.5 text-sm font-extrabold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <LockIcon />
+              {working ? <span aria-hidden="true" className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white motion-safe:animate-spin motion-reduce:animate-none" /> : <LockIcon />}
               {working
                 ? t("Creating...", "កំពុងបង្កើត...")
                 : t("Continue to payment", "បន្តទៅការទូទាត់")}
             </button>
+            {error ? <p role="alert" className="mt-3 text-sm text-red-700">{error}</p> : null}
 
             <div className="mt-4 flex items-center justify-center gap-2 text-xs font-medium text-slate-400">
               <ShieldIcon />
@@ -555,6 +521,7 @@ export function CustomSubscriptionBuilder({
           </div>
         </aside>
       </div>
-    </section>
+    </section> : null}
+    </>
   );
 }

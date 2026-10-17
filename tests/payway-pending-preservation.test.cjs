@@ -81,6 +81,12 @@ test('new synthetic sandbox checkout receives its contract from the server', asy
   assert.equal(saved.metadata.checkout_contract_version, 2);
   assert.equal(saved.metadata.environment, 'sandbox');
   assert.equal(saved.metadata.live_enabled, false);
+  const body=await response.json();
+  assert.equal(body.fields.lifetime,'10');
+  assert.equal(saved.metadata.checkout_lifetime_minutes,10);
+  assert.equal(Date.parse(saved.metadata.checkout_expires_at)-Date.parse(saved.metadata.checkout_started_at),600000);
+  assert.equal(body.checkoutExpiresAt,saved.metadata.checkout_expires_at);
+  assert.equal(saved.request_time,saved.metadata.checkout_started_at.replace(/[-:TZ.]/g,'').slice(0,14));
   assert.deepEqual(instance.effects, []);
 });
 

@@ -19,7 +19,7 @@ async function build() {
   fs.writeFileSync(loader, `const ts=require(${JSON.stringify(path.join(root, "node_modules/typescript"))});module.exports=function(source){return ts.transpileModule(source,{fileName:this.resourcePath,compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext,jsx:ts.JsxEmit.ReactJSX}}).outputText};`);
   fs.writeFileSync(language, "exports.useWorkspaceLanguageId=()=>window.fixtureLanguage;");
   fs.writeFileSync(image, 'const React=require("react");module.exports=function Image({priority,fill,quality,loader,unoptimized,...props}){return React.createElement("img",props)};');
-  fs.writeFileSync(navigation, 'exports.useRouter=()=>window.fixtureRouter;');
+  fs.writeFileSync(navigation, 'exports.useRouter=()=>window.fixtureRouter;exports.useSearchParams=()=>new URLSearchParams(window.location.search);');
   fs.writeFileSync(script, 'const React=require("react");module.exports=function Script(props){React.useEffect(()=>{props.onReady?.()},[]);return null};');
   fs.writeFileSync(supabase, 'exports.createClient=()=>window.fixtureSupabase;');
   const link = path.join(temp, "link.cjs");
@@ -65,6 +65,7 @@ async function run() {
   const assets = {
     "/fixture.html": [path.join(temp, "fixture.html"), "text/html; charset=utf-8"],
     "/bundle.js": [path.join(temp, "bundle.js"), "application/javascript; charset=utf-8"],
+    "/images/custom.png": [path.join(root, "public/images/custom.png"), "image/png"],
     "/images/tenh_logo.png": [path.join(root, "public/images/tenh_logo.png"), "image/png"],
     "/images/channels/telegram.png": [path.join(root, "public/images/channels/telegram.png"), "image/png"],
     "/images/channels/messenger.png": [path.join(root, "public/images/channels/messenger.png"), "image/png"],
@@ -167,9 +168,19 @@ async function run() {
     const result = await evaluate("window.paymentAttemptFixture.result()");
     result.checks = [...beforeReload.checks, ...result.checks];
     assert.ok(result.checks.every(check => check.passed));
-    reports.push({ language, width, submission, submittedScreenshot, successScreenshot, terminalScreenshot, validationScreenshot, paywayScreenshot, ...result });
+    await evaluate("paymentAttemptFixture.popupCloseChecks()");
+    const closedScreenshot=await screenshot(`${language}-${width}-payway-closed`);
+    await evaluate("paymentAttemptFixture.sandboxDetailsChecks()");
+    const detailsScreenshot=await screenshot(`${language}-${width}-payway-sandbox-details`);
+    await evaluate("paymentAttemptFixture.prepareBuy()");
+    const buyScreenshot=await screenshot(`${language}-${width}-buy-preflight`);
+    await evaluate("paymentAttemptFixture.finishBuy()");
+    const completed=await evaluate("paymentAttemptFixture.result()");
+    completed.checks=[...beforeReload.checks,...completed.checks];
+    assert.ok(completed.checks.every(check=>check.passed));
+    reports.push({ language, width, submission, submittedScreenshot, successScreenshot, terminalScreenshot, validationScreenshot, paywayScreenshot, closedScreenshot, detailsScreenshot, buyScreenshot, ...completed });
     fs.writeFileSync(path.join(evidence, "browser-results.json"), JSON.stringify({ passed: false, complete: false, reports, browserErrors, network, temp }, null, 2));
-    console.log(`${language}/${width}px: ${result.checks.length} assertions passed`);
+    console.log(`${language}/${width}px: ${completed.checks.length} assertions passed`);
   }
   assert.deepEqual(browserErrors, [], "No browser runtime errors");
   assert.ok(network.every(url => url.startsWith(`${origin}/`) || url === "about:blank" || url.startsWith("data:")), `Unexpected network: ${network.filter(url => !url.startsWith(`${origin}/`)).join(", ")}`);

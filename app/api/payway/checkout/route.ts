@@ -33,6 +33,7 @@ import {
 import { buildCustomUpgradeQuote, type CustomUpgradeQuote } from "@/lib/subscription/custom-upgrade";
 import { syncBusinessSubscriptionLifecycle } from "@/lib/subscription/sync-subscription-lifecycle";
 import { getPendingBakongPayment } from "@/lib/billing/pending-bakong-payment";
+import { createPayWayCheckoutLifetime, PAYWAY_CHECKOUT_LIFETIME_MINUTES } from "@/lib/payway/checkout-lifetime";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -141,13 +142,12 @@ function splitName(
   };
 }
 
-function formatPayWayRequestTime() {
+function formatPayWayRequestTime(date = new Date()) {
   /*
    * Use UTC YYYYMMDDHHmmss.
    * Keeping this deterministic also makes the Purchase hash input easier
    * to compare with PayWay diagnostics.
    */
-  const date = new Date();
 
   return [
     date.getUTCFullYear(),
@@ -663,8 +663,8 @@ export async function POST(
         manualRequestId: preparedManual.data.id, error: "Resume the original manual payment before starting another checkout." }, { status: 409 });
     }
 
-    const reqTime =
-      formatPayWayRequestTime();
+    const checkoutLifetime = createPayWayCheckoutLifetime();
+    const reqTime = formatPayWayRequestTime(new Date(checkoutLifetime.checkout_started_at));
     const transactionId =
       createTransactionId();
     const amount =
@@ -692,9 +692,8 @@ export async function POST(
         config.environment,
       );
 
-    // PayWay's modal close/cancel must hit TENH's server route first so TENH
-    // closes the provider transaction before returning to Subscription. This
-    // prevents an abandoned ABA transaction from remaining Pending.
+    // A provider browser close is navigation only. The GET return never
+    // authorizes a cancellation and outstanding funds can still reconcile.
     const cancelUrl =
       `${browserReturnBaseUrl}/api/payway/cancel-return?tran_id=${encodeURIComponent(
         transactionId,
@@ -775,7 +774,7 @@ export async function POST(
       cancel_url: cancelUrl,
       continue_success_url:
         continueSuccessUrl,
-      lifetime: "5",
+      lifetime: String(PAYWAY_CHECKOUT_LIFETIME_MINUTES),
     };
 
     if (
@@ -855,6 +854,7 @@ export async function POST(
           billingMember.id,
         request_time: reqTime,
         metadata: {
+          ...checkoutLifetime,
           _expected_subscription: subscription,
           checkout_contract_version: 2,
           environment:
@@ -952,6 +952,8 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
+      checkoutExpiresAt: checkoutLifetime.checkout_expires_at,
+      serverTime: new Date().toISOString(),
       environment:
         config.environment,
       checkoutUrl:

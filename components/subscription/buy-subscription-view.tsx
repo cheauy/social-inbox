@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
+import { useBuyCheckout } from "./use-buy-checkout";
 import { CustomSubscriptionBuilder } from "@/components/subscription/custom-subscription-builder";
 import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
 
@@ -198,9 +199,8 @@ export function BuySubscriptionView() {
       : "monthly";
   });
 
-  const [workingPlan, setWorkingPlan] =
-    useState<FixedPlanCode | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const checkout = useBuyCheckout();
+  const error = checkout.error;
   const [customOpen, setCustomOpen] = useState(false);
 
   const selectedCycle = useMemo(
@@ -223,53 +223,15 @@ export function BuySubscriptionView() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [customOpen]);
 
-  async function createFixedSubscription(planCode: FixedPlanCode) {
-    if (workingPlan) return;
-
-    setError(null);
-    setWorkingPlan(planCode);
-
-    try {
-      const response = await fetch(
-        "/api/workspaces/create-subscription",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            planCode,
-            billingCycle: cycle,
-          }),
-        },
-      );
-
-      const result = (await response.json()) as {
-        success?: boolean;
-        error?: string;
-        details?: string;
-        paymentUrl?: string;
-      };
-
-      if (!response.ok || !result.success || !result.paymentUrl) {
-        throw new Error(
-          result.error ??
-            result.details ??
-            t("Unable to create subscription.", "មិនអាចបង្កើតការជាវបានទេ។"),
-        );
-      }
-
-      window.location.assign(result.paymentUrl);
-    } catch (createError) {
-      setError(
-        createError instanceof Error
-          ? createError.message
-          : t("Unable to create subscription.", "មិនអាចបង្កើតការជាវបានទេ។"),
-      );
-      setWorkingPlan(null);
-    }
+  function createFixedSubscription(planCode: FixedPlanCode) {
+    if (checkout.busy || checkout.opened) return;
+    void checkout.start({ planCode, billingCycle: cycle });
   }
 
   return (
-    <div className="h-full min-h-0 w-full overflow-y-auto overscroll-y-contain bg-gradient-to-b from-slate-50/70 via-white to-white">
+    <>
+    {checkout.view}
+    {!checkout.opened ? <div className="h-full min-h-0 w-full overflow-y-auto overscroll-y-contain bg-gradient-to-b from-slate-50/70 via-white to-white">
       <div className="mx-auto w-full max-w-[1120px] px-4 py-5 pb-9 sm:px-5 lg:px-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -319,6 +281,7 @@ export function BuySubscriptionView() {
                 <button
                   key={item.id}
                   type="button"
+                  disabled={checkout.busy}
                   onClick={() => setCycle(item.id)}
                   className={`relative min-h-[70px] rounded-xl border px-4 py-3 text-left transition ${
                     active
@@ -364,12 +327,11 @@ export function BuySubscriptionView() {
           </div>
         </section>
 
-        {error ? (
-          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
-          </div>
-        ) : null}
-
+        <label className="mt-5 flex flex-wrap items-center gap-3 text-sm font-medium text-slate-600">{t("Payment method", "វិធីទូទាត់")}
+          <select value={checkout.method} disabled={checkout.busy} onChange={event => checkout.setMethod(event.target.value as "payway" | "manual")} className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 text-slate-900">
+            <option value="payway">ABA PayWay</option><option value="manual">{t("Manual bank transfer", "ផ្ទេរប្រាក់តាមធនាគារដោយដៃ")}</option>
+          </select>
+        </label>
         <div className="mt-5 grid gap-4 lg:grid-cols-3">
           {TENH_PLANS.map((plan) => {
             const totalCents =
@@ -378,7 +340,7 @@ export function BuySubscriptionView() {
               selectedCycle.months > 0
                 ? Math.round(totalCents / selectedCycle.months)
                 : plan.monthlyCents;
-            const working = workingPlan === plan.id;
+            const working = checkout.busy && checkout.planCode === plan.id;
             const popular = plan.name === "Team";
 
             return (
@@ -444,21 +406,21 @@ export function BuySubscriptionView() {
 
                 <button
                   type="button"
-                  disabled={Boolean(workingPlan)}
+                  disabled={checkout.busy}
+                  aria-busy={working}
                   onClick={() => void createFixedSubscription(plan.id)}
                   className="mt-auto inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-xs font-extrabold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <span>
                     {working
-                      ? isKhmer
-                        ? `កំពុងបង្កើត ${plan.name}...`
-                        : `Creating ${plan.name}...`
+                      ? t("Preparing checkout…", "កំពុងរៀបចំការទូទាត់…")
                       : isKhmer
                         ? `ទិញ ${plan.name}`
                         : `Buy ${plan.name}`}
                   </span>
-                  {!working ? <ArrowRightIcon /> : null}
+                  {working ? <span aria-hidden="true" className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white motion-safe:animate-spin motion-reduce:animate-none" /> : <ArrowRightIcon />}
                 </button>
+                {error && checkout.planCode === plan.id ? <div className="mt-3 text-xs leading-5"><p role="alert" className="text-red-700">{error}</p>{checkout.manualHref ? <a className="mt-1 inline-flex min-h-11 items-center text-blue-700 underline" href={checkout.manualHref}>{t("Choose payment method", "ជ្រើសរើសវិធីទូទាត់")}</a> : null}</div> : null}
               </section>
             );
           })}
@@ -466,6 +428,7 @@ export function BuySubscriptionView() {
 
         <button
           type="button"
+          disabled={checkout.busy}
           onClick={() => setCustomOpen(true)}
           className="mt-5 flex w-full items-center gap-4 overflow-hidden rounded-[22px] border border-slate-200 bg-white px-4 py-3 text-left shadow-[0_10px_30px_rgba(15,23,42,0.05)] transition hover:border-blue-300 hover:bg-blue-50/30 sm:px-5"
         >
@@ -545,6 +508,7 @@ export function BuySubscriptionView() {
           </div>
         ) : null}
       </div>
-    </div>
+    </div> : null}
+    </>
   );
 }

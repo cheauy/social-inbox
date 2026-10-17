@@ -132,5 +132,6 @@ export async function GET(request: NextRequest) {
   const transactionId = request.nextUrl.searchParams.get("tran_id")?.trim() ?? "";
   const url = new URL("/dashboard/subscription/payment", request.url);
   if (transactionId) url.searchParams.set("tran_id", transactionId);
+  url.searchParams.set("payway", "closed");
   return NextResponse.redirect(url);
 }

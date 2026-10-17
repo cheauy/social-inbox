@@ -3,11 +3,12 @@ const React = require('react');
 const { createRoot } = require('react-dom/client');
 const { flushSync } = require('react-dom');
 const { PaymentAttemptView } = require('../../components/subscription/payment-attempt-view.tsx');
+const { BuySubscriptionView } = require('../../components/subscription/buy-subscription-view.tsx');
 const { SubscriptionPaymentView } = require('../../components/subscription/subscription-payment-view.tsx');
 const h = React.createElement;
 const nativeTimeout = window.setTimeout.bind(window);
 const pause = ms => new Promise(resolve => nativeTimeout(resolve, ms));
-window.setTimeout = (callback, delay, ...args) => nativeTimeout(callback, delay >= 3000 && delay <= 30000 ? 120 : delay, ...args);
+window.setTimeout = (callback, delay, ...args) => nativeTimeout(callback, delay >= 3000 && delay <= 30000 && !(delay === 30000 && window.fixtureBuyPreflight) ? 120 : delay, ...args);
 const businessA = '00000000-0000-4000-8000-000000000001', businessB = '00000000-0000-4000-8000-000000000002';
 const manualA = '00000000-0000-4000-8000-000000000101', manualB = '00000000-0000-4000-8000-000000000102';
 const params = new URLSearchParams(location.search);
@@ -43,7 +44,7 @@ function put(attempt) { attempts.set(key(attempt.kind, attempt.id), attempt); pe
 function dto(attempt) { return { id: attempt.id, planCode: attempt.planCode, billingCycle: attempt.billingCycle, amount: attempt.amount, currency: attempt.currency, status: attempt.status, proofFileName: 'fixture-proof.png', reviewNote: null, reviewedAt: null, approvedAt: null, createdAt: '2026-10-15T00:00:00Z' }; }
 function render(mode, props, fresh = true) {
   if (fresh) mount++;
-  const Component = mode === 'checkout' ? SubscriptionPaymentView : PaymentAttemptView;
+  const Component = mode === 'buy' ? BuySubscriptionView : mode === 'checkout' ? SubscriptionPaymentView : PaymentAttemptView;
   flushSync(() => root.render(h(React.StrictMode, null, h('main', { className: 'min-h-dvh bg-slate-50' }, h(Component, { ...props, key: mount })))));
 }
 function reset(next = {}) { attempts = new Map(); denied = new Set(); gate = null; signedOut = false; scenario = next; persist(); }
@@ -60,6 +61,7 @@ window.fetch = async (url, options = {}) => {
   const request = { path: target.pathname, query: target.search, method, cache: options.cache, ...(body ? { body } : {}), mocked: true, aborted: false };
   requests.push(request); options.signal?.addEventListener('abort', () => { request.aborted = true; persist(); }); persist();
   if (target.origin !== location.origin) throw new Error('No external payment request allowed');
+  if (target.pathname === '/api/workspaces/create-subscription') return Response.json({success:true,businessId:businessA,paymentUrl:`/dashboard/subscription/payment?plan=mini&cycle=monthly&purchase_business=${businessA}`});
   if (target.pathname === '/api/bakong/checkout' && method === 'GET') return Response.json({ success: true, enabled: false,
     environment: null, pendingAttemptId: null, businessId: target.searchParams.get('purchase_business') || businessA,
     userId: 'fixture-user', memberId: 'fixture-member' });
@@ -89,10 +91,11 @@ window.fetch = async (url, options = {}) => {
     return Response.json({ success: true, transactionId: attempt.id, checkoutUrl: 'https://checkout.synthetic.invalid/pay', fields: { tran_id: attempt.id, amount: '12.00', hash: 'synthetic' } });
   }
   if (target.pathname === '/api/manual-payments' && method === 'GET') {
+    if(scenario.holdDiscovery)await scenario.discoveryPromise;
     const businessId = target.searchParams.get('purchase_business') || businessA;
     const active = [...attempts.values()].find(value => value.businessId === businessId && value.kind === 'manual' && value.status === 'submitted');
     const prepared = [...attempts.values()].find(value => value.businessId === businessId && value.status === 'prepared');
-    return Response.json({ success: true, businessId, config: { enabled: true, bankName: 'Fixture Bank', accountName: 'Synthetic Account', accountNumber: '00000000', qrImageUrl: null, supportText: null }, request: active ? dto(active) : null,
+    return Response.json({ success: true, businessId, config: { enabled: true, bankName: 'Fixture Bank', accountName: 'Synthetic Account', accountNumber: '00000000', qrImageUrl: null, supportText: null }, request: active ? dto(active) : null, payWayAttemptId:[...attempts.values()].find(value=>value.businessId===businessId&&value.kind==='payway'&&value.status==='pending')?.id??null,
       preparedAttempt: prepared ? { id: prepared.id, businessId, canResume: !scenario.otherInitiator } : null });
   }
   if (target.pathname === '/api/manual-payments' && method === 'POST') {
@@ -261,7 +264,36 @@ async function paywayChecks() {
   await until(()=>heading()===t('Checking payment','កំពុងពិនិត្យការទូទាត់'),'approved checking card');
   check('saved PayWay pending uses the teal spinner and no copied sample amount',Boolean(document.querySelector('[class*="border-t-teal-600"]')) && document.body.textContent.includes('$12.00') && !document.body.textContent.includes('$25.00'));
   check('production pending has no test-payment label or direct Bakong option',!document.body.textContent.includes('Test payment')&&!document.body.textContent.includes('Bakong'));
+  const timed={...saved('payway','fixture-countdown','pending'),checkoutExpiresAt:new Date(Date.now()+600000).toISOString(),serverTime:new Date().toISOString()};put(timed);render('status',{kind:'payway',attemptId:timed.id});
+  await until(()=>document.querySelector('time'),'server-saved countdown');
+  const time=document.querySelector('time'),close=document.querySelector('a[aria-label]'),card=document.querySelector('[data-payment-card]');
+  check('countdown and accessible X share card without overlap',card.contains(time)&&card.contains(close)&&time.getBoundingClientRect().right+4<=close.getBoundingClientRect().left);
+  check('details are inside card and redundant Back link is absent',card.contains(document.querySelector('details'))&&!document.body.textContent.includes(t('Back to subscription','ត្រឡប់ទៅការជាវ')));
   layout('approved checking card');
+}
+async function popupCloseChecks(){
+ reset();const pending={...saved('payway','fixture-closed','pending'),checkoutExpiresAt:new Date(Date.now()+600000).toISOString(),serverTime:new Date().toISOString()};put(pending);render('status',{kind:'payway',attemptId:pending.id});await until(()=>heading()===t('Checking payment','កំពុងពិនិត្យការទូទាត់'),'mounted payment before close return');render('status',{kind:'payway',attemptId:pending.id,checkoutClosed:true},false);
+ await until(()=>heading()===t('Checkout closed','បានបិទការទូទាត់'),'closed provider presentation');
+ check('provider close leaves saved pending and no false financial cancellation',attempts.get(key('payway',pending.id)).status==='pending'&&!document.querySelector('[class*="animate-spin"]'));
+ layout('provider closed card');
+}
+async function sandboxDetailsChecks(){
+ reset();const pending={...saved('payway','fixture-sandbox','pending'),environment:'sandbox',checkoutExpiresAt:new Date(Date.now()+600000).toISOString(),serverTime:new Date().toISOString()};put(pending);render('status',{kind:'payway',attemptId:pending.id,checkoutClosed:true});
+ await until(()=>document.querySelector('details')&&document.querySelector('time'),'saved sandbox details');const details=document.querySelector('details');details.open=true;
+ check('sandbox truth is concise and inside payment details',details.textContent.includes(t('Test payment','ការទូទាត់សាកល្បង'))&&details.closest('[data-payment-card]'));
+ layout('sandbox payment details');
+}
+async function prepareBuy(){
+ let resolve;const discoveryPromise=new Promise(done=>{resolve=done;});reset({holdDiscovery:true,discoveryPromise,resolveDiscovery:resolve});window.fixtureBuyPreflight=true;render('buy',{});
+ await until(()=>button('Buy Standard','ទិញ Standard'),'Buy page');button('Buy Standard','ទិញ Standard').click();
+ await until(()=>document.querySelector('button[aria-busy=true]'),'Buy preflight spinner');document.querySelector('button[aria-busy=true]').scrollIntoView({block:'center'});
+ check('Buy stays on plan page while discovery runs without standalone legacy page',Boolean(document.querySelector('button[aria-busy=true][disabled] [class*="animate-spin"]'))&&!document.body.textContent.includes('Checking existing payment'));
+ layout('Buy preflight button');
+}
+async function finishBuy(){
+ const before=secureTransfers;scenario.holdDiscovery=false;scenario.resolveDiscovery();window.fixtureBuyPreflight=false;
+ await until(()=>secureTransfers===before+1,'guarded Buy opens inline provider');await until(()=>heading()===t('Checking payment','កំពុងពិនិត្យការទូទាត់'),'saved Buy status');
+ check('Buy opens one inline checkout after preflight, without window.open',secureTransfers===before+1);noPayControls('Buy saved status');layout('Buy status');
 }
 async function successChecks() {
   reset({workspaceSwitchFailure:true}); put({...saved('payway','fixture-confirmed','approved','active'),invoiceId:'fixture-invoice'});
@@ -277,6 +309,6 @@ async function navigationChecks() {
   check('workspace navigation failure preserves confirmed success and never verifies payment again',heading()===title && requests.slice(before).filter(r=>r.path==='/api/workspaces/switch').length===1 && !requests.slice(before).some(r=>r.path==='/api/payway/status'||r.path==='/api/payway/checkout'));
 }
 function motionChecks(){check('reduced motion stops the decorative checking animation',matchMedia('(prefers-reduced-motion: reduce)').matches && getComputedStyle(document.querySelector('[class*="border-t-teal-600"]')).animationName==='none');}
-window.paymentAttemptFixture = { successChecks, navigationChecks, motionChecks, submissionChecks, prepareReload, reloadChecks, statusChecks, preparedChecks, paywayChecks,
+window.paymentAttemptFixture = { prepareBuy, finishBuy, popupCloseChecks, sandboxDetailsChecks, successChecks, navigationChecks, motionChecks, submissionChecks, prepareReload, reloadChecks, statusChecks, preparedChecks, paywayChecks,
   result: () => ({ checks: [...checks], requests: [...requests], uploads: [...uploads], navigations: [...navigations], secureTransfers, mockedOnly: true, paymentBytesTransferred: 0, language: window.fixtureLanguage }) };
 if (restored && params.get('manual_request')) render('status', { kind: 'manual', attemptId: params.get('manual_request') });

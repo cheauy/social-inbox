@@ -33,9 +33,10 @@ async function fixture(patch = {}, options = {}) {
     return read();
   };
   const schedule = fn => { timers.set(++sequence, fn); return sequence; };
+  const router = { replace: path => navigations.push(path) };
   const load = loader({ react: React,
     'next/link': ({ href, children, ...props }) => React.createElement('a', { ...props, href }, children),
-    'next/navigation': { useRouter: () => ({ replace: path => navigations.push(path) }) },
+    'next/navigation': { useRouter: () => router },
     '@/components/display/workspace-language-text': { useWorkspaceLanguageId: () => options.language ?? 'en' },
     '@/lib/supabase/client': { createClient: () => ({ auth: { onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }) } }) },
   }, { window: { HTMLElement: dom.window.HTMLElement, addEventListener: dom.window.addEventListener.bind(dom.window), removeEventListener: dom.window.removeEventListener.bind(dom.window), location: { assign: path => navigations.push(path) } },

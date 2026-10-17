@@ -192,3 +192,15 @@ test('explicit PayWay verification preserves the workspace only when requested a
     assert.equal(verifications, status === 'pending' ? 1 : 0);
   }
 });
+
+const {createPayWayCheckoutLifetime,payWayCheckoutExpiresAt}=loader()('lib/payway/checkout-lifetime.ts');
+test('saved checkout deadline survives rereads and older attempts are never assigned a new lifetime',()=>{
+ const lifetime=createPayWayCheckoutLifetime(now),input=saved({status:'pending',metadata:{environment:'production',live_enabled:true,...lifetime}});
+ const first=describePaymentAttempt(input),later=describePaymentAttempt({...input,now:now+120000});
+ assert.equal(first.checkoutExpiresAt,lifetime.checkout_expires_at);assert.equal(later.checkoutExpiresAt,first.checkoutExpiresAt);assert.equal(later.serverTime,new Date(now+120000).toISOString());
+ assert.equal(describePaymentAttempt(saved({status:'pending'})).checkoutExpiresAt,null);
+ assert.equal(payWayCheckoutExpiresAt({...lifetime,checkout_expires_at:new Date(now+900000).toISOString()}),null);
+ const old={...lifetime,checkout_lifetime_minutes:5,checkout_expires_at:new Date(now+300000).toISOString()};
+ assert.equal(payWayCheckoutExpiresAt(old),old.checkout_expires_at,'a saved earlier five-minute lifetime is preserved');
+ assert.equal(first.status,'pending');assert.equal(first.application,'pending');
+});

@@ -165,6 +165,11 @@ type SubscriptionPaymentViewProps = {
   initialTransactionId?: string | null;
   savedTransactionTotalCents?: number | null;
   transactionReturnOnly?: boolean;
+  /** Buy keeps discovery/plugin preparation on its disabled button. */
+  inlineBuy?: boolean;
+  buyPaymentMethod?: "payway" | "manual";
+  onCheckoutOpened?: () => void;
+  onCheckoutError?: (message: string) => void;
 
   /*
    * Everything below was already being passed by
@@ -266,6 +271,10 @@ function PaymentCheckout({
   initialTransactionId = null,
   savedTransactionTotalCents = null,
   transactionReturnOnly = false,
+  inlineBuy = false,
+  buyPaymentMethod = "payway",
+  onCheckoutOpened,
+  onCheckoutError,
   purchaseBusinessId = null,
   customConnections = null,
   customUsers = null,
@@ -456,17 +465,19 @@ function PaymentCheckout({
   const submitting = useRef(false);
   const manualAttemptId = useRef<string | null>(null);
   const alive = useRef(true);
-  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  const checkoutRequest = useRef<AbortController | null>(null);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; checkoutRequest.current?.abort(); }; }, []);
 
   function enterAttempt(kind: "manual" | "payway" | "bakong", id: string) {
     if (!alive.current) return;
     setStatusAttempt({ kind, id });
+    onCheckoutOpened?.();
     // Navigation failure cannot undo a saved payment or expose payment controls again.
     try { router.replace(paymentAttemptUrl(kind, id, purchaseBusinessId)); } catch { /* The status remains mounted. */ }
   }
 
   const [checkoutMethod, setCheckoutMethod] =
-    useState<CheckoutMethod>("payway");
+    useState<CheckoutMethod>(inlineBuy ? buyPaymentMethod : "payway");
   const [checkoutLoading, setCheckoutLoading] =
     useState(false);
   const [checkoutError, setCheckoutError] =
@@ -601,6 +612,7 @@ function PaymentCheckout({
           request?: ManualPaymentRequest | null;
           businessId?: string;
           preparedAttempt?: { id: string; businessId: string; canResume: boolean } | null;
+          payWayAttemptId?: string | null;
         };
 
         if (!response.ok || !result.success || !result.businessId || (purchaseBusinessId && result.businessId !== purchaseBusinessId)) {
@@ -620,6 +632,8 @@ function PaymentCheckout({
           } else if (result.preparedAttempt && result.preparedAttempt.businessId === result.businessId) {
             if (!result.preparedAttempt.canResume) throw new Error(t("An unfinished payment needs its requester's review.", "សំណើទូទាត់មិនទាន់រួច ត្រូវការអ្នកស្នើពិនិត្យ។"));
             enterAttempt("manual", result.preparedAttempt.id);
+          } else if (result.payWayAttemptId) {
+            enterAttempt("payway", result.payWayAttemptId);
           }
         }
       } catch (error) {
@@ -664,6 +678,8 @@ function PaymentCheckout({
     }
 
     submitting.current = true;
+    const controller = new AbortController();
+    checkoutRequest.current = controller;
     setCheckoutLoading(true);
     setCheckoutError(null);
     setPayWayStatusText(null);
@@ -674,6 +690,7 @@ function PaymentCheckout({
         "/api/payway/checkout",
         {
           method: "POST",
+          signal: controller.signal,
           headers: {
             "Content-Type": "application/json",
           },
@@ -724,6 +741,7 @@ function PaymentCheckout({
         }
       }
 
+      if (!alive.current || controller.signal.aborted) return;
       if (
         !response.ok ||
         !result.success ||
@@ -780,7 +798,7 @@ function PaymentCheckout({
 
       payWayBridge.checkout();
     } catch (error) {
-      if (!alive.current) return;
+      if (!alive.current || controller.signal.aborted) return;
       // Reopening checks saved transactions before another checkout can be attempted.
       setManualLoadError(t("Unable to open payment. Reload to check the saved attempt.", "មិនអាចបើកការទូទាត់។ ផ្ទុកឡើងវិញដើម្បីពិនិត្យសំណើដែលបានរក្សាទុក។"));
       setCheckoutError(
@@ -793,6 +811,28 @@ function PaymentCheckout({
       if (alive.current) setCheckoutLoading(false);
     }
   }
+
+  const buyStarted = useRef(false);
+  useEffect(() => {
+    if (!inlineBuy || statusAttempt || (buyPaymentMethod === "manual" && !manualPaymentLoading && bakongSafety)) return;
+    const timer = setTimeout(() => onCheckoutError?.(t("Checkout preparation took too long. Try again.", "ការរៀបចំការទូទាត់យូរពេក។ សូមព្យាយាមម្តងទៀត។")), 30000);
+    return () => clearTimeout(timer);
+  // The timeout belongs to this Buy preparation, and never cancels a payment.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inlineBuy, buyPaymentMethod, manualPaymentLoading, bakongSafety, statusAttempt, onCheckoutError]);
+  useEffect(() => {
+    if (!inlineBuy || statusAttempt) return;
+    const failure = manualLoadError || (bakongLoadError ? t("Unable to check existing payment. Try again.", "មិនអាចពិនិត្យការទូទាត់ដែលមានបានទេ។ សូមព្យាយាមម្តងទៀត។") : null) || (buyPaymentMethod === "payway" ? checkoutError : null);
+    if (failure) { onCheckoutError?.(failure); return; }
+    if (!manualPaymentLoading && bakongSafety && buyPaymentMethod === "manual") { onCheckoutOpened?.(); return; }
+    if (!manualPaymentLoading && bakongSafety && payWayPluginReady && !buyStarted.current) {
+      buyStarted.current = true;
+      void startPayWayCheckout();
+    }
+  // Reuse every discovery check and the guarded POST. The ref also prevents
+  // StrictMode or a rerender submitting twice while Buy shows its spinner.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inlineBuy, buyPaymentMethod, statusAttempt, manualPaymentLoading, bakongSafety, payWayPluginReady, manualLoadError, bakongLoadError, checkoutError, onCheckoutError, onCheckoutOpened]);
 
   async function submitManualPayment() {
     if (transactionReturnOnly || submitting.current || statusAttempt || manualPaymentLoading || !bakongSafety) return;
@@ -1158,16 +1198,20 @@ function PaymentCheckout({
     <a className="mt-4 block text-sm text-blue-700" href="/dashboard/subscription">{t("Back to subscription", "ត្រឡប់ទៅការជាវ")}</a>
   </section>;
   if (manualPaymentLoading || manualLoadError || !bakongSafety) {
-    return <section className="mx-auto max-w-xl p-6" aria-live="polite">
-      <h1 className="text-xl font-bold">{t("Payment status", "ស្ថានភាពការទូទាត់")}</h1>
-      <p className="mt-3 text-sm" role={manualLoadError || bakongLoadError ? "alert" : "status"}>{(bakongLoadError ? t("Unable to check existing payment.", "មិនអាចពិនិត្យការទូទាត់ដែលមានបានទេ។") : manualLoadError) ?? t("Checking existing payment…", "កំពុងពិនិត្យការទូទាត់ដែលមាន…")}</p>
-      {manualLoadError || bakongLoadError ? <button type="button" className="mt-4 min-h-11 rounded-xl border px-4" onClick={() => window.location.reload()}>{t("Try again", "ព្យាយាមម្ដងទៀត")}</button> : null}
-      <a className="mt-4 block text-sm text-blue-700" href="/dashboard/subscription">{t("Back to subscription", "ត្រឡប់ទៅការជាវ")}</a>
+    if (inlineBuy) return null;
+    return <section className="mx-auto w-full max-w-md px-4 py-8 sm:py-12" aria-live="polite">
+      <div data-payment-card className="relative rounded-2xl border border-slate-200 bg-white px-5 pb-7 pt-14 text-center shadow-sm sm:px-7">
+      <a href="/dashboard/subscription" aria-label={t("Close payment status", "បិទស្ថានភាពទូទាត់")} className="absolute right-1.5 top-1.5 inline-flex h-11 w-11 items-center justify-center rounded-lg text-xl text-slate-400 focus-visible:outline-2 focus-visible:outline-teal-600">×</a>
+      {!manualLoadError && !bakongLoadError ? <div aria-hidden="true" className="mx-auto mb-6 h-16 w-16 rounded-full border-[5px] border-teal-100 border-t-teal-600 motion-safe:animate-spin motion-reduce:animate-none" /> : null}
+      <h1 className="text-xl font-bold text-slate-950">{manualLoadError || bakongLoadError ? t("Unable to prepare checkout", "មិនអាចរៀបចំការទូទាត់បានទេ") : t("Preparing checkout", "កំពុងរៀបចំការទូទាត់")}</h1>
+      <p className="mt-3 text-sm text-slate-500" role={manualLoadError || bakongLoadError ? "alert" : "status"}>{(bakongLoadError ? t("Unable to check existing payment.", "មិនអាចពិនិត្យការទូទាត់ដែលមានបានទេ។") : manualLoadError) ?? t("Checking for an earlier payment before continuing.", "កំពុងពិនិត្យការទូទាត់ពីមុន មុននឹងបន្ត។")}</p>
+      {manualLoadError || bakongLoadError ? <button type="button" className="mt-4 min-h-11 rounded-xl border px-4" onClick={() => window.location.reload()}>{t("Try again", "ព្យាយាមម្តងទៀត")}</button> : null}
+      </div>
     </section>;
   }
 
   return (
-    <div className="min-h-full bg-white px-4 py-6 sm:px-6 lg:px-8">
+    <div hidden={inlineBuy && buyPaymentMethod === "payway"} className="min-h-full bg-white px-4 py-6 sm:px-6 lg:px-8">
       <Script
         id="tenh-payway-classic-bridge-payment-page"
         strategy="afterInteractive"
