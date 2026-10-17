@@ -122,6 +122,7 @@ export async function POST(
     platform_user_id: string | null;
     conversations?: {
       social_account?: {
+        id?: string;
         platform_account_id?: string | null;
         is_active?: boolean | null;
       } | null;
@@ -142,9 +143,10 @@ export async function POST(
 
       if (
         account?.is_active &&
+        account.id &&
         account.platform_account_id
       ) {
-        return account.platform_account_id;
+        return { pageId: account.platform_account_id, socialAccountId: account.id };
       }
     }
 
@@ -179,9 +181,9 @@ export async function POST(
       continue;
     }
 
-    const pageId = pageIdFor(contact);
+    const page = pageIdFor(contact);
 
-    if (!pageId) {
+    if (!page) {
       skipped += 1;
       reasons.set(
         "No active Page connection for this contact.",
@@ -192,6 +194,8 @@ export async function POST(
       continue;
     }
 
+    const { pageId, socialAccountId } = page;
+
     if (!tokenByPage.has(pageId)) {
       let token: string | null = null;
 
@@ -199,6 +203,7 @@ export async function POST(
         token =
           await getFacebookPageAccessToken(
             pageId,
+            socialAccountId,
           );
       } catch {
         token = null;
@@ -225,6 +230,7 @@ export async function POST(
       await syncFacebookContactProfilePhoto({
         contactId: contact.id,
         businessId: contact.business_id,
+        socialAccountId,
         customerId: contact.platform_user_id,
         pageAccessToken,
       });

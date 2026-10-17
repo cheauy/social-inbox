@@ -16,7 +16,7 @@ async function fixture(patch = {}, options = {}) {
   const kind = options.kind ?? 'manual', requests = [], navigations = [], timers = new Map();
   let sequence = 0, resolveRead, resolveSwitch;
   const record = { kind, id: 'attempt-B', businessId: 'workspace-B', businessName: 'Workspace B', workspaceName: 'Workspace B',
-    planCode: 'standard', billingCycle: '12-months', amount: 48.75, currency: 'USD', reference: 'saved-reference',
+    planCode: 'standard', billingCycle: '12-months', amount: 48.75, currency: 'USD', reference: 'saved-reference', customerReference: 'T7K9M2XP',
     status: 'approved', environment: kind === 'manual' ? 'manual' : 'production', invoiceId: 'invoice-B', application: 'active',
     state: 'applied', userId: 'user-B', memberId: 'member-B', createdAt: '2026-10-16T00:00:00Z', expiresAt: '2026-10-16T00:15:00Z',
     serverTime: '2026-10-16T00:01:00Z', nextCheckAt: '2026-10-16T00:05:00Z', checkout: 'open', canCheck: false,
@@ -146,7 +146,7 @@ test('Khmer copy and keyboard focus keep all success controls accessible', async
   const f = await fixture({}, { language: 'km' });
   try {
     assert.equal(f.dom.window.document.querySelector('h1').textContent, 'ការទូទាត់ជោគជ័យ');
-    const controls = [...f.dom.window.document.querySelectorAll('button,a')]; assert.equal(controls.length, 3);
+    const controls = [...f.dom.window.document.querySelectorAll('button,a')]; assert.equal(controls.length, 4);
     for (const control of controls) { control.focus(); assert.equal(f.dom.window.document.activeElement, control); assert.match(control.className, /min-h-11/); assert.match(control.className, /focus-visible:outline/); }
   } finally { await f.close(); }
 });

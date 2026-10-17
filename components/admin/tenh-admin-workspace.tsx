@@ -178,6 +178,7 @@ export function TenhAdminWorkspace({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const activeTab = resolveAdminTab(pathname ?? "/dashboard/admin", searchParams ? searchParams.get("tab") : initialTab);
+  const showOverviewHero = pathname === "/dashboard/admin" && activeTab === "overview";
   const searchKey = searchParams?.toString() ?? "";
   const isKhmer = useWorkspaceLanguageId() === "km";
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -318,7 +319,7 @@ export function TenhAdminWorkspace({
         </header>
         <div ref={contentRef} data-admin-main className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6">
           <div className="mx-auto w-full max-w-7xl">
-        <div className="mb-6 flex flex-col gap-4 rounded-[28px] border border-slate-200 bg-white px-6 py-6 shadow-sm sm:flex-row sm:items-end sm:justify-between">
+        {showOverviewHero ? <div data-admin-overview-hero className="mb-6 flex flex-col gap-4 rounded-[28px] border border-slate-200 bg-white px-6 py-6 shadow-sm sm:flex-row sm:items-end sm:justify-between">
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-600">
@@ -346,7 +347,7 @@ export function TenhAdminWorkspace({
               {adminEmail}
             </p>
           </div>
-        </div>
+        </div> : null}
             <section className="min-w-0">
 
             <div className="mb-4 flex items-end justify-between gap-3">

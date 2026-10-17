@@ -8,6 +8,8 @@ import { getBillingCycleDefinition } from "@/lib/subscription/plan-catalog";
 import { BakongPaymentView } from "./bakong-payment-view";
 import { CancelPaymentButton } from "./cancel-payment-button";
 import { PaymentSuccessCard } from "./payment-success-card";
+import { CustomerPaymentReference } from "./customer-payment-reference";
+import { SubmittedPaymentHelp } from "./submitted-payment-help";
 
 type Props = { kind: "manual" | "payway" | "bakong"; attemptId: string; businessId?: string | null; checkoutClosed?: boolean };
 const buttonClass = "inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-50";
@@ -412,7 +414,7 @@ function AttemptStatus({ kind, attemptId, businessId, checkoutClosed = false }: 
       ["production", "manual", "sandbox"].includes(attempt.environment)) {
     return <PaymentSuccessCard workspace={attempt.businessName} planCode={attempt.planCode} billingCycle={attempt.billingCycle}
       amount={attempt.amount} currency={attempt.currency} provider={kind} environment={attempt.environment}
-      reference={attempt.reference ?? attempt.id} busy={busy} error={navigationError}
+      reference={attempt.customerReference ?? null} busy={busy} error={navigationError}
       receiptHref={attempt.invoiceId ? `/dashboard/subscription/invoices/${encodeURIComponent(attempt.invoiceId)}?return_to=${encodeURIComponent(paymentAttemptUrl(kind, attemptId, attempt.businessId))}` : null}
       onNavigate={destination => void continueToSubscription(destination)} />;
   }
@@ -451,10 +453,12 @@ function AttemptStatus({ kind, attemptId, businessId, checkoutClosed = false }: 
         <div data-payment-summary className="mt-5 text-sm">
           {kind === "payway" && !attempt.checkoutExpiresAt ? <p className="mb-3 text-xs text-slate-500">{t("No checkout deadline was saved for this earlier attempt.", "ការទូទាត់ចាស់នេះមិនមានពេលកំណត់ដែលបានរក្សាទុកទេ។")}</p> : null}
           <dl className="mt-3 grid grid-cols-2 gap-4">
-          {[ [t("Workspace", "កន្លែងធ្វើការ"), attempt.businessName], [t("Plan / term", "គម្រោង / រយៈពេល"), `${attempt.planCode.toUpperCase()} · ${term}`], [t("Amount", "ចំនួនទឹកប្រាក់"), attempt.amount !== null && attempt.currency ? new Intl.NumberFormat("en-US", { style: "currency", currency: attempt.currency }).format(attempt.amount) : t("Unavailable", "មិនមាន")], [t("Reference", "លេខយោង"), attempt.reference ?? attempt.id] ].map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-slate-500">{label}</dt><dd className="mt-1 break-words font-semibold text-slate-900">{value}</dd></div>)}
+          {[ [t("Workspace", "កន្លែងធ្វើការ"), attempt.businessName], [t("Plan / term", "គម្រោង / រយៈពេល"), `${attempt.planCode.toUpperCase()} · ${term}`], [t("Amount", "ចំនួនទឹកប្រាក់"), attempt.amount !== null && attempt.currency ? new Intl.NumberFormat("en-US", { style: "currency", currency: attempt.currency }).format(attempt.amount) : t("Unavailable", "មិនមាន")] ].map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-slate-500">{label}</dt><dd className="mt-1 break-words font-semibold text-slate-900">{value}</dd></div>)}
+          <div className="min-w-0"><dt className="text-slate-500">{t("Reference", "លេខយោង")}</dt><dd className="mt-1 text-slate-900"><CustomerPaymentReference value={attempt.customerReference} /></dd></div>
           {attempt.effectiveAt && attempt.application === "scheduled" ? <div><dt>{t("Effective date", "ថ្ងៃចាប់ផ្តើម")}</dt><dd>{new Date(attempt.effectiveAt).toLocaleDateString()}</dd></div> : null}
         </dl>
         </div>
+        {manualReview && !error ? <SubmittedPaymentHelp /> : null}
         {attempt.status === "prepared" ? <div className="mt-5 space-y-3">
           {attempt.upload ? <p className="break-words text-sm text-slate-600">{attempt.upload.fileName}</p> : null}
           <label className="block text-sm font-medium">{t("Payment proof", "ភស្តុតាងការទូទាត់")}<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="mt-2 block w-full max-w-full text-sm" disabled={busy} onChange={event => setFile(event.target.files?.[0] ?? null)} /></label>

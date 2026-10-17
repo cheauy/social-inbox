@@ -4,11 +4,12 @@ import { CircleCheck } from "lucide-react";
 import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
 import { formatBillingMoney, paymentMethodLabel, type PaymentEnvironment } from "@/lib/billing/payment-display";
 import { getBillingCycleDefinition, getPlanDefinition } from "@/lib/subscription/plan-catalog";
+import { CustomerPaymentReference } from "./customer-payment-reference";
 
 type Props = {
   workspace: string; planCode: string; billingCycle: string; amount: number | null; currency: string | null;
   provider: "manual" | "payway" | "bakong"; environment: PaymentEnvironment;
-  reference: string; receiptHref: string | null; busy: boolean; error: boolean;
+  reference: string | null; receiptHref: string | null; busy: boolean; error: boolean;
   onNavigate: (destination: "/dashboard/inbox" | "/dashboard/subscription") => void;
 };
 
@@ -41,7 +42,7 @@ export function PaymentSuccessCard(props: Props) {
         ].map(([label, value]) => <div key={label} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-3 text-sm"><dt className="text-slate-500">{label}</dt><dd className="min-w-0 break-words font-semibold text-slate-900">{value}</dd></div>)}
       </dl>
       {test ? <p className="mt-3 text-center text-xs font-medium text-violet-700">{t("Test payment", "ការទូទាត់សាកល្បង")}</p> : null}
-      <p className="mt-3 break-all text-center text-xs text-slate-400">{t("Reference", "លេខយោង")}: {props.reference}</p>
+      <div className="mt-3 text-center text-xs text-slate-500">{t("Reference", "លេខយោង")}: <CustomerPaymentReference value={props.reference} /></div>
       <div className="mt-7 space-y-3">
         <button type="button" className={`${control} bg-blue-600 text-white hover:bg-blue-700`} disabled={props.busy} onClick={() => props.onNavigate("/dashboard/inbox")}>{t("Go to inbox", "ទៅប្រអប់សារ")}</button>
         {props.receiptHref ? <a className={`${control} border border-slate-200 text-slate-700 hover:bg-slate-50`} href={props.receiptHref}>{t("View receipt", "មើលបង្កាន់ដៃ")}</a> : <p className="text-center text-xs text-slate-500">{t("Receipt unavailable.", "មិនមានបង្កាន់ដៃ។")}</p>}

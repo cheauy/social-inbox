@@ -71,7 +71,7 @@ async function run() {
   const assets = { "/bundle.js": [path.join(temp, "bundle.js"), "application/javascript; charset=utf-8"], "/images/tenh_logo.png": [path.join(root, "public/images/tenh_logo.png"), "image/png"] };
   server = http.createServer((request, response) => {
     const route = new URL(request.url, "http://127.0.0.1").pathname;
-    const asset = route === "/fixture.html" || route === "/dashboard/admin" || route === "/dashboard/admin/mfa" ? [path.join(temp, "fixture.html"), "text/html; charset=utf-8"] : assets[route];
+    const asset = route === "/fixture.html" || route === "/dashboard/admin" || route.startsWith("/dashboard/admin/") ? [path.join(temp, "fixture.html"), "text/html; charset=utf-8"] : assets[route];
     if (!asset) { response.writeHead(route === "/favicon.ico" ? 204 : 404); response.end(); return; }
     response.writeHead(200, { "Content-Type": asset[1], "Cache-Control": "no-store" }); fs.createReadStream(asset[0]).pipe(response);
   });
@@ -135,7 +135,7 @@ async function run() {
     console.log(`${language}/${width}px: ${result.checks.length} assertions passed`);
   }
   const directRoutes = [];
-  for (const [route, expected] of [["/dashboard/admin?tab=connections", "connections"], ["/dashboard/admin?tab=security", "security"], ["/dashboard/admin/mfa", "security"]]) {
+  for (const [route, expected] of [["/dashboard/admin", "overview"], ["/dashboard/admin?tab=overview", "overview"], ["/dashboard/admin?tab=manual-payments", "manual-payments"], ["/dashboard/admin?tab=connections", "connections"], ["/dashboard/admin?tab=security", "security"], ["/dashboard/admin/mfa", "security"], ["/dashboard/admin/nested?tab=overview", "overview"], ["/dashboard/admin/mfa/setup?tab=overview", "security"]]) {
     await dimensions(1440); await navigate(`${origin}${route}`); await evaluate(`window.adminNavigationFixture.assertDirect(${JSON.stringify(expected)})`);
     directRoutes.push({ route, expected, result: await evaluate("window.adminNavigationFixture.result()") });
   }

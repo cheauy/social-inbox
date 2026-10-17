@@ -17,7 +17,7 @@ import {
   type FixedPlanCode,
 } from "@/lib/subscription/plan-catalog";
 
-function ArrowRightIcon({ className = "h-5 w-5" }: { className?: string }) {
+function ArrowRightIcon({ className = "h-4 w-4" }: { className?: string }) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -35,7 +35,7 @@ function ArrowRightIcon({ className = "h-5 w-5" }: { className?: string }) {
   );
 }
 
-function ArrowLeftIcon({ className = "h-5 w-5" }: { className?: string }) {
+function ArrowLeftIcon({ className = "h-4 w-4" }: { className?: string }) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -53,7 +53,7 @@ function ArrowLeftIcon({ className = "h-5 w-5" }: { className?: string }) {
   );
 }
 
-function CheckIcon({ className = "h-4 w-4" }: { className?: string }) {
+function CheckIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -70,7 +70,7 @@ function CheckIcon({ className = "h-4 w-4" }: { className?: string }) {
   );
 }
 
-function StarIcon({ className = "h-4 w-4" }: { className?: string }) {
+function StarIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -83,7 +83,7 @@ function StarIcon({ className = "h-4 w-4" }: { className?: string }) {
   );
 }
 
-function RocketIcon({ className = "h-5 w-5" }: { className?: string }) {
+function RocketIcon({ className = "h-[18px] w-[18px]" }: { className?: string }) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -103,7 +103,7 @@ function RocketIcon({ className = "h-5 w-5" }: { className?: string }) {
   );
 }
 
-function TeamIcon({ className = "h-5 w-5" }: { className?: string }) {
+function TeamIcon({ className = "h-[18px] w-[18px]" }: { className?: string }) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -122,7 +122,7 @@ function TeamIcon({ className = "h-5 w-5" }: { className?: string }) {
   );
 }
 
-function CrownIcon({ className = "h-5 w-5" }: { className?: string }) {
+function CrownIcon({ className = "h-[18px] w-[18px]" }: { className?: string }) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -145,7 +145,7 @@ function PlanIcon({ planName }: { planName: string }) {
 
   if (normalized.includes("team")) {
     return (
-      <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+      <span className="flex h-[38px] w-[38px] items-center justify-center rounded-xl bg-blue-50 text-blue-600">
         <TeamIcon />
       </span>
     );
@@ -153,14 +153,14 @@ function PlanIcon({ planName }: { planName: string }) {
 
   if (normalized.includes("pro")) {
     return (
-      <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+      <span className="flex h-[38px] w-[38px] items-center justify-center rounded-xl bg-blue-50 text-blue-600">
         <CrownIcon />
       </span>
     );
   }
 
   return (
-    <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+    <span className="flex h-[38px] w-[38px] items-center justify-center rounded-xl bg-blue-50 text-blue-600">
       <RocketIcon />
     </span>
   );
@@ -232,18 +232,18 @@ export function BuySubscriptionView() {
     <>
     {checkout.view}
     {!checkout.opened ? <div className="h-full min-h-0 w-full overflow-y-auto overscroll-y-contain bg-gradient-to-b from-slate-50/70 via-white to-white">
-      <div className="mx-auto w-full max-w-[1120px] px-4 py-5 pb-9 sm:px-5 lg:px-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div className="mx-auto w-full max-w-[960px] px-4 py-4 pb-8 sm:px-5">
+        <div className="flex flex-col gap-3.5 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-blue-600">
               {t("Buy subscription", "ទិញការជាវ")}
             </p>
 
-            <h1 className="mt-2 text-[23px] font-extrabold tracking-[-0.03em] text-slate-950 sm:text-[32px]">
+            <h1 className="mt-1.5 text-xl font-extrabold tracking-[-0.03em] text-slate-950 sm:text-[27px]">
               {t("Choose a TENH subscription", "ជ្រើសរើសការជាវ TENH")}
             </h1>
 
-            <p className="mt-1.5 max-w-2xl text-xs leading-5 text-slate-500 sm:text-sm">
+            <p className="mt-1 max-w-xl text-xs leading-[18px] text-slate-500">
               {t(
                 "Choose Standard, Team, or Pro. If you need different connection and user limits, build a Custom Subscription.",
                 "ជ្រើស Standard, Team ឬ Pro។ ប្រសិនបើអ្នកត្រូវការចំនួនការតភ្ជាប់ និងអ្នកប្រើប្រាស់ខុសពីនេះ សូមបង្កើត Custom Subscription។",
@@ -253,19 +253,19 @@ export function BuySubscriptionView() {
 
           <Link
             href="/dashboard/subscription"
-            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+            className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
           >
             <ArrowLeftIcon />
             {t("Back to Subscription", "ត្រឡប់ទៅការជាវ")}
           </Link>
         </div>
 
-        <section className="mt-5 rounded-[22px] border border-slate-200 bg-white p-4 shadow-[0_10px_30px_rgba(15,23,42,0.05)] sm:p-4">
+        <section className="mt-4 rounded-[20px] border border-slate-200 bg-white p-3.5 shadow-[0_8px_25px_rgba(15,23,42,0.05)]">
           <div>
-            <p className="text-sm font-extrabold text-slate-950">
+            <p className="text-[13px] font-extrabold text-slate-950">
               {t("Billing duration", "រយៈពេលការជាវ")}
             </p>
-            <p className="mt-1 text-sm text-slate-500">
+            <p className="mt-1 text-xs leading-[18px] text-slate-500">
               {t(
                 "Longer prepaid periods receive the TENH duration discount.",
                 "ការបង់ជាមុនសម្រាប់រយៈពេលវែងជាង នឹងទទួលបានការបញ្ចុះតម្លៃតាមរយៈពេលពី TENH។",
@@ -273,7 +273,7 @@ export function BuySubscriptionView() {
             </p>
           </div>
 
-          <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-2.5 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
             {TENH_BILLING_CYCLES.map((item) => {
               const active = cycle === item.id;
 
@@ -282,16 +282,17 @@ export function BuySubscriptionView() {
                   key={item.id}
                   type="button"
                   disabled={checkout.busy}
+                  aria-pressed={active}
                   onClick={() => setCycle(item.id)}
-                  className={`relative min-h-[70px] rounded-xl border px-4 py-3 text-left transition ${
+                  className={`relative min-h-[60px] rounded-xl border px-3.5 py-2.5 text-left transition ${
                     active
                       ? "border-blue-700 bg-blue-600 text-white shadow-[0_10px_25px_rgba(37,99,235,0.22)]"
                       : "border-slate-200 bg-white text-slate-800 hover:border-blue-300 hover:bg-blue-50/30"
                   }`}
                 >
-                  <div className="flex items-start gap-3">
+                  <div className="flex items-start gap-2.5">
                     <span
-                      className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
+                      className={`mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border ${
                         active
                           ? "border-white/20 bg-white text-blue-600"
                           : "border-slate-300 bg-white text-transparent"
@@ -302,7 +303,7 @@ export function BuySubscriptionView() {
 
                     <div>
                       <span
-                        className={`block text-sm font-extrabold ${
+                        className={`block text-[13px] font-extrabold ${
                           active ? "text-white" : "text-slate-900"
                         }`}
                       >
@@ -328,7 +329,7 @@ export function BuySubscriptionView() {
         </section>
 
 
-        <div className="mt-5 grid gap-4 lg:grid-cols-3">
+        <div className="mt-4 grid gap-3.5 lg:grid-cols-3">
           {TENH_PLANS.map((plan) => {
             const totalCents =
               calculatePlanTotalCents(plan.id, cycle) ?? plan.monthlyCents;
@@ -342,14 +343,14 @@ export function BuySubscriptionView() {
             return (
               <section
                 key={plan.id}
-                className={`relative flex min-h-[350px] flex-col overflow-hidden rounded-[22px] border bg-white p-4 shadow-[0_10px_30px_rgba(15,23,42,0.06)] transition ${
+                className={`relative flex min-h-[300px] flex-col overflow-hidden rounded-[20px] border bg-white p-3.5 shadow-[0_8px_25px_rgba(15,23,42,0.06)] transition ${
                   popular
                     ? "border-blue-500 ring-1 ring-blue-100"
                     : "border-slate-200"
                 }`}
               >
                 {popular ? (
-                  <span className="absolute right-4 top-4 inline-flex items-center gap-1.5 rounded-full bg-blue-600 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.08em] text-white shadow-sm">
+                  <span className="absolute right-3.5 top-3.5 inline-flex items-center gap-1 rounded-full bg-blue-600 px-2 py-0.5 text-xs font-extrabold uppercase tracking-[0.06em] text-white shadow-sm">
                     <StarIcon />
                     {t("Popular", "ពេញនិយម")}
                   </span>
@@ -357,19 +358,19 @@ export function BuySubscriptionView() {
 
                 <PlanIcon planName={plan.name} />
 
-                <div className="mt-3">
-                  <h2 className="text-[23px] font-extrabold tracking-[-0.025em] text-slate-950">
+                <div className="mt-2">
+                  <h2 className="text-xl font-extrabold tracking-[-0.025em] text-slate-950">
                     {plan.name}
                   </h2>
 
-                  <p className="mt-1.5 min-h-[44px] text-xs leading-5 text-slate-500">
+                  <p className="mt-1 min-h-8 text-xs leading-[18px] text-slate-500">
                     {planDescription(plan.id, plan.description)}
                   </p>
                 </div>
 
-                <div className="mt-4 rounded-xl bg-gradient-to-br from-slate-50 to-blue-50/50 p-4">
+                <div className="mt-3 rounded-xl bg-gradient-to-br from-slate-50 to-blue-50/50 p-3">
                   <div className="flex items-end gap-1.5">
-                    <span className="text-[31px] font-extrabold tracking-[-0.03em] text-slate-950">
+                    <span className="text-[27px] font-extrabold tracking-[-0.03em] text-slate-950">
                       {formatUsdFromCents(effectiveMonthlyCents)}
                     </span>
                     <span className="pb-1 text-xs font-medium text-slate-500">
@@ -377,13 +378,13 @@ export function BuySubscriptionView() {
                     </span>
                   </div>
 
-                  <p className="mt-1.5 text-xs font-semibold text-slate-700">
+                  <p className="mt-1 text-xs font-semibold text-slate-700">
                     {isKhmer
                       ? `${plan.channels} ការតភ្ជាប់ · ${plan.users} អ្នកប្រើប្រាស់`
                       : `${plan.channels} connections · ${plan.users} user${plan.users === 1 ? "" : "s"}`}
                   </p>
                   {selectedCycle.discount > 0 ? (
-                    <p className="mt-1 text-[10px] font-semibold text-blue-600">
+                    <p className="mt-1 text-xs font-semibold text-blue-600">
                       {isKhmer
                         ? `តម្លៃសមមូលប្រចាំខែបន្ទាប់ពីបញ្ចុះ · សន្សំ ${Math.round(selectedCycle.discount * 100)}%`
                         : `Discounted monthly equivalent · save ${Math.round(selectedCycle.discount * 100)}%`}
@@ -391,7 +392,7 @@ export function BuySubscriptionView() {
                   ) : null}
                 </div>
 
-                <div className="mt-4 flex items-center justify-between text-xs">
+                <div className="mt-3 flex items-center justify-between gap-2 text-xs">
                   <span className="text-slate-500">
                     {cycleLabel(selectedCycle.label, selectedCycle.months)} {t("total", "សរុប")}
                   </span>
@@ -405,7 +406,7 @@ export function BuySubscriptionView() {
                   disabled={checkout.busy}
                   aria-busy={working}
                   onClick={() => void createFixedSubscription(plan.id)}
-                  className="mt-auto inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-xs font-extrabold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="mt-auto inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-3.5 py-2.5 text-xs font-extrabold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <span>
                     {working
@@ -426,12 +427,12 @@ export function BuySubscriptionView() {
           type="button"
           disabled={checkout.busy}
           onClick={() => setCustomOpen(true)}
-          className="mt-5 flex w-full items-center gap-4 overflow-hidden rounded-[22px] border border-slate-200 bg-white px-4 py-3 text-left shadow-[0_10px_30px_rgba(15,23,42,0.05)] transition hover:border-blue-300 hover:bg-blue-50/30 sm:px-5"
+          className="mt-4 flex min-h-11 w-full items-center gap-3.5 overflow-hidden rounded-[20px] border border-slate-200 bg-white px-3.5 py-2.5 text-left shadow-[0_8px_25px_rgba(15,23,42,0.05)] transition hover:border-blue-300 hover:bg-blue-50/30 sm:px-4"
         >
           <img
             src="/images/custom.png"
             alt={t("Custom Subscription", "ការជាវផ្ទាល់ខ្លួន")}
-            className="h-20 w-32 shrink-0 object-contain sm:h-24 sm:w-36"
+            className="h-[68px] w-[108px] shrink-0 object-contain sm:h-20 sm:w-[124px]"
             draggable={false}
           />
 
@@ -439,10 +440,10 @@ export function BuySubscriptionView() {
             <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-blue-600">
               {t("Build your own", "បង្កើតតាមតម្រូវការ")}
             </p>
-            <h2 className="mt-1 text-xl font-extrabold tracking-[-0.02em] text-slate-950">
+            <h2 className="mt-1 text-lg font-extrabold tracking-[-0.02em] text-slate-950">
               {t("Custom Subscription", "ការជាវផ្ទាល់ខ្លួន")}
             </h2>
-            <p className="mt-1 text-sm leading-6 text-slate-500">
+            <p className="mt-1 text-xs leading-5 text-slate-500">
               {t(
                 "Create a plan that fits your needs with flexible connection and user limits.",
                 "បង្កើតគម្រោងដែលសមនឹងតម្រូវការរបស់អ្នក ដោយកំណត់ចំនួនការតភ្ជាប់ និងអ្នកប្រើប្រាស់បានតាមតម្រូវការ។",
@@ -450,8 +451,8 @@ export function BuySubscriptionView() {
             </p>
           </div>
 
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600 transition group-hover:bg-blue-100">
-            <ArrowRightIcon className="h-5 w-5" />
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600 transition group-hover:bg-blue-100">
+            <ArrowRightIcon className="h-[18px] w-[18px]" />
           </span>
         </button>
 
@@ -460,7 +461,7 @@ export function BuySubscriptionView() {
           picked one is exactly who needs to ask, and by then Custom has already
           been offered as the answer to "none of these fit".
         */}
-        <p className="mt-4 text-center text-xs leading-5 text-slate-500">
+        <p className="mt-3.5 text-center text-xs leading-5 text-slate-500">
           {t(
             "Not sure which plan fits your business?",
             "មិនច្បាស់ថាគម្រោងណាសមនឹងអាជីវកម្មរបស់អ្នក?",
@@ -469,7 +470,7 @@ export function BuySubscriptionView() {
             href="https://t.me/tenhchat_support_bot"
             target="_blank"
             rel="noreferrer"
-            className="font-semibold text-blue-600 underline underline-offset-2 hover:text-blue-700"
+            className="inline-flex min-h-11 items-center font-semibold text-blue-600 underline underline-offset-2 hover:text-blue-700"
           >
             {t("Ask TENH support", "សួរផ្នែកជំនួយ TENH")}
           </a>

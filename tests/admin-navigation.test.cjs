@@ -89,6 +89,31 @@ test('actual navigation renders unique query destinations and the panel selected
   }
 });
 
+test('the shared admin hero and email render only on the exact Overview path and keep other page panels',()=>{
+  const React=require('react'),{renderToStaticMarkup}=require('react-dom/server');
+  for(const pathname of ['/dashboard/admin','/dashboard/admin/mfa','/dashboard/admin/mfa/setup','/dashboard/admin/nested','/dashboard/admin/overview'])for(const tab of [null,...Object.keys(destinations),'unknown']){
+    const rendered=[],{TenhAdminWorkspace,resolveAdminTab}=navigationFixture(pathname,tab,rendered);
+    const html=renderToStaticMarkup(React.createElement(TenhAdminWorkspace,{adminEmail:user.email,initialTab:'overview',adminMfaRequired:true}));
+    const expected=pathname==='/dashboard/admin'&&resolveAdminTab(pathname,tab)==='overview';
+    for(const text of ['Administration center','Signed in as',user.email])assert.equal(html.includes(text),expected,`${pathname}?tab=${tab}: ${text}`);
+    assert.equal(html.includes('data-admin-overview-hero'),expected);assert.ok(html.includes('data-admin-navigation'));assert.equal(rendered.length,1);
+  }
+});
+
+test('manual review remains mounted and never loads the retired Bakong reconciliation panel or endpoint',async()=>{
+  const React=require('react'),{act}=React,{createRoot}=require('react-dom/client'),{JSDOM}=require('jsdom');
+  const dom=new JSDOM('<div id="root"></div>',{url:'https://fixture.invalid/dashboard/admin?tab=manual-payments'}),previous={};
+  for(const[key,value]of Object.entries({window:dom.window,document:dom.window.document,IS_REACT_ACT_ENVIRONMENT:true})){previous[key]=global[key];global[key]=value;}
+  const calls=[],load=loader({'./bakong-reconciliation-panel':{BakongReconciliationPanel:()=>{throw Error('Retired Bakong panel must not mount');}}},
+    {window:dom.window,document:dom.window.document,fetch:async(url,options={})=>{calls.push({url,method:options.method??'GET'});assert.equal(url,'/api/manual-payments/admin');return Response.json({success:true,requests:[]});}});
+  const Component=load('components/billing/manual-payment-admin.tsx').ManualPaymentAdmin,root=createRoot(dom.window.document.querySelector('#root'));
+  try{
+    await act(async()=>root.render(React.createElement(Component)));const text=dom.window.document.body.textContent;
+    assert.ok(text.includes('Manual payment review'));assert.ok(text.includes('No manual payments in this view.'));
+    assert.ok(!text.includes('Bakong KHQR')&&!text.includes('Payment reconciliation'));assert.deepEqual(calls,[{url:'/api/manual-payments/admin',method:'GET'}]);
+  }finally{await act(async()=>root.unmount());dom.window.close();for(const[key,value]of Object.entries(previous)){if(value===undefined)delete global[key];else global[key]=value;}}
+});
+
 test('actual admin page keeps UUID, email, verified-email and MFA authorization before reading route params', async () => {
   for (const [options, redirect] of [
     [{ user: null }, '/login?next=/dashboard/admin'],

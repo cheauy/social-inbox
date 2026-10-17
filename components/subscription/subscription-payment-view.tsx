@@ -34,15 +34,6 @@ function PaymentLockIcon({ className = "h-4 w-4" }: { className?: string }) {
   );
 }
 
-function PaymentShieldIcon({ className = "h-5 w-5" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
-      <path d="M12 3 5 6v5c0 4.6 2.7 8 7 10 4.3-2 7-5.4 7-10V6l-7-3Z" />
-      <path d="m9.4 12 1.8 1.8 3.8-4" />
-    </svg>
-  );
-}
-
 function PaymentBankIcon({ className = "h-6 w-6" }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
@@ -76,15 +67,6 @@ function PaymentClockIcon({ className = "h-5 w-5" }: { className?: string }) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
       <circle cx="12" cy="12" r="9" />
       <path d="M12 7v5l3 2" />
-    </svg>
-  );
-}
-
-function PaymentHeadsetIcon({ className = "h-5 w-5" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
-      <path d="M4 14v-2a8 8 0 0 1 16 0v2" />
-      <path d="M18 19h-2M4 14a2 2 0 0 1 2-2h1v7H6a2 2 0 0 1-2-2v-3ZM20 14a2 2 0 0 0-2-2h-1v7h1a2 2 0 0 0 2-2v-3Z" />
     </svg>
   );
 }
@@ -367,18 +349,6 @@ function PaymentCheckout({
     }).format(date);
   };
 
-  const summaryHeading =
-    checkoutKind === "upgrade"
-      ? t("Upgrade summary", "សង្ខេបការអាប់ក្រេដ")
-      : checkoutKind === "reactivate"
-        ? t("Reactivation summary", "សង្ខេបការធ្វើឲ្យសកម្មឡើងវិញ")
-        : t("New subscription summary", "សង្ខេបការជាវថ្មី");
-  const summaryBadge =
-    checkoutKind === "upgrade"
-      ? t("UPGRADE", "អាប់ក្រេដ")
-      : checkoutKind === "reactivate"
-        ? t("REACTIVATE", "ធ្វើឲ្យសកម្មឡើងវិញ")
-        : t("NEW SUBSCRIPTION", "ការជាវថ្មី");
   const summaryPlanTitle =
     checkoutKind === "upgrade"
       ? planCode === "custom"
@@ -1247,27 +1217,13 @@ function PaymentCheckout({
         }}
       />
 
-      <div data-checkout-scroll className="mx-auto w-full max-w-[900px]">
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <p className="inline-flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-[0.18em] text-blue-600">
-              <PaymentLockIcon className="h-3.5 w-3.5" />
-              {t("Secure payment", "ការទូទាត់មានសុវត្ថិភាព")}
-            </p>
-
-            <h1 className="mt-1.5 text-2xl font-extrabold tracking-[-0.035em] text-slate-950 sm:text-[28px]">
-              {inlineBuy ? t("Checkout", "ទូទាត់") : checkoutKind === "upgrade"
-                ? t("Complete your upgrade", "បញ្ចប់ការអាប់ក្រេដរបស់អ្នក")
-                : checkoutKind === "reactivate"
-                  ? t("Reactivate your subscription", "ធ្វើឲ្យការជាវរបស់អ្នកសកម្មឡើងវិញ")
-                  : t("Complete your new subscription", "បញ្ចប់ការជាវថ្មីរបស់អ្នក")}
-            </h1>
-
-            {checkoutKind === "upgrade" ? <p className="mt-1.5 max-w-4xl text-sm leading-5 text-slate-500">{t("Review exactly what is changing, then choose how you want to pay. No upgrade is applied until payment is approved.", "ពិនិត្យការផ្លាស់ប្ដូរ រួចជ្រើសរើសវិធីទូទាត់។ ការអាប់ដេតអនុវត្តក្រោយការទូទាត់ត្រូវបានអនុម័ត។")}</p> : null}
+      <div data-checkout-scroll className="mx-auto w-full max-w-[960px]">
+        <header className="relative mb-6 pr-14">
+          <div className="flex min-h-11 items-center gap-2.5 text-sm font-extrabold tracking-wide text-slate-950">
+            <img src="/images/tenh_logo.png" alt="" className="h-8 w-8 object-contain" /> TENH CHAT
           </div>
-
-          <button
-            type="button"
+          <h1 className="mt-3 text-2xl font-extrabold tracking-tight text-slate-950 sm:text-3xl">{t("Checkout", "ទូទាត់")}</h1>
+          <button type="button"
             onClick={() => {
               if (payWayPaymentState === "approved") {
                 finishApprovedPayWayPayment(false);
@@ -1275,29 +1231,14 @@ function PaymentCheckout({
               }
               void leaveCheckoutSafely();
             }}
-            className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 self-start rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
-          >
-            <span aria-hidden="true" className="text-base leading-none">←</span>
-            {inlineBuy ? t("Close checkout", "បិទការទូទាត់") : payWayPaymentState === "approved"
-              ? t("Close", "បិទ")
-              : checkoutKind === "upgrade"
-                ? t("Cancel upgrade", "បោះបង់ការអាប់ក្រេដ")
-                : t("Back to payment", "ត្រឡប់ទៅការទូទាត់")}
-          </button>
-        </div>
+            aria-label={t("Close checkout", "បិទការទូទាត់")}
+            className="absolute right-0 top-0 inline-flex h-11 w-11 items-center justify-center rounded-xl text-2xl text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-blue-600">×</button>
+        </header>
 
-        <section className="grid gap-4 lg:grid-cols-[330px_minmax(0,1fr)]">
-          <aside className="relative overflow-hidden rounded-[24px] border border-[#0B3A82] bg-[#012A72] p-4 text-white shadow-[0_18px_55px_rgba(1,42,114,0.22)] sm:p-5">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-xs font-extrabold uppercase tracking-[0.20em] text-blue-100">
-                {summaryHeading}
-              </p>
-              <span className="rounded-full border border-white/20 bg-white/10 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-blue-100">
-                {summaryBadge}
-              </span>
-            </div>
-
-            <div className="mt-4 rounded-[20px] border border-white/20 bg-white/[0.08] p-4 shadow-sm backdrop-blur-sm">
+        <section data-checkout-layout className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-x-7 lg:gap-y-0">
+          <aside data-order-summary className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 text-slate-950 shadow-sm sm:p-5 lg:col-start-2 lg:row-start-1 lg:rounded-b-none lg:border-b-0">
+            <h2 className="text-base font-bold text-slate-950">{t("Order summary", "សង្ខេបការបញ្ជាទិញ")}</h2>
+            <div className="mt-4 border-b border-slate-100 pb-4">
               <div className="flex items-start gap-4">
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white/95 shadow-sm">
                   {planCode === "custom" ? (
@@ -1315,13 +1256,13 @@ function PaymentCheckout({
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-lg font-extrabold leading-6">{summaryPlanTitle}</p>
-                  <p className="mt-1 text-sm font-semibold text-blue-100/85">
+                  <p className="mt-1 text-sm font-semibold text-slate-500">
                     {checkoutKind === "upgrade" && currentDurationLabel
                       ? `${currentDurationLabel} → ${targetDurationLabel}`
                       : targetDurationLabel}
                   </p>
                   {customUpgradeRemainingDays !== null && checkoutKind === "upgrade" ? (
-                    <p className="mt-1 text-xs text-blue-100/65">
+                    <p className="mt-1 text-xs text-slate-500">
                       {isKhmer
                         ? `នៅសល់ ${customUpgradeRemainingDays} ថ្ងៃក្នុងរយៈពេលបច្ចុប្បន្ន`
                         : `${customUpgradeRemainingDays} day${customUpgradeRemainingDays === 1 ? "" : "s"} remaining in the current period`}
@@ -1330,38 +1271,15 @@ function PaymentCheckout({
                 </div>
               </div>
 
-              <div className="mt-4 border-t border-white/15 pt-4">
-                <div className="flex items-end justify-between gap-4">
-                  <p className="text-sm font-medium text-blue-100/75">
-                    {checkoutKind === "upgrade"
-                      ? t("Upgrade amount", "តម្លៃអាប់ក្រេដ")
-                      : t("Total to pay", "សរុបត្រូវបង់")}
-                  </p>
-                  <p className="text-2xl font-black tracking-tight">
-                    {formatUsdFromCents(totalCents)}
-                  </p>
-                </div>
-                <p className="mt-2 text-right text-xs text-blue-100/65">
-                  {checkoutKind === "upgrade"
-                    ? t(
-                        "Only the selected upgrade changes are charged.",
-                        "គិតថ្លៃតែការផ្លាស់ប្តូរអាប់ក្រេដដែលបានជ្រើសប៉ុណ្ណោះ។",
-                      )
-                    : t(
-                        "USD · Based on your selected subscription",
-                        "USD · គណនាតាមការជាវដែលអ្នកបានជ្រើស",
-                      )}
-                </p>
-              </div>
             </div>
 
-            <dl className="mt-4 grid gap-2.5">
-              <div className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/[0.08] p-4">
+            <dl className="mt-3 grid gap-1">
+              <div className="flex items-center justify-between gap-3 py-1.5">
                 <div className="flex min-w-0 items-center gap-3">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-500/30 text-blue-100">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500">
                     <PaymentLinkIcon />
                   </span>
-                  <dt className="text-sm font-medium text-blue-100/80">
+                  <dt className="text-sm font-medium text-slate-500">
                     {t("Connections", "ការតភ្ជាប់")}
                   </dt>
                 </div>
@@ -1370,18 +1288,18 @@ function PaymentCheckout({
                     ? `${summaryConnectionsBefore} → ${summaryConnectionsAfter}`
                     : summaryConnectionsAfter}
                   {checkoutKind === "upgrade" && connectionsDelta !== null && connectionsDelta > 0 ? (
-                    <span className="ml-2 rounded-full bg-emerald-400/20 px-2 py-0.5 text-[10px] font-extrabold text-emerald-100">+{connectionsDelta}</span>
+                    <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-extrabold text-emerald-700">+{connectionsDelta}</span>
                   ) : null}
                 </dd>
               </div>
 
-              <div className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/[0.08] p-4">
+              <div className="flex items-center justify-between gap-3 py-1.5">
                 <div className="flex min-w-0 items-center gap-3">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet-500/30 text-violet-100">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500">
                     <PaymentUsersIcon />
                   </span>
-                  <dt className="text-sm font-medium text-blue-100/80">
-                    {t("Team users", "អ្នកប្រើប្រាស់ក្នុងក្រុម")}
+                  <dt className="text-sm font-medium text-slate-500">
+                    {t("Team members", "អ្នកប្រើប្រាស់ក្នុងក្រុម")}
                   </dt>
                 </div>
                 <dd className="text-right text-sm font-extrabold">
@@ -1389,18 +1307,18 @@ function PaymentCheckout({
                     ? `${summaryUsersBefore} → ${summaryUsersAfter}`
                     : summaryUsersAfter}
                   {checkoutKind === "upgrade" && usersDelta !== null && usersDelta > 0 ? (
-                    <span className="ml-2 rounded-full bg-emerald-400/20 px-2 py-0.5 text-[10px] font-extrabold text-emerald-100">+{usersDelta}</span>
+                    <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-extrabold text-emerald-700">+{usersDelta}</span>
                   ) : null}
                 </dd>
               </div>
 
-              <div className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/[0.08] p-4">
+              <div className="flex items-center justify-between gap-3 py-1.5">
                 <div className="flex min-w-0 items-center gap-3">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-cyan-500/25 text-cyan-100">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500">
                     <PaymentClockIcon />
                   </span>
-                  <dt className="text-sm font-medium text-blue-100/80">
-                    {t("Billing duration", "រយៈពេលការជាវ")}
+                  <dt className="text-sm font-medium text-slate-500">
+                    {t("Duration", "រយៈពេលការជាវ")}
                   </dt>
                 </div>
                 <dd className="text-right text-sm font-extrabold">
@@ -1408,14 +1326,14 @@ function PaymentCheckout({
                     ? `${currentDurationLabel} → ${targetDurationLabel}`
                     : targetDurationLabel}
                   {checkoutKind === "upgrade" && customUpgradeExtensionMonths !== null && customUpgradeExtensionMonths > 0 ? (
-                    <span className="ml-2 rounded-full bg-emerald-400/20 px-2 py-0.5 text-[10px] font-extrabold text-emerald-100">+{customUpgradeExtensionMonths} mo</span>
+                    <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-extrabold text-emerald-700">+{customUpgradeExtensionMonths} mo</span>
                   ) : null}
                 </dd>
               </div>
 
               {checkoutKind === "upgrade" && currentExpiryLabel && newExpiryLabel ? (
-                <div className="rounded-2xl border border-white/10 bg-white/[0.08] p-4">
-                  <dt className="text-xs font-medium text-blue-100/70">
+                <div className="border-t border-slate-100 pt-3">
+                  <dt className="text-xs font-medium text-slate-500">
                     {t("Subscription expiry", "ថ្ងៃផុតកំណត់ការជាវ")}
                   </dt>
                   <dd className="mt-1 text-sm font-extrabold">
@@ -1430,7 +1348,7 @@ function PaymentCheckout({
 
           </aside>
 
-          <div data-payment-method-card className="relative flex min-w-0 flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_18px_55px_rgba(15,23,42,0.07)]"><div className="p-4 lg:p-5">
+          <div data-payment-method-card className="relative min-w-0 lg:col-start-1 lg:row-start-1 lg:row-span-2"><div className="py-1">
               {payWayPaymentState === "approved" ? (
                 <div className="absolute inset-0 z-20 flex min-h-[520px] items-center justify-center bg-white p-5 sm:p-7">
                   <div className="w-full max-w-[560px] text-center">
@@ -1514,130 +1432,33 @@ function PaymentCheckout({
                 </div>
               ) : null}
 
-              <p className="text-sm font-bold text-slate-950">
-                {t("Payment method", "វិធីទូទាត់")}
-              </p>
-              <p className="mt-1 text-sm text-slate-500">
-                {t(
-                  checkoutKind === "upgrade"
-                    ? "Select a payment method to complete this upgrade."
-                    : "Select a payment method to complete your subscription.",
-                  checkoutKind === "upgrade"
-                    ? "ជ្រើសរើសវិធីទូទាត់ ដើម្បីបញ្ចប់ការអាប់ក្រេដនេះ។"
-                    : "ជ្រើសរើសវិធីទូទាត់ ដើម្បីបញ្ចប់ការជាវរបស់អ្នក។",
-                )}
-              </p>
-
-              <div data-checkout-method-chooser className="mt-4 grid gap-2.5">
-                <button
-                  type="button"
-                  disabled={checkoutLoading || manualPaymentSubmitting}
-                  aria-pressed={checkoutMethod === "payway"}
-                  onClick={() => {
-                    setCheckoutMethod("payway");
-                    setManualPaymentError(null);
-                  }}
-                  className={`rounded-2xl border p-3.5 text-left transition ${
-                    checkoutMethod === "payway"
-                      ? "border-blue-500 bg-blue-50/45 ring-1 ring-blue-100"
-                      : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"
-                  }`}
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="relative flex h-12 w-12 shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                      <div className="flex flex-1 items-center justify-center bg-[#0C5967] text-sm font-black tracking-[0.18em] text-white">
-                        ABA
-                      </div>
-                      <div className="flex h-5 items-center justify-center bg-red-600 text-[8px] font-black uppercase tracking-wide text-white">
-                        KHQR
-                      </div>
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-base font-extrabold text-slate-950">
-                        ABA KHQR
-                      </p>
-                      <p className="mt-1 text-sm leading-5 text-slate-500">
-                        {t("Scan to pay with any banking app.", "ស្កេនដើម្បីទូទាត់ជាមួយកម្មវិធីធនាគារណាមួយ។")}
-                      </p>
-                    </div>
-                    <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border ${
-                      checkoutMethod === "payway"
-                        ? "border-blue-600 bg-blue-600 text-white"
-                        : "border-slate-300 bg-white text-transparent"
-                    }`}>
-                      <PaymentCheckIcon />
+              <h2 className="text-base font-bold text-slate-950">{t("Pay with", "ទូទាត់ជាមួយ")}</h2>
+              <fieldset data-checkout-method-chooser className="mt-3 grid min-w-0 gap-3" disabled={checkoutLoading || manualPaymentSubmitting}>
+                <legend className="sr-only">{t("Payment method", "វិធីទូទាត់")}</legend>
+                {(["payway", "manual"] as const).map(method => {
+                  const disabled = method === "manual" && (transactionReturnOnly || manualPaymentLoading || !manualPaymentConfig?.enabled);
+                  return <label key={method} className={`flex min-h-24 min-w-0 items-center gap-3 rounded-2xl border p-4 transition focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-blue-600 ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"} ${checkoutMethod === method ? "border-blue-400 bg-blue-50/50 shadow-sm" : "border-slate-200 bg-white hover:border-blue-300"}`}>
+                    {method === "payway" ? <img src="/images/aba-khqr.png" alt="" className="h-12 w-12 shrink-0 rounded-xl object-contain" /> : <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white"><PaymentBankIcon /></span>}
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-base font-bold text-slate-950">{method === "payway" ? "ABA PayWay" : t("Bank transfer", "ផ្ទេរប្រាក់តាមធនាគារ")}</span>
+                      <span className="mt-1 block text-sm text-slate-500">{method === "payway" ? t("Scan with any bank", "ស្កេនជាមួយធនាគារណាមួយ") : t("Upload receipt", "ផ្ទុកបង្កាន់ដៃ")}</span>
                     </span>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  aria-pressed={checkoutMethod === "manual"}
-                  disabled={
-                    checkoutLoading || manualPaymentSubmitting || transactionReturnOnly ||
-                    manualPaymentLoading ||
-                    !manualPaymentConfig?.enabled
-                  }
-                  onClick={() => {
-                    setCheckoutMethod("manual");
-                    setCheckoutError(null);
-                  }}
-                  className={`rounded-2xl border p-3.5 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                    checkoutMethod === "manual"
-                      ? "border-blue-500 bg-blue-50/45 ring-1 ring-blue-100"
-                      : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"
-                  }`}
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-sm">
-                      <PaymentBankIcon />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-base font-extrabold text-slate-950">
-                        {t("Manual bank transfer", "ផ្ទេរប្រាក់តាមធនាគារដោយដៃ")}
-                      </p>
-                      <p className="mt-1 text-sm leading-5 text-slate-500">
-                        {t(
-                          "Transfer, upload receipt, and wait for review.",
-                          "ផ្ទេរប្រាក់ ផ្ទុកបង្កាន់ដៃ ហើយរង់ចាំការត្រួតពិនិត្យ។",
-                        )}
-                      </p>
-                    </div>
-                    <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border ${
-                      checkoutMethod === "manual"
-                        ? "border-blue-600 bg-blue-600 text-white"
-                        : "border-slate-300 bg-white text-transparent"
-                    }`}>
-                      <PaymentCheckIcon />
-                    </span>
-                  </div>
-                </button>
-              </div>
-
-              <div className="mt-3 flex items-start gap-2.5 rounded-xl border border-blue-100 bg-blue-50/50 p-4">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600">
-                  <PaymentShieldIcon />
-                </span>
-                <div>
-                  <p className="font-extrabold text-blue-700">
-                    {t("Secure & Verified", "មានសុវត្ថិភាព និងបានផ្ទៀងផ្ទាត់")}
-                  </p>
-                  <p className="mt-1 text-sm leading-6 text-slate-500">
-                    {t(
-                      "TENH verifies your plan and payment before activation. This is a one-time payment for the selected subscription period.",
-                      "TENH ផ្ទៀងផ្ទាត់គម្រោង និងការទូទាត់របស់អ្នក មុនពេលបើកដំណើរការ។ នេះជាការទូទាត់តែម្តងសម្រាប់រយៈពេលការជាវដែលបានជ្រើស។",
-                    )}
-                  </p>
-                </div>
-              </div>
+                    <input type="radio" name="checkout-method" value={method} checked={checkoutMethod === method} disabled={disabled}
+                      onChange={() => { setCheckoutMethod(method); if (method === "payway") setManualPaymentError(null); else setCheckoutError(null); }}
+                      className="h-5 w-5 shrink-0 accent-blue-600" />
+                  </label>;
+                })}
+              </fieldset>
+              <p className="mt-5 flex items-center gap-2 text-sm leading-6 text-slate-500"><PaymentLockIcon className="h-4 w-4 shrink-0" />{t("One-time payment. No auto-renewal.", "ការទូទាត់តែម្តង។ មិនបន្តដោយស្វ័យប្រវត្តិ។")}</p>
 
               {!checkoutMethod ? <p role="status" className="mt-5 text-sm text-slate-500">{t("Choose a payment method to continue.", "ជ្រើសរើសវិធីទូទាត់ដើម្បីបន្ត។")}</p> : null}
 
             </div>
-            <footer data-checkout-footer className="sticky bottom-0 z-20 mt-auto shrink-0 border-t border-slate-200 bg-white px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-6px_24px_rgba(15,23,42,0.04)] sm:px-5">
-        <div className="mx-auto w-full max-w-[900px]">
+          </div>
+            <footer data-checkout-footer className="relative rounded-2xl border border-slate-200 bg-white px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-sm sm:px-5 lg:col-start-2 lg:row-start-2 lg:rounded-t-none lg:border-t-0">
+        <div className="mx-auto w-full max-w-[960px]">
           {checkoutError ? <p role="alert" className="mb-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">{checkoutError}</p> : null}
-          <div className="flex items-center justify-between gap-4">
+          <div className="flex flex-col gap-4">
             <div className="min-w-0"><p className="text-sm text-slate-500">{t("Total", "សរុប")}</p><p className="text-2xl font-extrabold tracking-tight text-slate-950">{formatUsdFromCents(totalCents)}</p></div>
             <button type="button" onClick={() => { if (checkoutMethod === "manual") setManualDialogOpen(true); else if (checkoutMethod === "payway") void startPayWayCheckout(); }}
               disabled={!checkoutMethod || transactionReturnOnly || checkoutLoading || manualPaymentSubmitting || manualPaymentLoading || !bakongSafety || (checkoutMethod === "payway" && !payWayPluginReady) || (checkoutMethod === "manual" && !manualPaymentConfig?.enabled)}
@@ -1647,52 +1468,8 @@ function PaymentCheckout({
           </div>
         </div>
       </footer>
-          </div>
         </section>
 
-        <div className="mt-5 grid gap-3 border-t border-slate-200 pt-4 sm:grid-cols-3">
-          <div className="flex items-start gap-3 px-2">
-            <span className="mt-0.5 text-emerald-600">
-              <PaymentShieldIcon />
-            </span>
-            <div>
-              <p className="text-sm font-extrabold text-slate-900">
-                {t("Secure payment", "ការទូទាត់មានសុវត្ថិភាព")}
-              </p>
-              <p className="mt-1 text-xs leading-5 text-slate-500">
-                {t("One-time payment. Activated after approval.", "ការទូទាត់តែម្តង។ ដំណើរការបន្ទាប់ពីអនុម័ត។")}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-3 border-slate-200 px-2 sm:border-l sm:pl-5">
-            <span className="mt-0.5 text-amber-500">
-              <PaymentClockIcon />
-            </span>
-            <div>
-              <p className="text-sm font-extrabold text-slate-900">
-                {t("One-time payment", "ការទូទាត់តែម្តង")}
-              </p>
-              <p className="mt-1 text-xs leading-5 text-slate-500">
-                {t("Pay once for this selected subscription period.", "បង់តែម្តងសម្រាប់រយៈពេលការជាវដែលបានជ្រើសនេះ។")}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-3 border-slate-200 px-2 sm:border-l sm:pl-5">
-            <span className="mt-0.5 text-violet-600">
-              <PaymentHeadsetIcon />
-            </span>
-            <div>
-              <p className="text-sm font-extrabold text-slate-900">
-                {t("Need help?", "ត្រូវការជំនួយ?")}
-              </p>
-              <p className="mt-1 text-xs leading-5 text-slate-500">
-                {t("Contact TENH support if you need payment assistance.", "ទាក់ទងក្រុមជំនួយ TENH ប្រសិនបើអ្នកត្រូវការជំនួយអំពីការទូទាត់។")}
-              </p>
-            </div>
-          </div>
-        </div>
       </div>
 
       <CheckoutDialog open={manualDialogOpen} busy={manualPaymentSubmitting} title={t("Manual bank transfer", "ផ្ទេរប្រាក់តាមធនាគារដោយដៃ")}

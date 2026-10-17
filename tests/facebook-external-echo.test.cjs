@@ -20,7 +20,7 @@ function fixture() {
     '@/lib/facebook/customer-block': { readFacebookBlock:async()=>({state:null}) },
     '@/lib/facebook/get-facebook-customer-profile': { getFacebookCustomerProfile:async()=>null },
     '@/lib/facebook/get-facebook-page-access-token': { getFacebookPageAccessToken:async()=>{ throw Error('No provider calls'); } },
-    '@/lib/facebook/facebook-profile-photo': { syncFacebookContactProfilePhoto:async()=>{ throw Error('No photo mutation'); } },
+    '@/lib/facebook/facebook-profile-photo': { isMissingFacebookCustomerName:()=>false, saveFacebookCustomerName:async()=>false, syncFacebookCustomerName:async()=>false, syncFacebookContactProfilePhoto:async()=>{ throw Error('No photo mutation'); } },
     '@/lib/inbox/save-detected-customer-phone': { saveDetectedCustomerPhone:async input=>detected.push(input) },
   }, { Buffer, process:{env:{FACEBOOK_APP_SECRET:'fixture-only'}}, console:{log(){},warn(){},error(){}}, fetch(){ throw Error('No network'); } });
   const route=load('app/api/webhooks/facebook/route.ts');

@@ -40,7 +40,7 @@ async function fixture(options={}){
  const footer=()=>document.querySelector('[data-checkout-footer] button'),dialog=()=>document.querySelector('dialog[open]');
  const click=async element=>act(async()=>element.click());
  return{state,requests,navigations,record,uploads:()=>uploads,dialog,footer,text:()=>document.body.textContent,
-  async select(){await click([...document.querySelectorAll('[data-checkout-method-chooser] button')].find(x=>x.textContent.includes('Manual bank transfer')));},
+  async select(){await click(document.querySelector('[data-checkout-method-chooser] input[value="manual"]'));},
   async open(){await click(footer());},async dismiss(){await click(dialog().querySelector('header button'));},
   async file(){const input=dialog().querySelector('input[type=file]');Object.defineProperty(input,'files',{configurable:true,value:[new dom.window.File(['synthetic'],'proof.png',{type:'image/png'})]});await act(async()=>input.dispatchEvent(new dom.window.Event('change',{bubbles:true})));},
   async advance(ms){const target=clock+ms;for(let count=0;count<100;count++){const next=[...timers].sort((a,b)=>a[1].at-b[1].at)[0];if(!next||next[1].at>target)break;timers.delete(next[0]);clock=next[1].at;await act(async()=>{void next[1].fn();});}clock=target;},
@@ -72,7 +72,7 @@ test('upload failure retains the popup and proof; retry reuses one request and o
 test('manual QR lightbox repeatedly closes back to the same receipt/note, preserves scroll lock, and never submits',async()=>{
  const src='data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="320" height="480"/%3E';
  const f=await fixture({qrImageUrl:src});try{
-  assert.match(f.text(),/One-time payment\. Activated after approval\./);
+  assert.match(f.text(),/One-time payment\. No auto-renewal\./);
   assert.doesNotMatch(f.text(),/Change selection|Safe to go back|Your payment is protected and verified/);
   await f.select();f.footer().focus();await f.open();await f.file();
   const parent=f.dialog(),input=parent.querySelector('input[type=file]'),file=input.files[0],note=parent.querySelector('textarea');

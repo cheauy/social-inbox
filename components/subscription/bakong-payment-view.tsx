@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { BakongPaymentView as Payment } from "@/lib/bakong/types";
 import { CancelPaymentButton } from "./cancel-payment-button";
 import { PaymentSuccessCard } from "./payment-success-card";
+import { CustomerPaymentReference } from "./customer-payment-reference";
 
 const button = "inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-50";
 export function BakongPaymentView({ attemptId, businessId, qrClosed = false }: { attemptId: string; businessId?: string | null; qrClosed?: boolean }) {
@@ -196,7 +197,7 @@ export function BakongPaymentView({ attemptId, businessId, qrClosed = false }: {
     const returnTo = `/dashboard/subscription/payment?${new URLSearchParams({ bakong_attempt: attemptId, purchase_business: payment.businessId })}`;
     return <PaymentSuccessCard workspace={payment.workspaceName} planCode={payment.planCode} billingCycle={payment.billingCycle}
       amount={Number(payment.amount)} currency={payment.currency} provider="bakong" environment={payment.environment}
-      reference={payment.transactionReference ?? payment.reference} busy={busy} error={navigationError}
+      reference={payment.customerReference ?? null} busy={busy} error={navigationError}
       receiptHref={payment.invoiceId ? `/dashboard/subscription/invoices/${encodeURIComponent(payment.invoiceId)}?return_to=${encodeURIComponent(returnTo)}` : null}
       onNavigate={destination => void continueToSubscription(destination)} />;
   }
@@ -278,7 +279,7 @@ export function BakongPaymentView({ attemptId, businessId, qrClosed = false }: {
         <details className="mt-3 text-xs text-slate-500">
           <summary className="min-h-11 cursor-pointer py-3 font-medium focus-visible:outline-2 focus-visible:outline-blue-600">{t("Payment details", "ព័ត៌មានការទូទាត់")}</summary>
           <p className="break-words">{payment.workspaceName} · {payment.planCode} · {payment.billingCycle}</p>
-          <p className="mt-2 break-all">{t("Reference", "លេខយោង")}: {payment.reference}</p>
+          <div className="mt-2">{t("Reference", "លេខយោង")}: <CustomerPaymentReference value={payment.customerReference} /></div>
           {payment.transactionReference ? <p className="mt-2 break-all">{t("Transaction", "ប្រតិបត្តិការ")}: {payment.transactionReference}</p> : null}
         </details>
       </> : null}

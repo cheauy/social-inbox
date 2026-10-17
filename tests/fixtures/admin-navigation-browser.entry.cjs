@@ -73,6 +73,9 @@ function assertActive(tab) {
   const links = [...document.querySelectorAll("[data-admin-navigation]")].flatMap(nav => [...nav.querySelectorAll('a[aria-current="page"]')]);
   check(`${tab} active state matches every shared navigation`, links.length > 0 && links.every(link => linkTab(link) === tab));
   check(`${tab} existing panel remains selected`, currentTab() === tab, currentTab());
+  const overview = location.pathname === "/dashboard/admin" && tab === "overview";
+  check(`${tab} hero appears only on exact Overview route`, Boolean(document.querySelector('[data-admin-overview-hero]')) === overview);
+  check(`${tab} shared signed-in identity follows hero visibility`, document.body.textContent.includes('admin.navigation.fixture@example.invalid') === overview);
 }
 async function navigate(tab) {
   await ensureNavigation();

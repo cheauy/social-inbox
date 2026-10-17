@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getBillingOwnerAccess } from "@/lib/billing/owner-access";
+import { getCustomerPaymentReferences } from "@/lib/billing/customer-payment-references";
 import { billingCurrency, billingDate, billingNumber, paymentMethodLabel, paymentProvenance, type BillingHistoryItem } from "@/lib/billing/payment-display";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { payWayCheckoutSessionClosedAt } from "@/lib/payway/checkout-lifetime";
@@ -92,6 +93,8 @@ export async function GET() {
     const items = [...visiblePayWay.slice(0, 300).map(row => item(row, "payway")), ...((bakong.data ?? []) as Row[]).map(row => item(row, "bakong")), ...((manual.data ?? []) as Row[]).map(row => item(row, "manual"))]
       .filter(entry => !["draft", "pending", "processing", "created", "submitted"].includes(entry.status))
       .sort((a, b) => (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0) || b.id.localeCompare(a.id)).slice(0, 500);
+    const references = await getCustomerPaymentReferences(items.map(item => ({ source: item.source, paymentId: item.sourceId })));
+    for (const item of items) item.customerReference = references.get(`${item.source}:${item.sourceId}`) ?? null;
     const approved = items.filter(item => item.status === "approved");
     const totalUsd = (entries: BillingHistoryItem[]) => entries.filter(item => item.currency === "USD").reduce((sum, item) => sum + (item.amount ?? 0), 0);
     return NextResponse.json({ success: true, items, summary: {

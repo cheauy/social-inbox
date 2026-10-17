@@ -151,7 +151,7 @@ test('prepared manual ticket resolves only its exact member and workspace, witho
   assert.equal(body.attempt.canRetry, false);
   assert.deepEqual(body.attempt.upload, { fileName: 'receipt.png', mimeType: 'image/png', sizeBytes: 1024 });
   assert.ok(h.db.history.every(entry => entry.op === 'read'));
-  assert.deepEqual(h.rpc.map(call => call.name), ['tenh_get_manual_payment_upload']);
+  assert.deepEqual(h.rpc.map(call => call.name), ['tenh_get_manual_payment_upload', 'tenh_claim_customer_payment_references']);
   const outsider = route(saved(), { preparedRow: { ...preparedRow, requested_by_member_id: 'another' } });
   assert.equal((await outsider.get('manual_request=' + manualId)).response.status, 404);
   assert.equal((await h.get('manual_request=' + manualId + '&purchase_business=30000000-0000-4000-8000-000000000003')).response.status, 404);
@@ -219,4 +219,37 @@ test('saved checkout closure survives status rereads without changing pending fi
  assert.equal(result.body.attempt.checkoutSessionClosedAt,closedAt);assert.equal(result.body.attempt.status,'pending');
  assert.equal(result.body.attempt.checkoutExpiresAt,createPayWayCheckoutLifetime(now).checkout_expires_at);
  assert.ok(!JSON.stringify(result.body).includes('PRIVATE-MEMBER'));assert.ok(f.db.history.every(x=>x.op==='read'));
+});
+
+
+test('receipt preview signs only the persisted proof after workspace billing authorization', async () => {
+  const seed = { ...saved(), source: 'manual', payment: { ...saved().payment, id: manualId, status: 'submitted',
+    proof_bucket: 'tenh-manual-payment-proofs', proof_path: businessId + '/' + manualId + '/receipt.png', proof_mime_type: 'image/png' } };
+  for (const [options, status] of [[{}, 200], [{signedOut:true}, 401], [{outsider:true}, 404], [{denied:true}, 404]]) {
+    const f = route(seed, options), calls = [];
+    f.db.storage = {from: bucket => ({createSignedUrl: async (path, ttl) => {
+      calls.push({bucket,path,ttl});return {data:{signedUrl:'https://receipt.invalid/short-lived'},error:null};
+    }})};
+    const result = await f.get('manual_request=' + manualId + '&purchase_business=' + businessId + '&receipt=1');
+    assert.equal(result.response.status, status);
+    assert.equal(calls.length, status === 200 ? 1 : 0);
+    assert.match(result.response.headers.get('cache-control'), /no-store/);
+    if(status === 200) {
+      assert.deepEqual(calls[0], {bucket:seed.payment.proof_bucket,path:seed.payment.proof_path,ttl:60});
+      assert.deepEqual(result.body.receipt, {url:'https://receipt.invalid/short-lived',mimeType:'image/png'});
+      assert.equal(result.body.attempt, undefined);
+    }
+  }
+});
+
+test('receipt preview rejects cross-workspace proofs, unsupported files and ambiguous requests', async () => {
+  for(const change of [{proof_path:'another-workspace/private.png'}, {proof_bucket:'public'}, {proof_mime_type:'text/html'}]) {
+    const seed = {...saved(),source:'manual',payment:{...saved().payment,id:manualId,proof_bucket:'tenh-manual-payment-proofs',proof_path:businessId+'/proof.png',proof_mime_type:'image/png',...change}};
+    const f=route(seed);f.db.storage={from:()=>{throw Error('must not sign')}};
+    assert.equal((await f.get('manual_request='+manualId+'&receipt=1')).response.status,404);
+  }
+  const f=route();
+  for(const query of ['tran_id=transaction-1&receipt=1','manual_request='+manualId+'&receipt=1&receipt=1','manual_request='+manualId+'&receipt=0']) {
+    assert.equal((await f.get(query)).response.status,400);
+  }
 });

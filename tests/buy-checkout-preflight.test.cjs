@@ -50,11 +50,11 @@ async function fixture(options={}){
   release:async()=>act(async()=>{state.holdDiscovery=false;releaseDiscovery();}),
   releaseCheckout:async()=>act(async()=>{state.holdCheckout=false;releaseCheckout();}),
   async advance(ms){const target=clock+ms;for(let count=0;count<1000;count++){const next=[...timers.entries()].sort((a,b)=>a[1].at-b[1].at)[0];if(!next||next[1].at>target)break;timers.delete(next[0]);clock=next[1].at;await act(async()=>{void next[1].fn();});}clock=target;},
-  async chooseManual(){await act(async()=>[...dom.window.document.querySelectorAll('[data-checkout-method-chooser] button')].find(b=>b.textContent.includes('Manual bank transfer')).click());},
+  async chooseManual(){await act(async()=>dom.window.document.querySelector('[data-checkout-method-chooser] input[value="manual"]').click());},
   async closeManual(){await act(async()=>dom.window.document.querySelector("dialog[open] header button").click());},
-  async choosePayWay(){await act(async()=>[...dom.window.document.querySelectorAll('[data-checkout-method-chooser] button')].find(b=>b.textContent.includes('ABA KHQR')).click());},
+  async choosePayWay(){await act(async()=>dom.window.document.querySelector('[data-checkout-method-chooser] input[value="payway"]').click());},
   async pay(){await act(async()=>[...dom.window.document.querySelectorAll('button')].find(b=>b.textContent==='Checkout').click());},
-  async closeChooser(){await act(async()=>[...dom.window.document.querySelectorAll('button')].find(b=>b.textContent.includes('Close checkout')).click());},
+  async closeChooser(){await act(async()=>dom.window.document.querySelector('button[aria-label="Close checkout"]').click());},
   async signout(){await act(async()=>{for(const listener of listeners)listener('SIGNED_OUT');});},
   async close(){await act(async()=>root.unmount());dom.window.close();for(const[key,value]of Object.entries(previous)){if(value===undefined)delete global[key];else global[key]=value;}}
  };
@@ -65,7 +65,7 @@ test('Buy preflight opens an unselected method chooser; only an explicit choice 
   assert.equal(f.navigations.length,0);assert.equal(f.transfers(),0);assert.equal(f.dom.window.location.pathname,'/dashboard/subscription/buy');
   assert.ok(f.dom.window.document.querySelector('button[aria-busy=true][disabled] [class*="animate-spin"]'));
   assert.ok(!f.dom.window.document.body.textContent.includes('Checking existing payment'));
-  await f.release();await f.advance(100);assert.equal(f.requests.filter(r=>r.url==='/api/payway/checkout').length,0);assert.equal(f.transfers(),0);assert.ok(f.dom.window.document.querySelector('[data-checkout-method-chooser]'));assert.ok(!f.dom.window.document.querySelector('[data-checkout-method-chooser] button[aria-pressed=true]'));await f.choosePayWay();assert.equal(f.transfers(),0);await f.pay();assert.equal(f.transfers(),1);
+  await f.release();await f.advance(100);assert.equal(f.requests.filter(r=>r.url==='/api/payway/checkout').length,0);assert.equal(f.transfers(),0);assert.ok(f.dom.window.document.querySelector('[data-checkout-method-chooser]'));assert.ok(!f.dom.window.document.querySelector('[data-checkout-method-chooser] input:checked'));await f.choosePayWay();assert.equal(f.transfers(),0);await f.pay();assert.equal(f.transfers(),1);
   assert.equal(f.navigations.length,1);assert.ok(f.navigations[0].includes('tran_id='+ID));assert.match(f.dom.window.document.body.textContent,/Checking payment/);
  }finally{await f.close();}
 });

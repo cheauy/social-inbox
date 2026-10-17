@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { CustomerPaymentReference } from "./customer-payment-reference";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
 import {
@@ -431,6 +432,7 @@ export function InvoiceReceiptView({
                   value={invoice.transactionId ?? t("Not recorded", "មិនបានកត់ត្រា")}
                   breakValue
                 />
+                <InvoiceMetaRow icon={<Hash className="h-4 w-4 text-blue-600" />} label={t("Payment reference", "លេខយោងការទូទាត់")} value={<CustomerPaymentReference value={invoice.customerReference} />} />
 
                 {invoice.approvalCode ? (
                   <InvoiceMetaRow
@@ -600,7 +602,7 @@ function InvoiceMetaRow({
 }: {
   icon: React.ReactNode;
   label: string;
-  value: string;
+  value: React.ReactNode;
   breakValue?: boolean;
 }) {
   return (

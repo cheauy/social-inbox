@@ -1,5 +1,5 @@
 "use client";
-import { BakongReconciliationPanel } from "./bakong-reconciliation-panel";
+import { CustomerPaymentReference } from "@/components/subscription/customer-payment-reference";
 
 import {
   useCallback,
@@ -15,6 +15,7 @@ type PurchaseType =
   | "custom-upgrade";
 
 type ManualPaymentRow = {
+  customerReference?: string | null;
   id: string;
   businessId: string;
   businessName: string;
@@ -242,7 +243,7 @@ function PaymentSafetyBanner({ row }: { row: ManualPaymentRow }) {
 }
 
 export function ManualPaymentAdmin(props: ManualPaymentAdminProps) {
-  return <><BakongReconciliationPanel /><ManualTransfersAdmin {...props} /></>;
+  return <ManualTransfersAdmin {...props} />;
 }
 
 function ManualTransfersAdmin({
@@ -534,6 +535,7 @@ function ManualTransfersAdmin({
                       <p className="truncate text-lg font-semibold text-slate-900">
                         {row.requesterName}
                       </p>
+                    <div className="mt-1 text-xs text-slate-600">Reference: <CustomerPaymentReference value={row.customerReference} /></div>
                       <p className="truncate text-sm text-[#7b5d1f]">
                         {row.purchaseType === "renew-same"
                           ? `Reactivation · ${planLabel(row.currentSubscription?.planCode)} → ${planLabel(row.planCode)} · ${billingCycleLabel(row.billingCycle)}`
@@ -722,8 +724,8 @@ function ManualTransfersAdmin({
                   ) : null}
 
                   <div className="grid gap-3 sm:grid-cols-[120px_minmax(0,1fr)]">
-                    <p className="font-semibold text-slate-500">Request</p>
-                    <div className="break-all text-slate-500">{selectedRow.id}</div>
+                    <p className="font-semibold text-slate-500">Reference</p>
+                    <div className="text-slate-500"><CustomerPaymentReference value={selectedRow.customerReference} /></div>
                   </div>
                 </div>
               </div>

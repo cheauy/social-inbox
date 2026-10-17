@@ -1,4 +1,5 @@
 export type BakongPaymentView = {
+  customerReference?: string | null;
   id: string; businessId: string; userId: string; memberId: string; workspaceName: string;
   recipientName: string | null;
   planCode: string; billingCycle: string; amount: string; currency: "USD";

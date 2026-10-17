@@ -9,7 +9,7 @@ async function fixture(options={}){
  Object.defineProperty(dom.window.document,'hidden',{configurable:true,value:false});
  for(const [key,value] of Object.entries({window:dom.window,document:dom.window.document,IS_REACT_ACT_ENVIRONMENT:true})){previous[key]=global[key];global[key]=value;}
  const kind=options.kind??'payway',requests=[],listeners=new Set(),timers=new Map();let sequence=0,clock=options.initialClock??0,release,releaseRead; const navigations=[],BASE=Date.parse("2026-10-17T12:00:00Z");
- const record={kind,id:ID,businessId:BUSINESS,businessName:'Saved workspace',planCode:'mini',billingCycle:'monthly',amount:47.63,currency:'USD',reference:'SAVED-REFERENCE',
+ const record={kind,id:ID,businessId:BUSINESS,businessName:'Saved workspace',planCode:'mini',billingCycle:'monthly',amount:47.63,currency:'USD',reference:'SAVED-REFERENCE',customerReference:'T7K9M2XP',
   status:kind==='manual'?'submitted':'pending',environment:kind==='manual'?'manual':'production',application:'pending',invoiceId:null,effectiveAt:null,reason:null,canRetry:false,...options.record};
  const state={record,failRead:options.failRead??0,failVerify:options.failVerify??false,holdRead:Boolean(options.holdInitialRead)};
  const later=(fn,delay,interval=false)=>{const id=++sequence;timers.set(id,{fn,at:clock+delay,interval:interval?delay:0});return id;};
@@ -171,7 +171,7 @@ test('unmount aborts expiry read and clears all timers without redirecting',asyn
 test('checkout preserves visible saved detail contents and environment metadata without the removed labels',async()=>{
  const f=await fixture({checkoutClosed:true,record:{environment:'sandbox'}});try{
   assert.equal(f.title(),'Checkout closed');assert.equal(f.record.status,'pending');assert.equal(Boolean(f.dom.window.document.querySelector('time')),false);assert.match(f.text(),/No checkout deadline was saved/);
-  const details=f.dom.window.document.querySelector('[data-payment-summary]');assert.ok(!f.text().includes('Test payment')&&!f.text().includes('Payment details'));assert.equal(f.record.environment,'sandbox');for(const value of ['Workspace','Plan / term','Amount','Reference','Saved workspace','SAVED-REFERENCE'])assert.ok(details.textContent.includes(value));assert.ok(details.closest('[data-payment-card]'));assert.equal(f.dom.window.document.querySelector('[class*="animate-spin"]'),null);
+  const details=f.dom.window.document.querySelector('[data-payment-summary]');assert.ok(!f.text().includes('Test payment')&&!f.text().includes('Payment details'));assert.equal(f.record.environment,'sandbox');for(const value of ['Workspace','Plan / term','Amount','Reference','Saved workspace','T7K9M2XP'])assert.ok(details.textContent.includes(value));assert.ok(details.closest('[data-payment-card]'));assert.equal(f.dom.window.document.querySelector('[class*="animate-spin"]'),null);
  }finally{await f.close();}
 });
 test('manual submitted review ignores PayWay checkout deadline and never auto-closes',async()=>{
@@ -301,4 +301,23 @@ test('QR dismissal closes every supported unfinished PayWay checkout state',asyn
    assert.equal(f.posts().filter(x=>x.url==='/api/payway/checkout-session').length,1);assert.ok(f.record.checkoutSessionClosedAt);assert.equal(f.record.status,status);assert.deepEqual(f.navigations,['/dashboard/subscription']);
   }finally{await f.close();}
  }
+});
+
+
+test('submitted review keeps one copy icon beside the complete reference and removes help action buttons',async()=>{
+  for(const language of ['en','km']){
+    const f=await fixture({kind:'manual',language});
+    try{
+      const reference=f.dom.window.document.querySelector('[data-payment-reference]');
+      assert.equal(reference.textContent,'T7K9M2XP');
+      const copy=f.dom.window.document.querySelectorAll('button[aria-label="'+(language==='en'?'Copy reference':'ចម្លងលេខយោង')+'"]');
+      assert.equal(copy.length,1);assert.equal(copy[0].textContent.trim(),'');assert.ok(reference.parentElement.contains(copy[0]));
+      const labels=[...f.dom.window.document.querySelectorAll('button')].map(button=>button.textContent.trim());
+      assert.ok(!labels.includes(language==='en'?'Copy reference':'ចម្លងលេខយោង'));
+      assert.ok(!labels.includes(language==='en'?'View receipt':'មើលបង្កាន់ដៃ'));
+      const copied=[];Object.defineProperty(f.dom.window.navigator,'clipboard',{configurable:true,value:{writeText:async value=>copied.push(value)}});
+      await act(async()=>copy[0].click());assert.deepEqual(copied,['T7K9M2XP']);
+      assert.ok(!f.requests.some(request=>request.url.includes('receipt=1')));
+    }finally{await f.close();}
+  }
 });

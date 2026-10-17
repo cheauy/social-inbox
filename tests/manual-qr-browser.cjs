@@ -16,6 +16,7 @@ const entry=write('entry.cjs',`
 const React=require('react'),{createRoot}=require('react-dom/client');
 const {SubscriptionPaymentView}=require(${JSON.stringify(path.join(root,'components/subscription/subscription-payment-view.tsx'))});
 const business='00000000-0000-4000-8000-000000000002';
+window.TenhAbaPaywayBridge={isReady:()=>true,checkout:()=>{throw Error('Real provider use forbidden in fixture');}};
 window.fixtureLanguage=new URLSearchParams(location.search).get('lang')||'en';window.navigations=[];window.requests=[];window.uploads=0;window.saved=null;
 window.fixtureClient={auth:{onAuthStateChange:()=>({data:{subscription:{unsubscribe(){}}}})},storage:{from:()=>({uploadToSignedUrl:async()=>{
  window.uploads++;if(window.failUpload)return{error:{message:'Fixture upload failed. Please try again.'}};window.uploaded=true;return{error:null};
@@ -26,7 +27,7 @@ window.fetch=async(url,init={})=>{
  if(url.startsWith('/api/manual-payments?'))return Response.json({success:true,businessId:business,config:{enabled:true,bankName:'Fixture bank',accountName:'TENH fixture',accountNumber:'00000000',qrImageUrl:'/qr.svg'},request:null});
  if(url==='/api/manual-payments'){
   if(body.action==='prepare-upload'){
-   if(!window.saved)window.saved={id:body.requestId,kind:'manual',businessId:business,businessName:'Fixture workspace',planCode:'mini',billingCycle:'monthly',amount:13,currency:'USD',reference:body.requestId,status:'prepared',environment:'manual',application:'pending'};
+   if(!window.saved)window.saved={id:body.requestId,kind:'manual',businessId:business,businessName:'Fixture workspace',planCode:'mini',billingCycle:'monthly',amount:13,currency:'USD',reference:body.requestId,customerReference:'T7K9M2XP',status:'prepared',environment:'manual',application:'pending'};
    return Response.json({success:true,requestId:window.saved.id,proofUploaded:!!window.uploaded,upload:{bucket:'fixture',path:'same-synthetic-path',token:'synthetic'}});
   }
   if(body.action!=='finalize-upload')throw Error('Unexpected action');
@@ -34,6 +35,7 @@ window.fetch=async(url,init={})=>{
   if(window.failFinalize)return Response.json({success:false,error:'Fixture submission not confirmed. Please retry.'},{status:503});
   window.saved.status='submitted';return Response.json({success:true,request:window.saved});
  }
+ if(url.includes('&receipt=1')){if(window.receiptDelay)await new Promise(resolve=>setTimeout(resolve,window.receiptDelay));if(init.signal?.aborted)throw new DOMException('Aborted','AbortError');return window.failReceipt?Response.json({success:false},{status:404}):Response.json({success:true,receipt:{url:'/qr.svg',mimeType:'image/png'}});}
  if(url.startsWith('/api/subscription/payment-status?'))return window.saved?Response.json({success:true,attempt:window.saved}):Response.json({success:false},{status:404});
  throw Error('Unexpected request '+url);
 };
@@ -42,23 +44,36 @@ createRoot(document.getElementById('root')).render(React.createElement(Subscript
 async function run(){
  await new Promise((resolve,reject)=>webpack({mode:'development',devtool:false,entry,output:{path:temp,filename:'bundle.js'},resolve:{modules:[path.join(root,'node_modules')],extensions:['.tsx','.ts','.js','.cjs'],alias:{'next/script$':script,'next/link$':link,'next/image$':image,'next/navigation$':navigation,'@/lib/supabase/client$':supabase,'@/components/display/workspace-language-text$':language,'@':root}},module:{rules:[{test:/\.tsx?$/,exclude:/node_modules/,use:loader}]}},(error,stats)=>error||stats.hasErrors()?reject(error||Error(stats.toString({all:false,errors:true}))):resolve()));
  const {compile}=require('@tailwindcss/node'),compiled=await compile('@import "tailwindcss";',{base:root,onDependency(){}});
- const sources=['subscription-payment-view.tsx','checkout-dialog.tsx','manual-qr-preview.tsx','payment-attempt-view.tsx','payment-success-card.tsx'].map(file=>fs.readFileSync(path.join(root,'components/subscription',file),'utf8')).join(' ');
+ const sources=['subscription-payment-view.tsx','checkout-dialog.tsx','manual-qr-preview.tsx','payment-attempt-view.tsx','payment-success-card.tsx','submitted-payment-help.tsx'].map(file=>fs.readFileSync(path.join(root,'components/subscription',file),'utf8')).join(' ');
  const css=compiled.build(sources.split(/[\s"'`<>]+/));
  write('fixture.html','<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>'+css+'</style></head><body style="background:#f8fafc;padding:12px"><main id="root"></main><script src="/bundle.js"></script></body></html>');
  write('qr.svg','<svg xmlns="http://www.w3.org/2000/svg" width="400" height="640" viewBox="0 0 400 640"><rect width="400" height="640" fill="white"/><text x="200" y="48" text-anchor="middle" font-size="18">UI FIXTURE — NOT FOR PAYMENT</text><rect x="48" y="108" width="304" height="304" fill="#111"/><path d="M80 140h88v88H80zM232 140h88v88h-88zM80 292h88v88H80z" fill="white"/><text x="200" y="536" text-anchor="middle" font-size="20">FULL IMAGE / QUIET MARGINS</text></svg>');
  const server=http.createServer((req,res)=>{
+  if(['/images/tenh_logo.png','/images/aba-khqr.png'].includes(req.url)){
+   res.setHeader('Content-Type','image/png');res.end(fs.readFileSync(path.join(root,'public',req.url)));return;
+  }
   const file=req.url.startsWith('/bundle.js')?'bundle.js':req.url.startsWith('/qr.svg')?'qr.svg':'fixture.html';
   res.setHeader('Content-Type',file.endsWith('.js')?'application/javascript':file.endsWith('.svg')?'image/svg+xml':'text/html; charset=utf-8');res.end(fs.readFileSync(path.join(temp,file)));
  });
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  const browser=await chromium.launch({headless:true,executablePath:process.env.TENH_BROWSER_EXECUTABLE||'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'});
- const base='http://127.0.0.1:'+server.address().port,evidence=path.join(root,'docs/evidence/manual-qr-20261017');fs.mkdirSync(evidence,{recursive:true});let cases=0;
+ const base='http://127.0.0.1:'+server.address().port,evidence=path.join(root,'docs/evidence/checkout-redesign-20261017');fs.mkdirSync(evidence,{recursive:true});let cases=0;
  try{
   for(const language of ['en','km'])for(const width of [360,390,768,820,1024,1440]){
    const page=await browser.newPage({viewport:{width,height:900}}),errors=[];page.on('pageerror',error=>errors.push(error.message));
    await page.goto(base+'/?lang='+language);
+   await page.locator('[data-checkout-layout]').waitFor();
+   assert.equal(await page.locator('[data-checkout-footer]').count(),1);
+   if(width===1440){await page.evaluate(()=>document.documentElement.style.zoom='2');assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.evaluate(()=>document.documentElement.style.zoom='');}
+   const actionBounds=await page.locator('[data-checkout-footer]').boundingBox(),methodBounds=await page.locator('[data-payment-method-card]').boundingBox();
+   if(width<1024)assert.ok(actionBounds.y>=methodBounds.y+methodBounds.height,'bottom actions must not cover payment content');
+   await page.locator('[data-checkout-method-chooser] img').evaluate(img=>img.decode());
+   assert.equal(await page.locator('[data-order-summary]').getByText('$13.00',{exact:true}).count(),0);
+   if(language==='en'&&[390,768,1440].includes(width))await page.screenshot({path:path.join(evidence,'checkout-'+width+'.png'),fullPage:true});
    const t=(en,km)=>language==='en'?en:km;
-   await page.locator('[data-checkout-method-chooser] button').filter({hasText:t('Manual bank transfer','ផ្ទេរប្រាក់តាមធនាគារដោយដៃ')}).click();
+   await page.locator('[data-checkout-method-chooser] input[value=payway]').focus();await page.keyboard.press('ArrowRight');
+   assert.ok(await page.locator('[data-checkout-method-chooser] input[value=manual]').isChecked());
+   assert.equal(await page.evaluate(()=>window.requests.filter(r=>r.method==='POST').length),0);
    const footer=page.locator('[data-checkout-footer] button');await footer.click();
    const transfer=page.getByRole('dialog',{name:t('Manual bank transfer','ផ្ទេរប្រាក់តាមធនាគារដោយដៃ'),exact:true});await transfer.waitFor();
    const bounds=await transfer.boundingBox();assert.ok(bounds.width<=572&&bounds.x>=0&&bounds.x+bounds.width<=width);
@@ -94,12 +109,20 @@ async function run(){
    await page.getByRole('heading',{name:t('Payment submitted','បានដាក់ស្នើការទូទាត់'),exact:true}).waitFor();assert.equal(await transfer.count(),0);
    assert.equal(await page.evaluate(()=>window.saved.status),'submitted');assert.equal(await page.evaluate(()=>window.uploads),uploads);
    assert.ok(await page.getByText(t('Approval usually takes 1-2 business days.','ការអនុម័តជាធម្មតាចំណាយពេល 1-2 ថ្ងៃធ្វើការ។'),{exact:true}).isVisible());
+  assert.equal(await page.getByRole('button',{name:t('View receipt','មើលបង្កាន់ដៃ'),exact:true}).count(),0);
+  const copyIcon=page.getByRole('button',{name:t('Copy reference','ចម្លងលេខយោង'),exact:true});
+  assert.equal(await copyIcon.count(),1);assert.equal((await copyIcon.textContent()).trim(),'');
+  assert.equal(await page.getByRole('link',{name:t('Contact admin','ទាក់ទងអ្នកគ្រប់គ្រង'),exact:true}).getAttribute('href'),'https://t.me/tenhchat_support_bot');
+  await page.evaluate(()=>{window.copied=null;Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async value=>window.copied=value}});});
+  await copyIcon.click();
+  assert.equal(await page.evaluate(()=>window.copied),await page.evaluate(()=>window.saved.customerReference));
+  assert.equal(await page.evaluate(()=>window.requests.filter(r=>r.url.includes('&receipt=1')).length),0);
    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));assert.deepEqual(errors,[]);await page.close();cases++;
   }
   for(const language of ['en','km']){
    const page=await browser.newPage({viewport:{width:740,height:320}}),t=(en,km)=>language==='en'?en:km;
    await page.goto(base+'/?lang='+language);
-   await page.locator('[data-checkout-method-chooser] button').filter({hasText:t('Manual bank transfer','ផ្ទេរប្រាក់តាមធនាគារដោយដៃ')}).click();
+   await page.locator('[data-checkout-method-chooser] input[value=manual]').click();
    await page.locator('[data-checkout-footer] button').click();
    await page.getByRole('button',{name:t('View QR code','មើលកូដ QR'),exact:true}).click();
    const preview=page.getByRole('dialog',{name:t('Manual transfer QR code','QR សម្រាប់ផ្ទេរប្រាក់តាមធនាគារ'),exact:true});

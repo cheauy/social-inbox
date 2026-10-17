@@ -3,6 +3,7 @@ import { payWayCheckoutExpiresAt, payWayCheckoutSessionClosedAt } from "@/lib/pa
 
 type Row = Record<string, unknown>;
 export type PaymentAttempt = {
+  customerReference?: string | null;
   kind: "manual" | "payway" | "bakong"; id: string; businessId: string; businessName: string;
   planCode: string; billingCycle: string; amount: number | null; currency: string | null;
   reference: string | null; status: string; environment: PaymentEnvironment; invoiceId: string | null;

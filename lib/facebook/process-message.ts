@@ -12,7 +12,7 @@ import {
   getConversationMessagePreview,
 } from "@/lib/inbox/conversation-preview";
 import { getFacebookPageAccessToken } from "@/lib/facebook/get-facebook-page-access-token";
-import { syncFacebookContactProfilePhoto } from "@/lib/facebook/facebook-profile-photo";
+import { isMissingFacebookCustomerName, saveFacebookCustomerName, syncFacebookContactProfilePhoto, syncFacebookCustomerName } from "@/lib/facebook/facebook-profile-photo";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import type { FacebookMessagingEvent } from "@/types/facebook";
 
@@ -229,7 +229,7 @@ export async function processFacebookMessage(
         },
       )
       /* created_at tells a first message apart from every one after it. */
-      .select("id,profile_picture_url,created_at")
+      .select("id,full_name,profile_picture_url,created_at")
       .single();
 
   if (contactError || !contact) {
@@ -361,15 +361,16 @@ export async function processFacebookMessage(
   const customerProfilePictureUrl =
     customerProfile?.profilePictureUrl ?? null;
 
-  if (customerName || customerProfilePictureUrl) {
+  if (customerName) {
+    await saveFacebookCustomerName({ businessId: socialAccount.business_id,
+      socialAccountId: socialAccount.id, contactId: contact.id, customerId }, customerName);
+  }
+
+  if (customerProfilePictureUrl) {
     const profileUpdate:
       Record<string, unknown> = {
       updated_at: new Date().toISOString(),
     };
-
-    if (customerName) {
-      profileUpdate.full_name = customerName;
-    }
 
     if (customerProfilePictureUrl && !contact.profile_picture_url?.includes("/facebook-avatar")) {
       profileUpdate.profile_picture_url =
@@ -380,7 +381,8 @@ export async function processFacebookMessage(
       await supabaseAdmin
         .from("contacts")
         .update(profileUpdate)
-        .eq("id", contact.id);
+        .eq("id", contact.id).eq("business_id", socialAccount.business_id)
+        .eq("platform", "facebook").eq("platform_user_id", customerId);
 
     if (profileUpdateError) {
       console.warn(
@@ -400,6 +402,13 @@ export async function processFacebookMessage(
         },
       );
     }
+  }
+
+  // Page echoes can be the first/only events TENH sees for a customer.
+  // Save the message first; fill a missing name with one bounded profile lookup.
+  if (isEcho && isMissingFacebookCustomerName(contact.full_name)) {
+    await syncFacebookCustomerName({ businessId: socialAccount.business_id,
+      socialAccountId: socialAccount.id, pageId, contactId: contact.id, customerId });
   }
 
   /*
@@ -449,6 +458,7 @@ export async function processFacebookMessage(
         const pageAccessToken =
           await getFacebookPageAccessToken(
             pageId,
+            socialAccount.id,
           );
 
         const avatarResult =
@@ -456,6 +466,7 @@ export async function processFacebookMessage(
             contactId: contact.id,
             businessId:
               socialAccount.business_id,
+            socialAccountId: socialAccount.id,
             customerId,
             pageAccessToken,
           });

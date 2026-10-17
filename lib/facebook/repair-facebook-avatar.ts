@@ -9,7 +9,7 @@ import { syncFacebookContactProfilePhoto } from "@/lib/facebook/facebook-profile
 // another Graph call on every list render. Authorization happens in the route.
 const repairOnce = unstable_cache(async (businessId: string, contactId: string) => {
   const { data: contact, error } = await supabaseAdmin.from("contacts")
-    .select("id,platform_user_id,conversations(social_account:social_accounts(platform_account_id,business_id,platform,is_active))")
+    .select("id,platform_user_id,conversations(social_account:social_accounts(id,platform_account_id,business_id,platform,is_active))")
     .eq("id", contactId).eq("business_id", businessId).eq("platform", "facebook")
     .maybeSingle();
   if (error || !contact?.platform_user_id) return false;
@@ -22,9 +22,9 @@ const repairOnce = unstable_cache(async (businessId: string, contactId: string) 
   if (!account) return false;
 
   try {
-    const pageAccessToken = await getFacebookPageAccessToken(account.platform_account_id);
+    const pageAccessToken = await getFacebookPageAccessToken(account.platform_account_id, account.id);
     const result = await syncFacebookContactProfilePhoto({
-      businessId, contactId, customerId: contact.platform_user_id, pageAccessToken,
+      businessId, socialAccountId: account.id, contactId, customerId: contact.platform_user_id, pageAccessToken,
     });
     return result.stored;
   } catch { return false; }

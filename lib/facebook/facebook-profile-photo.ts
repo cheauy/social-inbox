@@ -1,6 +1,80 @@
 import "server-only";
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { getFacebookPageAccessToken } from "@/lib/facebook/get-facebook-page-access-token";
+import { createConversationActivity } from "@/lib/inbox/create-conversation-activity";
+
+export function isMissingFacebookCustomerName(name: string | null | undefined) {
+  return !name?.trim() || /^(customer|facebook customer|messenger customer)$/i.test(name.trim());
+}
+
+type CustomerNameScope = {
+  businessId: string;
+  socialAccountId: string;
+  contactId: string;
+  customerId: string;
+};
+
+async function customerNameTarget(scope: CustomerNameScope) {
+  const [contact, conversation] = await Promise.all([
+    supabaseAdmin.from("contacts").select("id,full_name")
+      .eq("id", scope.contactId).eq("business_id", scope.businessId)
+      .eq("platform", "facebook").eq("platform_user_id", scope.customerId).maybeSingle(),
+    supabaseAdmin.from("conversations").select("id")
+      .eq("business_id", scope.businessId).eq("contact_id", scope.contactId)
+      .eq("social_account_id", scope.socialAccountId).eq("platform", "facebook").maybeSingle(),
+  ]);
+  if (contact.error || conversation.error || !contact.data || !conversation.data ||
+      !isMissingFacebookCustomerName(contact.data.full_name)) return null;
+  return { contact: contact.data, conversation: conversation.data };
+}
+
+/** Fill a provider name only while the same scoped contact still has a placeholder. */
+export async function saveFacebookCustomerName(scope: CustomerNameScope, fullName: string | null) {
+  if (isMissingFacebookCustomerName(fullName)) return false;
+  try {
+    const target = await customerNameTarget(scope);
+    if (!target) return false;
+    const name = fullName!.trim();
+    let query = supabaseAdmin.from("contacts").update({ full_name: name, updated_at: new Date().toISOString() })
+      .eq("id", scope.contactId).eq("business_id", scope.businessId)
+      .eq("platform", "facebook").eq("platform_user_id", scope.customerId);
+    query = target.contact.full_name == null ? query.is("full_name", null) : query.eq("full_name", target.contact.full_name);
+    const { data, error } = await query.select("id").maybeSingle();
+    if (error || !data) return false;
+    await createConversationActivity({
+      businessId: scope.businessId, conversationId: target.conversation.id, contactId: scope.contactId,
+      activityType: "customer_profile_updated", title: "Customer name synced", actorName: "System",
+      customerName: name, metadata: { source: "facebook_profile_name", socialAccountId: scope.socialAccountId,
+        fullName: name, previousFullName: target.contact.full_name ?? null },
+    });
+    return true;
+  } catch {
+    console.warn("[TENH Facebook] Customer name enrichment could not complete; message delivery is unaffected.");
+    return false;
+  }
+}
+
+// Coalesce echo-only lookups and cool down failures for five minutes per server
+// instance. Cache only the outcome; never retain Page tokens or provider profiles.
+const nameLookups = new Map<string, { until: number; task: Promise<boolean> }>();
+export function syncFacebookCustomerName(scope: CustomerNameScope & { pageId: string }) {
+  const key = JSON.stringify([scope.businessId, scope.socialAccountId, scope.pageId, scope.contactId, scope.customerId]);
+  const existing = nameLookups.get(key);
+  if (existing && existing.until > Date.now()) return existing.task;
+  const task = (async () => {
+    try {
+      if (!await customerNameTarget(scope)) return false;
+      const pageAccessToken = await getFacebookPageAccessToken(scope.pageId, scope.socialAccountId);
+      const profile = await fetchFacebookCustomerProfile({ customerId: scope.customerId, pageAccessToken });
+      return profile.ok ? await saveFacebookCustomerName(scope, profile.fullName) : false;
+    } catch { return false; }
+  })();
+  nameLookups.delete(key);
+  nameLookups.set(key, { until: Date.now() + 300_000, task });
+  while (nameLookups.size > 500) nameLookups.delete(nameLookups.keys().next().value!);
+  return task;
+}
 
 /* Same default as the rest of the Facebook layer. */
 function getGraphVersion() {
@@ -184,11 +258,13 @@ type SyncResult = {
 export async function syncFacebookContactProfilePhoto({
   contactId,
   businessId,
+  socialAccountId,
   customerId,
   pageAccessToken,
 }: {
   contactId: string;
   businessId: string;
+  socialAccountId: string;
   customerId: string;
   pageAccessToken: string;
 }): Promise<SyncResult> {
@@ -205,6 +281,8 @@ export async function syncFacebookContactProfilePhoto({
       permanent: profile.permanent,
     };
   }
+
+  await saveFacebookCustomerName({ businessId, socialAccountId, contactId, customerId }, profile.fullName);
 
   if (!profile.profilePicUrl) {
     return {

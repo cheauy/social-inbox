@@ -7,6 +7,7 @@ import {
 import { logTenhAdminAction } from "@/lib/admin/log-tenh-admin-action";
 import { getManualPaymentPayWaySafety } from "@/lib/billing/manual-payment-payway-safety";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { getCustomerPaymentReferences } from "@/lib/billing/customer-payment-references";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -536,10 +537,11 @@ export async function GET() {
 
   try {
     const requests = await loadRequests();
+    const references = await getCustomerPaymentReferences(requests.map(row => ({ source: "manual", paymentId: row.id })));
 
     return noStoreJson({
       success: true,
-      requests,
+      requests: requests.map(row => ({ ...row, customerReference: references.get(`manual:${row.id}`) ?? null })),
     });
   } catch (error) {
     return noStoreJson(

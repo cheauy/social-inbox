@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { CustomerPaymentReference } from "./customer-payment-reference";
 import { BadgeCheck, CalendarDays, CheckCircle2, Copy, CreditCard, Download, Eye, Hash, HelpCircle, ReceiptText, ShieldCheck, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
@@ -264,7 +265,7 @@ export function BillingHistoryView() {
                     <div className="min-w-0">
                       <p className="font-bold text-slate-900">{formatBillingDate(item.createdAt, false, isKhmer)}</p>
                       <p className="mt-1 truncate text-xs font-medium text-slate-600">{item.workspaceName}</p>
-                      <p className="mt-1 truncate font-mono text-[11px] text-slate-400">{item.transactionId ?? "—"}</p>
+                      <div className="mt-1 text-slate-500"><CustomerPaymentReference value={item.customerReference} /></div>
                     </div>
 
                     <div>
@@ -452,6 +453,7 @@ export function BillingHistoryView() {
           <PaymentMetaCell icon={<CreditCard className="h-5 w-5" strokeWidth={2.1} />} accent="blue" label={t("Payment method", "វិធីបង់ប្រាក់")} value={paymentMethodLabel(selected.provider, isKhmer)} />
           <PaymentMetaCell icon={<CalendarDays className="h-5 w-5" strokeWidth={2.1} />} accent="blue" label={t("Submitted", "បានដាក់ស្នើ")} value={formatBillingDate(selected.createdAt, true, isKhmer)} />
           <PaymentMetaCell icon={<Hash className="h-5 w-5" strokeWidth={2.1} />} accent="blue" label={t("Transaction ID", "លេខសម្គាល់ប្រតិបត្តិការ")} value={selected.transactionId ?? "—"} />
+          <PaymentMetaCell icon={<Hash className="h-5 w-5" strokeWidth={2.1} />} accent="blue" label={t("Reference", "លេខយោង")} value={<CustomerPaymentReference value={selected.customerReference} />} />
           <PaymentMetaCell icon={<SelectedStatusIcon className="h-5 w-5" strokeWidth={2.1} />} accent={selected.confirmedPaid ? "emerald" : "blue"} label={selected.confirmedPaid ? t("Paid", "បានបង់ប្រាក់") : selected.status === "approved" ? t("Approved", "បានអនុម័ត") : t("Reviewed", "បានពិនិត្យ")} value={formatBillingDate(selected.status === "approved" ? selected.paidAt ?? selected.reviewedAt : selected.reviewedAt, true, isKhmer)} />
           <PaymentMetaCell icon={<CreditCard className="h-5 w-5" strokeWidth={2.1} />} accent="blue" label={t("Provider status", "ស្ថានភាពអ្នកផ្តល់សេវា")} value={selected.providerStatus ?? "—"} />
           <PaymentMetaCell icon={<BadgeCheck className="h-5 w-5" strokeWidth={2.1} />} accent="blue" label={t("Approval code", "លេខកូដអនុម័ត")} value={selected.approvalCode ?? "—"} />
@@ -571,7 +573,7 @@ function PaymentMetaCell({
   icon: React.ReactNode;
   accent: "blue" | "emerald";
   label: string;
-  value: string;
+  value: React.ReactNode;
 }) {
   const accentClasses =
     accent === "emerald"

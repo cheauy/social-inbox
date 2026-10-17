@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { memberHasPermission } from "@/lib/auth/require-permission";
 import { describePaymentAttempt } from "@/lib/billing/payment-attempt";
+import { getCustomerPaymentReferences } from "@/lib/billing/customer-payment-references";
 import { getBakongConfig } from "./config";
 import { checkBakongTransaction } from "./provider";
 import type { BakongPaymentView } from "./types";
@@ -138,6 +139,7 @@ export async function bakongPaymentView(attempt: BakongAttempt, actor: Pick<Bako
     bakongCheckout(attempt),
   ]);
   if (billing.error || !billing.data || business.error) throw new BakongError(503, "PAYMENT_UNAVAILABLE");
+  const references = await getCustomerPaymentReferences([{ source: "bakong", paymentId: attempt.id }]);
   let application: BakongPaymentView["application"] = "none", invoiceId: string | null = null;
   if (attempt.state === "applied") {
     const [invoice, subscription] = await Promise.all([
@@ -163,6 +165,7 @@ export async function bakongPaymentView(attempt: BakongAttempt, actor: Pick<Bako
     workspaceName: business.data?.name ?? "TENH workspace", planCode: billing.data.plan_code, billingCycle: billing.data.billing_cycle,
     recipientName: config?.environment === attempt.environment && config.accountId === attempt.recipient ? config.merchantName : null,
     amount: `${minor.slice(0, -2)}.${minor.slice(-2)}`, currency: attempt.currency, reference: attempt.reference, transactionReference: attempt.verified_hash,
+    customerReference: references.get(`bakong:${attempt.id}`) ?? null,
     environment: attempt.environment, state: attempt.state, application, invoiceId,
     qrImage: showQr ? await QRCode.toDataURL(attempt.qr, { width: 280, margin: 2 }) : null, checkout,
     createdAt: attempt.created_at, expiresAt: attempt.expires_at, nextCheckAt: inquiry.nextCheckAt ?? attempt.next_check_at, serverTime: new Date().toISOString(),

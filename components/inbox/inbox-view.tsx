@@ -2133,6 +2133,24 @@ function applyRealtimeTagActivity(
 }
 
 const realtimeHealthyRef = useRef(false);
+function applyFacebookProfileNameActivity(row: Record<string, unknown>) {
+  const metadata = isRecord(row.metadata) ? row.metadata : null;
+  if (row.activity_type !== "customer_profile_updated" || metadata?.source !== "facebook_profile_name" ||
+      typeof row.business_id !== "string" || typeof row.conversation_id !== "string" ||
+      typeof row.contact_id !== "string" || typeof metadata.socialAccountId !== "string" ||
+      typeof metadata.fullName !== "string" || !metadata.fullName.trim() ||
+      !(metadata.previousFullName === null || typeof metadata.previousFullName === "string")) return false;
+
+  setLiveConversations(current => current.map(conversation => {
+    const contact = conversation.contact;
+    if (conversation.id !== row.conversation_id || conversation.business_id !== row.business_id ||
+        conversation.social_account?.id !== metadata.socialAccountId || contact?.id !== row.contact_id ||
+        contact.business_id !== row.business_id || contact.full_name !== metadata.previousFullName) return conversation;
+    return { ...conversation, contact: { ...contact, full_name: metadata.fullName as string } };
+  }));
+  return true;
+}
+
 useInboxRealtime({
   onConnectionState: (healthy) => {
     const recovered = healthy && !realtimeHealthyRef.current;
@@ -2147,6 +2165,8 @@ useInboxRealtime({
   ) => {
     const eventBusinessId = (event.eventType === "DELETE" ? event.oldRow : event.newRow).business_id;
     if (typeof eventBusinessId === "string" && !realtimeBusinessIds.includes(eventBusinessId)) return;
+    if (event.table === "conversation_activity" && event.eventType === "INSERT" &&
+        applyFacebookProfileNameActivity(event.newRow)) return;
     if (pagination) window.dispatchEvent(new CustomEvent(INBOX_PAGE_CHANGED_EVENT, { detail: {
       conversationId: event.table === "conversations" ? event.newRow.id ?? event.oldRow.id : event.newRow.conversation_id ?? event.oldRow.conversation_id,
     } }));

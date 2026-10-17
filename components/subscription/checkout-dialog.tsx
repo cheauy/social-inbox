@@ -27,7 +27,7 @@ export function CheckoutDialog({ open, busy, title, description, closeLabel, onC
     onCancel={event => { event.preventDefault(); if (!busy) onClose(); }}
     onKeyDown={event => {
       if (event.key !== "Tab" || event.defaultPrevented) return;
-      const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not([disabled]),input:not([disabled]),textarea:not([disabled]),a[href],[tabindex="0"]'))
+      const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not([disabled]),input:not([disabled]),textarea:not([disabled]),a[href],iframe,[tabindex="0"]'))
         .filter(element => element.getClientRects().length > 0);
       const first = controls[0], last = controls[controls.length - 1];
       if (!first) { event.preventDefault(); event.currentTarget.focus(); }

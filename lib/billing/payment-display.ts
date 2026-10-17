@@ -4,6 +4,7 @@ export type PaymentProvenance = {
   provider: PaymentProvider; environment: PaymentEnvironment; providerVerified: boolean; confirmedPaid: boolean;
 };
 export type BillingHistoryItem = PaymentProvenance & {
+  customerReference?: string | null;
   id: string; sourceId: string; source: "payway" | "bakong" | "manual"; businessId: string; workspaceName: string;
   transactionId: string | null; paymentMethod: string; planCode: string; billingCycle: string;
   amount: number | null; currency: string | null; status: string; providerStatus: string | null;
@@ -16,6 +17,7 @@ export type BillingHistorySummary = {
   testUsdTotal: number; unverifiedUsdTotal: number; receipts: number;
 };
 export type InvoiceRecord = PaymentProvenance & {
+  customerReference?: string | null;
   id: string; invoiceNumber: string; sourceType: string; sourcePaymentId: string;
   transactionId: string | null; workspaceName: string; customerName: string | null; billingEmail: string | null;
   planCode: string; planName: string | null; billingCycle: string; billingCycleLabel: string;
@@ -23,6 +25,10 @@ export type InvoiceRecord = PaymentProvenance & {
   status: string; paidAt: string | null; periodStart: string | null; periodEnd: string | null;
   issuedAt: string | null; createdAt: string | null;
 };
+
+export function customerPaymentReference(value: unknown): string | null {
+  return typeof value === "string" && /^[A-HJ-NP-Z2-9]{8}$/.test(value) ? value : null;
+}
 
 export function billingNumber(value: unknown): number | null {
   if ((typeof value !== "number" && typeof value !== "string") || String(value).trim() === "") return null;

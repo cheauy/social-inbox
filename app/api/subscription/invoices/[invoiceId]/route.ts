@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getBillingOwnerAccess } from "@/lib/billing/owner-access";
+import { getCustomerPaymentReferences } from "@/lib/billing/customer-payment-references";
 import { billingCurrency, billingDate, billingNumber, paymentMethodLabel, paymentProvenance } from "@/lib/billing/payment-display";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
@@ -175,6 +176,8 @@ export async function GET(
     });
   }
   const provenance = paymentProvenance(source, payment, invoiceData);
+  const references = payment && (source === "manual" || source === "payway" || source === "bakong")
+    ? await getCustomerPaymentReferences([{ source, paymentId: invoiceData.source_payment_id }]) : new Map<string, string>();
   return NextResponse.json(
     {
       success: true,
@@ -183,6 +186,7 @@ export async function GET(
         invoiceNumber: invoiceData.invoice_number,
         sourceType: invoiceData.source_type,
         sourcePaymentId: invoiceData.source_payment_id,
+        customerReference: references.get(`${source}:${invoiceData.source_payment_id}`) ?? null,
         transactionId: invoiceData.source_transaction_id || null,
         workspaceName: invoiceData.workspace_name,
         customerName: invoiceData.customer_name,
