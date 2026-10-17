@@ -152,6 +152,9 @@ export async function POST(
   }
 
   const currentMember = authResult.member;
+  if (!(await memberHasPermission(currentMember, "channels", "manage"))) {
+    return permissionDenied("You do not have permission to manage channels in this workspace.");
+  }
   const cookieStore = await cookies();
   const encryptedSession = cookieStore.get(
     FACEBOOK_OAUTH_SESSION_COOKIE,
@@ -357,31 +360,20 @@ export async function POST(
         foreignRows.length === 1
       ) {
         const existingPage = foreignRows[0];
-        const { data: joinedRows, error: joinError } =
-          await supabaseAdmin.rpc(
-            "tenh_join_subscription_as_agent",
-            {
-              p_user_id: authResult.user.id,
-              p_business_id: existingPage.business_id,
-              p_full_name: currentMember.full_name,
-              p_email:
-                currentMember.email ||
-                authResult.user.email ||
-                "",
-            },
-          );
+        // A cached Facebook grant proves Page access, not TENH membership.
+        const { data: joined, error: joinError } = await supabaseAdmin
+          .from("team_members").select("id,role")
+          .eq("user_id", authResult.user.id)
+          .eq("business_id", existingPage.business_id).eq("is_active", true)
+          .order("created_at", { ascending: false }).limit(1).maybeSingle();
 
         if (joinError) {
           throw new Error(joinError.message);
         }
 
-        const joined = Array.isArray(joinedRows)
-          ? joinedRows[0]
-          : joinedRows;
-
         if (!joined) {
           throw new Error(
-            "Unable to join the existing TENH subscription for this Facebook Page.",
+            "This Page belongs to another TENH workspace. Ask its owner for an invitation, or disconnect the Page there before moving it.",
           );
         }
 
@@ -404,23 +396,13 @@ export async function POST(
             message:
               joined.role === "owner"
                 ? "This Facebook Page already belongs to one of your TENH subscriptions, so TENH switched you to that subscription. To use this Page in a different subscription instead, disconnect it there first (Integrations, Disconnect Page), then connect it again here."
-                : "This Facebook Page already belongs to an existing TENH subscription. You joined that subscription as an Agent.",
+                : "This Facebook Page belongs to a TENH workspace you already belong to. TENH switched to that workspace.",
           }),
         );
       }
 
       throw new Error(
         "One or more selected Pages already belong to another TENH subscription. Connect those Pages one at a time so TENH can switch or join the correct subscription safely. To move a Page to this subscription instead, disconnect it in the subscription that holds it first -- an expired subscription can still disconnect.",
-      );
-    }
-
-    // Was owner-only. The channels permission makes the
-    // Roles & permissions setting meaningful; Owners always pass.
-    if (
-      !(await memberHasPermission(currentMember, "channels", "manage"))
-    ) {
-      return permissionDenied(
-        "You do not have permission to manage channels in this workspace.",
       );
     }
 

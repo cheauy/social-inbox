@@ -20,6 +20,7 @@ type AccountsResult = {
     tasks?: string[];
   }>;
   paging?: {
+    next?: string;
     cursors?: {
       after?: string;
     };
@@ -132,8 +133,9 @@ async function getPagesFromMeAccounts(
     const nextAfter =
       payload.paging?.cursors?.after?.trim();
 
-    if (!nextAfter || nextAfter === after) {
-      break;
+    if (!payload.paging?.next) break;
+    if (!nextAfter || nextAfter === after || requestNumber === 19) {
+      throw new Error("Facebook Page discovery was incomplete. Please reconnect Page access and try again.");
     }
 
     after = nextAfter;

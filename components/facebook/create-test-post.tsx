@@ -5,7 +5,7 @@ import {
   type FormEvent,
 } from "react";
 
-export function CreateTestPost() {
+export function CreateTestPost({ socialAccountId }: { socialAccountId: string }) {
   const [photo, setPhoto] =
     useState<File | null>(null);
 
@@ -63,6 +63,7 @@ Example:
     try {
       const formData =
         new FormData();
+      formData.set("socialAccountId", socialAccountId);
 
       formData.append(
         "photo",

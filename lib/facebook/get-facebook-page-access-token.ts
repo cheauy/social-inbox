@@ -696,15 +696,17 @@ export async function refreshFacebookPageAccessToken(
 
 export async function getFacebookPageAccessToken(
   pageIdInput?: string,
+  socialAccountId?: string,
 ): Promise<string> {
   const pageId =
     getPageId(pageIdInput);
   const socialAccount =
     await loadFacebookTokenRow(
       pageId,
+      socialAccountId,
     );
 
-  return resolveStoredFacebookPageAccessToken(socialAccount);
+  return resolveStoredFacebookPageAccessToken(socialAccount, !socialAccountId);
 }
 
 // Reuse a Page row already loaded and scoped by the caller. No second lookup
@@ -713,6 +715,7 @@ export function resolveStoredFacebookPageAccessToken(
   socialAccount: Pick<FacebookTokenRow,
     "is_active" | "facebook_token_status" | "facebook_page_access_token_encrypted"
   > | null,
+  allowLegacyFallback = true,
 ): string {
   if (
     socialAccount &&
@@ -760,7 +763,7 @@ export function resolveStoredFacebookPageAccessToken(
       .FACEBOOK_PAGE_ACCESS_TOKEN
       ?.trim();
 
-  if (legacyToken) {
+  if (allowLegacyFallback && legacyToken) {
     return legacyToken;
   }
 

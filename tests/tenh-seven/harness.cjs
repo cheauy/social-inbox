@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports, @next/next/no-assign-module-variable -- CommonJS/VM module fixture. */
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const ROOT = process.env.TENH_TEST_ROOT || path.resolve(__dirname, '../..');
 const ts = require('node:module').createRequire(path.join(ROOT, 'package.json'))('typescript');
@@ -7,7 +8,7 @@ function database(seed) {
  function val(row,key) { if(key==='conversation.social_account_id') return tables.conversations?.find(c=>c.id===row.conversation_id)?.social_account_id;return row[key]; }
  class Query {
   constructor(name){this.name=name;this.op='read';this.filters=[];this.body=null;this.options={};this.singleResult=false;this.count=Infinity;}
-  select(){return this;} order(){return this;}limit(n){this.count=n;return this;}
+  select(){return this;} order(){return this;}limit(n){this.count=n;return this;} returns(){return this;}
   eq(k,v){this.filters.push(row=>k==='raw_payload'?JSON.stringify(row[k])===(typeof v==='string'?v:JSON.stringify(v)):val(row,k)===v);return this;}
   is(k,v){this.filters.push(row=>(val(row,k)??null)===v);return this;}
   in(k,vs){this.filters.push(row=>vs.includes(val(row,k)));return this;}

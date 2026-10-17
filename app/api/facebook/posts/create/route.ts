@@ -13,6 +13,7 @@ import {
 import {
   getFacebookPageAccessToken,
 } from "@/lib/facebook/get-facebook-page-access-token";
+import { getWorkspaceFacebookPage, WorkspaceFacebookPageError } from "@/lib/facebook/get-workspace-facebook-page";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,35 +48,20 @@ export async function POST(
 
 
   try {
-    const pageId =
-      process.env.FACEBOOK_PAGE_ID
-        ?.trim();
+    const incomingFormData = await request.formData();
+    const page = await getWorkspaceFacebookPage(authResult.member.business_id, incomingFormData.get("socialAccountId"));
+    const pageId = page.pageId;
 
     const graphVersion =
       process.env
         .FACEBOOK_GRAPH_API_VERSION
         ?.trim() || "v26.0";
 
-    if (!pageId) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Facebook Page configuration is missing.",
-        },
-        {
-          status: 500,
-        },
-      );
-    }
-
     const pageAccessToken =
       await getFacebookPageAccessToken(
         pageId,
+        page.id,
       );
-
-    const incomingFormData =
-      await request.formData();
 
     const photo =
       incomingFormData.get(
@@ -212,7 +198,7 @@ export async function POST(
             : "Unable to create Facebook post.",
       },
       {
-        status: 500,
+        status: error instanceof WorkspaceFacebookPageError ? error.status : 500,
       },
     );
   }

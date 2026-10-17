@@ -119,7 +119,7 @@ function setFacebookSelectionSession({
 }
 
 export async function GET(request: NextRequest) {
-  const authResult = await getCurrentMember();
+  const authResult = await getCurrentMember(true);
 
   if (!authResult.success) {
     const url = new URL(
@@ -134,10 +134,10 @@ export async function GET(request: NextRequest) {
   const currentMember = authResult.member;
 
   if (
-    !(await memberHasPermission(currentMember, "channels", "view"))
+    !(await memberHasPermission(currentMember, "channels", "manage"))
   ) {
     return permissionDenied(
-      "You do not have permission to view channels in this workspace.",
+      "You do not have permission to manage channels in this workspace.",
     );
   }
   const cookieStore = await cookies();

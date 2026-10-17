@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getWorkspaceFacebookPage, WorkspaceFacebookPageError } from "@/lib/facebook/get-workspace-facebook-page";
 
 import {
   getCurrentMember,
@@ -14,7 +15,7 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
   const authResult =
     await getCurrentMember();
 
@@ -41,33 +42,19 @@ export async function GET() {
   }
 
 
-  const pageId =
-    process.env.FACEBOOK_PAGE_ID
-      ?.trim();
   const version =
     process.env
       .FACEBOOK_GRAPH_API_VERSION
       ?.trim() || "v26.0";
 
-  if (!pageId) {
-    return NextResponse.json(
-      {
-        success: false,
-        error:
-          "Facebook Page configuration is missing.",
-      },
-      {
-        status: 500,
-      },
-    );
-  }
-
   let pageAccessToken: string;
 
   try {
+    const page = await getWorkspaceFacebookPage(authResult.member.business_id, new URL(request.url).searchParams.get("socialAccountId"));
     pageAccessToken =
       await getFacebookPageAccessToken(
-        pageId,
+        page.pageId,
+        page.id,
       );
   } catch (error) {
     return NextResponse.json(
@@ -79,7 +66,7 @@ export async function GET() {
             : "Unable to load Facebook Page access token.",
       },
       {
-        status: 500,
+        status: error instanceof WorkspaceFacebookPageError ? error.status : 500,
       },
     );
   }
