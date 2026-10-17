@@ -401,3 +401,21 @@ test('Buy preflight discovers only the authorized workspace PayWay attempt witho
  const response=await h.invoke(null,'?mode=checkout');assert.equal(response.status,200);assert.equal(response.payWayAttemptId,'SAVED-PAYWAY');assert.deepEqual(h.effects,[]);assert.ok(h.db.history.every(r=>r.op==='read'));
  h.db.failures.push({table:'billing_transactions'});assert.equal((await h.invoke(null,'?mode=checkout')).status,503);
 });
+
+test('checkout discovery distinguishes ended sessions from money outcomes without inventing legacy expiry',async()=>{
+ const {createPayWayCheckoutLifetime}=loader()('lib/payway/checkout-lifetime.ts');
+ const now=Date.now();
+ for(const [metadata,review]of [
+  [{checkout_session:{version:1,state:'closed',closed_at:new Date(now-1000).toISOString()}},true],
+  [createPayWayCheckoutLifetime(now-600001),true],
+  [createPayWayCheckoutLifetime(now),false],
+  [{checkout_expires_at:'2020-01-01T00:00:00Z'},false],
+  [{environment:'production',live_enabled:true},false],
+ ]){
+  const h=fixture();h.db.tables.billing_transactions.push({id:'saved',business_id:business,provider:'payway',provider_transaction_id:'SAVED-PAYWAY',status:'pending',metadata});
+  const before=JSON.stringify(h.db.tables);
+  const tabs=await Promise.all([h.invoke(null,'?mode=checkout'),h.invoke(null,'?mode=checkout')]);
+  for(const result of tabs){assert.equal(result.status,200);assert.equal(result.payWayAttemptId,'SAVED-PAYWAY');assert.equal(result.payWayReviewRequired,review);}
+  assert.equal(JSON.stringify(h.db.tables),before);assert.deepEqual(h.effects,[]);assert.ok(h.db.history.every(r=>r.op==='read'));
+ }
+});

@@ -169,6 +169,7 @@ function AttemptStatus({ kind, attemptId, businessId, checkoutClosed = false }: 
       expiryRequested.current = false;
       expiryController.current?.abort();
       closeController.current?.abort();
+      closeController.current = null;
       setRemaining(null);
       setAttempt(null);
       setVerifying(false);
@@ -226,7 +227,17 @@ function AttemptStatus({ kind, attemptId, businessId, checkoutClosed = false }: 
         if (controller.signal.aborted || epoch !== identityEpoch.current) return;
         saved = acceptAttempt(saved, result.requestStarted);
         const now = clock.current ? clock.current.server + performance.now() - clock.current.client : Number.NaN;
-        if (expiryRequested.current || (kind === "payway" && (saved.checkoutSessionClosedAt || (saved.checkoutExpiresAt && Date.parse(saved.checkoutExpiresAt) <= now)))) {
+        // Reopening a durably closed attempt is a saved-history view, not a
+        // new dismissal. Only a closure initiated here navigates away.
+        if (!expiryRequested.current && kind === "payway" && saved.checkoutSessionClosedAt) {
+          shouldPoll = false;
+          setError(null);
+          // A lost acknowledgement of this tab's own close still completes
+          // navigation once the exact saved closure is observed.
+          if (closeController.current) expiryRequested.current = true;
+          return;
+        }
+        if (expiryRequested.current || (kind === "payway" && saved.status !== "approved" && saved.checkoutExpiresAt && Date.parse(saved.checkoutExpiresAt) <= now)) {
           expiryRequested.current = true;
           shouldPoll = false;
           return;

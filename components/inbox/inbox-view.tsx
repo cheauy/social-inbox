@@ -2140,13 +2140,14 @@ function applyFacebookProfileNameActivity(row: Record<string, unknown>) {
       typeof row.contact_id !== "string" || typeof metadata.socialAccountId !== "string" ||
       typeof metadata.fullName !== "string" || !metadata.fullName.trim() ||
       !(metadata.previousFullName === null || typeof metadata.previousFullName === "string")) return false;
+  const fullName = metadata.fullName.trim();
 
   setLiveConversations(current => current.map(conversation => {
     const contact = conversation.contact;
     if (!contact || conversation.id !== row.conversation_id || conversation.business_id !== row.business_id ||
         conversation.social_account?.id !== metadata.socialAccountId || contact.id !== row.contact_id ||
         contact.business_id !== row.business_id || contact.full_name !== metadata.previousFullName) return conversation;
-    return { ...conversation, contact: { ...contact, full_name: metadata.fullName as string } };
+    return { ...conversation, contact: { ...contact, full_name: fullName } };
   }));
   return true;
 }

@@ -8,7 +8,7 @@ const React = require('react'), { act } = React, { createRoot } = require('react
 const migration = fs.readFileSync('db/migrations/20261017122923_customer_payment_references.sql', 'utf8');
 const payment = (source = 'payway') => ({ source, paymentId: randomUUID() });
 
-test('database claims are globally unique, stable, service-only and leave every original/provider field intact', async () => {
+for (const permissiveDefaults of [false, true]) test('database claims stay unique, immutable and service-only with ' + (permissiveDefaults ? 'permissive' : 'normal') + ' creator defaults', async () => {
   const db = new PGlite();
   try {
     await db.exec(`create role anon; create role authenticated; create role service_role bypassrls;
@@ -16,7 +16,21 @@ test('database claims are globally unique, stable, service-only and leave every 
       create table manual_payment_requests(id uuid primary key, status text);
       create table manual_payment_uploads(id uuid primary key, state text);
       grant select on billing_transactions,manual_payment_requests,manual_payment_uploads to service_role;`);
+    const sourceAcl = (await db.query("select relname, relacl::text from pg_class where oid in ('billing_transactions'::regclass,'manual_payment_requests'::regclass,'manual_payment_uploads'::regclass) order by relname")).rows;
+    if (permissiveDefaults) {
+      await db.exec('alter default privileges in schema public grant all on tables to service_role with grant option; create table default_probe_before(id integer);');
+      assert.equal((await db.query("select has_table_privilege('service_role','default_probe_before','UPDATE WITH GRANT OPTION') as inherited")).rows[0].inherited, true);
+    }
+    const defaults = (await db.query('select defaclobjtype, defaclacl::text from pg_default_acl order by oid')).rows;
     await db.exec(migration);
+    assert.deepEqual((await db.query("select relname, relacl::text from pg_class where oid in ('billing_transactions'::regclass,'manual_payment_requests'::regclass,'manual_payment_uploads'::regclass) order by relname")).rows, sourceAcl);
+    assert.deepEqual((await db.query('select defaclobjtype, defaclacl::text from pg_default_acl order by oid')).rows, defaults);
+    const ledgerAcl = (await db.query(`select privilege_type, is_grantable from information_schema.role_table_grants
+      where grantee='service_role' and table_schema='public' and table_name='customer_payment_references' order by privilege_type`)).rows;
+    assert.deepEqual(ledgerAcl, [{privilege_type:'INSERT',is_grantable:'NO'},{privilege_type:'SELECT',is_grantable:'NO'}]);
+    for (const privilege of ['UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER']) {
+      assert.equal((await db.query("select has_table_privilege('service_role','customer_payment_references',$1) as allowed", [privilege])).rows[0].allowed, false, privilege);
+    }
     const a = payment(), b = payment('manual'), c = payment('bakong');
     const providerId = 'FULL_ABA_1234567890';
     await db.query("insert into billing_transactions values($1,'payway',$2,'pending'),($3,'bakong','FULL_BAKONG_CORRELATION','pending')", [a.paymentId, providerId, c.paymentId]);
@@ -46,6 +60,8 @@ test('database claims are globally unique, stable, service-only and leave every 
     await db.exec('set role service_role');
     assert.equal((await claim({ ...a, reference: 'A2B3C4D5' }))[0].reference, 'T7K9M2XP');
     await assert.rejects(db.query("update customer_payment_references set reference='A2B3C4D5'"));
+    await assert.rejects(db.query('delete from customer_payment_references'));
+    await assert.rejects(db.query('truncate customer_payment_references'));
     await db.exec('reset role');
     // Rollback disables allocation without dropping the ledger or changing old application data.
     await db.exec('revoke execute on function tenh_claim_customer_payment_references(jsonb) from service_role');

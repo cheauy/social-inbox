@@ -66,7 +66,7 @@ async function mountAlbum(t, platform, direction, count, pending = false) {
   const snippets = {};
   function visit(node) {
     if (ts.isJsxElement(node) && node.openingElement.tagName.getText(ast) === 'PhotoAlbumFrame') snippets.album = node.getText(ast);
-    if (ts.isJsxSelfClosingElement(node) && node.tagName.getText(ast) === 'MessengerMessageActions' && node.getText(ast).includes('copyControl=')) snippets.actions = node.getText(ast);
+    if (ts.isJsxSelfClosingElement(node) && node.tagName.getText(ast) === 'MessengerMessageActions' && node.getText(ast).includes('contextual=')) snippets.actions = node.getText(ast);
     if (ts.isVariableDeclaration(node) && ['albumActionTarget', 'replyActionId'].includes(node.name.getText(ast))) snippets[node.name.getText(ast)] = `const ${node.getText(ast)};`;
     if (ts.isFunctionDeclaration(node) && node.name?.text === 'activateAlbumPhoto') snippets.activate = node.getText(ast);
     if (ts.isFunctionDeclaration(node) && node.name?.text === 'ReplyIcon') snippets.replyIcon = node.getText(ast);
@@ -99,10 +99,11 @@ for (const direction of ['incoming', 'outgoing']) {
   test(`${direction} explicit photo actions stay selected while the pointer crosses other photos`, async t => {
     const { events, members } = await mountAlbum(t, 'facebook', direction, 12);
     const album = document.querySelector('[data-photo-layout="album"]');
-    assert.equal(document.querySelectorAll('[role="group"]').length, 1);
+    assert.equal(document.querySelectorAll('[role="group"]').length, 0);
+    assert.ok(document.querySelector('[data-album-action-menu] button[aria-label="Album actions"]'));
     assert.equal(album.querySelector('[role="group"]'), null);
     assert.equal(album.querySelectorAll('[aria-label^="Copy photo "]').length, 12);
-    const copy = () => document.querySelector('[aria-label="Copy image"]');
+    const openMenu = async () => { const trigger=document.querySelector('[data-album-action-menu] button'); if(trigger.getAttribute('aria-expanded')!=='true')await act(async()=>trigger.click()); };
     const reply = () => [...document.querySelectorAll('[role="group"] button')].find(button => /^(?:Cancel reply|Reply)$/.test(button.textContent));
     for (const [index, event] of [[11, 'copy'], [0, 'reply'], [8, 'copy'], [4, 'contextmenu'], [1, 'open']]) {
       const tile = document.querySelectorAll('[data-album-photo-id]')[index];
@@ -122,18 +123,19 @@ for (const direction of ['incoming', 'outgoing']) {
       });
       assert.equal(tile.getAttribute('data-album-action-target'), 'true');
       assert.equal(lower.getAttribute('data-album-action-target'), null);
-      assert.equal(copy().textContent.trim(), 'Copy');
-      await act(async () => copy().click());
-      assert.equal(events.at(-1).messageId, members[index].id);
-      assert.equal(events.at(-1).conversationId, 'c1');
-      assert.equal(copy().textContent.trim(), 'Copied');
-      if (reply().textContent === 'Cancel reply') await act(async () => reply().click());
+      await openMenu();
+      const menu=document.querySelector('[role="dialog"][aria-label="Album actions"]');
+      assert.ok(menu);assert.equal(menu.querySelector('[aria-label="Copy image"]'),null);
+      assert.ok(menu.querySelector('[role="group"]').className.includes('rounded-full'));
+      if (reply().textContent === 'Cancel reply') { await act(async () => reply().click()); await openMenu(); }
       await act(async () => reply().click());
       assert.equal(events.at(-1).id, members[index].id);
       assert.match(tile.className, /ring-blue-500/);
-      await act(async () => reply().click());
-      assert.equal(reply().textContent, 'Reply');
-      assert.match(document.querySelector('[role="group"]').parentElement.className, /opacity-100/);
+      assert.equal(Boolean(document.querySelector('[role="dialog"][aria-label="Album actions"]')),false);
+      await openMenu();await act(async () => reply().click());
+      await openMenu();assert.equal(reply().textContent, 'Reply');
+      await act(async()=>document.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Escape',bubbles:true})));
+      assert.equal(Boolean(document.querySelector('[role="group"]')),false);
     }
   });
 }
@@ -142,6 +144,7 @@ test('Telegram album retains group pin/delete while replying to the selected pho
   const { events, members } = await mountAlbum(t, 'telegram', 'outgoing', 3);
   await act(async () => document.querySelector('[aria-label="Copy photo 3"]').click());
   for (const label of ['Reply', 'Pin', 'Delete']) {
+    await act(async()=>document.querySelector('[data-album-action-menu] button').click());
     await act(async () => [...document.querySelectorAll('[role="group"] button')].find(button => button.textContent === label).click());
   }
   assert.equal(events.find(event => event.type === 'reply').id, members[2].id);
@@ -149,42 +152,40 @@ test('Telegram album retains group pin/delete while replying to the selected pho
   assert.deepEqual(Array.from(events.find(event => event.type === 'delete').ids), members.map(member => member.id));
 });
 
-test('icon-only Copy keeps copied feedback accessible without a growing text pill', async t => {
+test('each album photo retains original icon-only Copy feedback, outside the ellipsis menu', async t => {
   const { events } = await mountAlbum(t, 'facebook', 'incoming', 3);
-  const button = document.querySelector('[aria-label="Copy photo 1"]');
-  await act(async () => button.click());
+  assert.equal(document.querySelectorAll('[aria-label^="Copy photo "]').length, 3);
+  const copy = document.querySelector('[aria-label="Copy photo 1"]');
+  await act(async () => copy.click());
+  assert.equal(events.at(-1).type, 'copy');
   assert.equal(events.at(-1).messageId, 'base:photo:0');
-  assert.equal(button.title, 'Copied');
-  assert.equal(button.querySelector('[aria-live="polite"]').textContent, 'Copied');
-  assert.equal(button.querySelector('[aria-live="polite"]').className, 'sr-only');
+  assert.equal(events.at(-1).src, '/synthetic/0');
+  assert.equal(copy.title, 'Copied');
+  assert.equal(copy.querySelector('[aria-live="polite"]').textContent, 'Copied');
+  assert.equal(copy.querySelector('[aria-live="polite"]').className, 'sr-only');
+  await act(async () => document.querySelector('[data-album-photo-id] button').click());
+  assert.equal(events.at(-1).type, 'open');
+  assert.equal(events.at(-1).messageId, 'base:photo:0');
+  await act(async () => document.querySelector('[data-album-action-menu] button').click());
+  assert.equal(document.querySelector('[aria-label="Copy image"]'), null);
   assert.equal(document.querySelector('[data-album-photo-id] [role="group"]'), null);
 });
 
-test('Sending Telegram album reserves the future toolbar without enabling unavailable actions', async t => {
-  const { events } = await mountAlbum(t, 'telegram', 'outgoing', 3, true);
-  const buttons = [...document.querySelectorAll('[role="group"] button')];
-  const reserved = buttons.filter(button => button.getAttribute('aria-hidden') === 'true');
-  assert.deepEqual(reserved.map(button => button.textContent), ['Reply', 'Pin', 'Delete']);
-  for (const button of reserved) {
-    assert.equal(button.disabled, true);
-    assert.equal(button.tabIndex, -1);
-    assert.equal(button.style.visibility, 'hidden');
-    assert.equal(button.style.pointerEvents, 'none');
-    await act(async () => button.click());
-  }
-  assert.equal(events.length, 0);
-  assert.equal(buttons.find(button => button.getAttribute('aria-label') === 'Copy image').disabled, false);
+test('Sending Telegram album disables the ellipsis without exposing unavailable actions', async t => {
+  const {events}=await mountAlbum(t,'telegram','outgoing',3,true);
+  const trigger=document.querySelector('[data-album-action-menu] button');assert.ok(trigger);assert.equal(trigger.disabled,true);
+  await act(async()=>trigger.click());assert.equal(Boolean(document.querySelector('[role="group"]')),false);assert.equal(events.length,0);
+  assert.equal(document.querySelectorAll('[aria-label^="Copy photo "]').length,3);
 });
 
-test('Sending Facebook album reserves Reply/Pin and reaction space without inventing Delete', async t => {
-  await mountAlbum(t, 'facebook', 'outgoing', 3, true);
-  const group = document.querySelector('[role="group"]');
-  assert.deepEqual([...group.querySelectorAll('button[aria-hidden="true"]')].map(button => button.textContent), ['Reply', 'Pin']);
-  assert.ok(group.querySelector(':scope > span[aria-hidden="true"]'));
-  assert.equal(group.querySelector('[aria-label="React to message"]'), null);
+test('Sending Facebook album does not invent reaction, delete or enabled menu actions', async t => {
+  await mountAlbum(t,'facebook','outgoing',3,true);
+  assert.equal(document.querySelector('[data-album-action-menu] button').disabled,true);
+  assert.equal(Boolean(document.querySelector('[role="group"]')),false);
+  assert.equal(Boolean(document.querySelector('[aria-label="React to message"]')),false);
 });
 
 test('incoming album does not inherit outgoing Sending reservations', async t => {
-  await mountAlbum(t, 'telegram', 'incoming', 3, true);
-  assert.equal(document.querySelector('[role="group"] button[aria-hidden="true"]'), null);
+  await mountAlbum(t,'telegram','incoming',3,true);
+  assert.equal(Boolean(document.querySelector('[role="group"] button[aria-hidden="true"]')),false);
 });

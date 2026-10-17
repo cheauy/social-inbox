@@ -2,6 +2,7 @@ import { captureFacebookNativeReply } from "@/lib/facebook/capture-native-reply"
 import { noteStoredFacebookBotEvent } from "@/lib/bot/execution-store";
 import { readFacebookBlock } from "@/lib/facebook/customer-block";
 import "server-only";
+import { after } from "next/server";
 import { saveDetectedCustomerPhone } from "@/lib/inbox/save-detected-customer-phone";
 
 import {
@@ -405,10 +406,16 @@ export async function processFacebookMessage(
   }
 
   // Page echoes can be the first/only events TENH sees for a customer.
-  // Save the message first; fill a missing name with one bounded profile lookup.
+  // Enrichment runs after the webhook response so it cannot stall its batch.
   if (isEcho && isMissingFacebookCustomerName(contact.full_name)) {
-    await syncFacebookCustomerName({ businessId: socialAccount.business_id,
-      socialAccountId: socialAccount.id, pageId, contactId: contact.id, customerId });
+    try {
+      after(async () => {
+        await syncFacebookCustomerName({ businessId: socialAccount.business_id,
+          socialAccountId: socialAccount.id, pageId, contactId: contact.id, customerId });
+      });
+    } catch {
+      console.warn("[TENH Facebook] Customer name sync could not be scheduled; message delivery is unaffected.");
+    }
   }
 
   /*

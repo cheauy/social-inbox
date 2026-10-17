@@ -15,10 +15,10 @@ function runtime() {
   const jsx=(type,props,key)=>({type,props:props||{},key});
   return {React,jsx:{jsx,jsxs:jsx,Fragment:React.Fragment},render:(Component,props)=>{cursor=0;return Component(props)},slots};
 }
-function nodes(tree,predicate){const out=[];function visit(node){if(Array.isArray(node)){node.forEach(visit);return}if(!node||typeof node!=='object')return;if(predicate(node))out.push(node);visit(node.props?.children)}visit(tree);return out;}
+function nodes(tree,predicate){const out=[];function visit(node){if(Array.isArray(node)){node.forEach(visit);return}if(!node||typeof node!=='object')return;if(predicate(node))out.push(node);visit(typeof node.props?.children==='function'?node.props.children():node.props?.children)}visit(tree);return out;}
 function component(name){const fn=()=>null;Object.defineProperty(fn,'name',{value:name});return fn;}
 function panelHarness() {
- const rt=runtime(),Copy=component('Copy'),Thumbnail=component('Thumbnail'),Actions=component('Actions'),Box=component('ReplyBox'),noop=()=>null;
+ const rt=runtime(),Copy=component('Copy'),Photo=component('Photo'),Thumbnail=component('Thumbnail'),Actions=component('Actions'),Box=component('ReplyBox'),noop=()=>null;
  const load=loader({
   react:rt.React,'react/jsx-runtime':rt.jsx,
   '@/components/inbox/messenger-source-card':{MessengerSourceCard:noop},
@@ -31,6 +31,7 @@ function panelHarness() {
   '@/components/ui/delete-confirm-dialog':{DeleteConfirmDialog:noop},
   '@/components/display/workspace-language-text':{useWorkspaceLanguageId:()=> 'en'},
   '@/components/inbox/image-copy-button':{ImageCopyButton:Copy},
+  '@/components/inbox/inbox-photo-image':{InboxPhotoImage:Photo},
   '@/components/inbox/reply-image-thumbnail':{ReplyImageThumbnail:Thumbnail},
  }, {URLSearchParams,window:{setTimeout:()=>1,requestAnimationFrame:fn=>fn()},document:{}});
  const {MessagePanel}=load('components/inbox/message-panel.tsx');
@@ -38,25 +39,26 @@ function panelHarness() {
   teamMembers:[],viewingAgents:[],typingAgents:[],teamPresence:[],reply:'',replyingToCommentId:null,replyingToFacebookMessageId:null,replyingToTelegramMessageId:null,editingTelegramMessageId:null,
   onReplyToFacebookMessage:id=>sent.push(['facebook',id]),onReplyToTelegramMessage:id=>sent.push(['telegram',id]),onCancelFacebookReply:()=>sent.push(['cancel-facebook']),onCancelTelegramReply:()=>sent.push(['cancel-telegram']),onLoadOlderMessages:async()=>false,
  };
- return {Copy,Thumbnail,Actions,Box,props,sent,render:changes=>rt.render(MessagePanel,{...props,...changes})};
+ return {Copy,Photo,Thumbnail,Actions,Box,props,sent,render:changes=>rt.render(MessagePanel,{...props,...changes})};
 }
 const photo=(patch={})=>({id:'m1',business_id:'b1',conversation_id:'conv1',platform_message_id:'mid1',direction:'incoming',message_type:'image',message_text:'[image]',attachment_url:'https://scontent.fbcdn.net/one.jpg',created_at:new Date().toISOString(),platform_created_at:new Date().toISOString(),raw_payload:{},...patch});
 const album=()=>photo({raw_payload:{message:{mid:'mid1',attachments:[{type:'image',payload:{url:'https://scontent.fbcdn.net/one.jpg'}},{type:'image',payload:{url:'https://scontent.fbcdn.net/two.jpg'}}]}}});
-test('Facebook album renders enabled Reply and Copy for every photo; reactions retain the real row ID',()=>{
+test('Facebook album keeps per-photo Copy/Reply and contextual actions without menu Copy; reactions retain the real row ID',()=>{
  const h=panelHarness(),tree=h.render({messages:[album()]});
- const actions=nodes(tree,node=>node.type===h.Actions&&node.props.photoHover);assert.equal(actions.length,2);
- for(const [i,action] of actions.entries()){assert.equal(action.props.message.id,'m1');assert.equal(action.props.actions.reply,true);action.props.onReply();assert.equal(h.sent[i][1],`m1:photo:${i}`)}
- const copies=nodes(tree,node=>node.type===h.Copy);assert.equal(copies.length,2);assert.equal(copies[1].props.reference.messageId,'m1:photo:1');
+ const actions=nodes(tree,node=>node.type===h.Actions&&node.props.contextual);assert.equal(actions.length,1);assert.equal(actions[0].props.message.id,'m1');assert.equal(actions[0].props.actions.reply,true);
+ const replies=nodes(tree,node=>node.type==='button'&&String(node.props['aria-label']).startsWith('Reply to photo '));assert.equal(replies.length,2);
+ for(const [i,button] of replies.entries()){button.props.onClick({stopPropagation(){}});assert.equal(h.sent[i][1],`m1:photo:${i}`)}
+ const copies=nodes(tree,node=>node.type===h.Copy);assert.equal(copies.length,2);assert.equal(copies[1].props.reference.messageId,'m1:photo:1');assert.equal(copies[1].props.iconOnly,true);assert.equal(actions[0].props.copyControl,undefined);
 });
 test('Telegram grouped photos each reply to the correct actual message ID',()=>{
- const h=panelHarness();const msgs=[photo({id:'tg1',platform_message_id:'telegram:123:1'}),photo({id:'tg2',platform_message_id:'telegram:123:2'})];
+ const h=panelHarness();const msgs=[photo({id:'tg1',platform_message_id:'telegram:123:1',raw_payload:{media_group_id:'album'}}),photo({id:'tg2',platform_message_id:'telegram:123:2',raw_payload:{media_group_id:'album'}})];
  const tree=h.render({messages:msgs,activeConversation:{...h.props.activeConversation,social_account:{platform:'telegram'}}});
- const actions=nodes(tree,node=>node.type===h.Actions&&node.props.photoHover);assert.equal(actions.length,2);actions[0].props.onReply();actions[1].props.onReply();assert.deepEqual(h.sent,[['telegram','tg1'],['telegram','tg2']]);
+ const replies=nodes(tree,node=>node.type==='button'&&String(node.props['aria-label']).startsWith('Reply to photo '));assert.equal(replies.length,2);replies[0].props.onClick({stopPropagation(){}});replies[1].props.onClick({stopPropagation(){}});assert.deepEqual(h.sent,[['telegram','tg1'],['telegram','tg2']]);
 });
 test('composer quote uses the exact selected album thumbnail and can cancel that selection',()=>{
  const h=panelHarness(),tree=h.render({messages:[album()],replyingToFacebookMessageId:'m1:photo:1'});
  const thumbs=nodes(tree,node=>node.type===h.Thumbnail);assert.equal(thumbs.length,1);assert.equal(thumbs[0].props.reference.url,'https://scontent.fbcdn.net/two.jpg');
- const selected=nodes(tree,node=>node.type===h.Actions&&node.props.photoHover&&node.props.replying);assert.equal(selected.length,1);selected[0].props.onReply();assert.deepEqual(h.sent,[['cancel-facebook']]);
+ const selected=nodes(tree,node=>node.type==='button'&&node.props['aria-label']==='Cancel reply to photo 2');assert.equal(selected.length,1);selected[0].props.onClick({stopPropagation(){}});assert.deepEqual(h.sent,[['cancel-facebook']]);
 });
 test('a sent image reply renders a thumbnail and jumps to that exact photo inside the album',async()=>{
  const h=panelHarness();const reply=photo({id:'reply',platform_message_id:'mid_reply',direction:'outgoing',message_type:'text',message_text:'This one',attachment_url:null,raw_payload:{reply_to:{mid:'mid1'},tenh_reply:{scope:'facebook',reply_to_local_message_id:'m1',reply_to_platform_message_id:'mid1',preview_text:'Photo',preview_type:'image',preview_image_index:1}}});
@@ -66,7 +68,7 @@ test('a sent image reply renders a thumbnail and jumps to that exact photo insid
 });
 test('single photos have Copy and opening the viewer preserves the message reference',()=>{
  const h=panelHarness();let tree=h.render({messages:[photo()]});assert.equal(nodes(tree,node=>node.type===h.Copy).length,1);
- const open=nodes(tree,node=>node.type==='button'&&String(node.props['aria-label']).startsWith('Open '))[0];open.props.onClick();tree=h.render({messages:[photo()]});
+ const open=nodes(tree,node=>node.type===h.Photo&&node.props.onOpen)[0];open.props.onOpen();tree=h.render({messages:[photo()]});
  const shortcut=nodes(tree,node=>node.type===h.Copy&&node.props.shortcut)[0];assert.ok(shortcut);assert.equal(shortcut.props.reference.messageId,'m1');
 });
 test('deleted album does not render copy actions or old image thumbnails',()=>{

@@ -403,6 +403,7 @@ function PaymentCheckout({
     useState(false);
   const [checkoutError, setCheckoutError] =
     useState<string | null>(null);
+  const [payWayReviewAttempt, setPayWayReviewAttempt] = useState<string | null>(null);
   const [bakongSafety, setBakongSafety] = useState(!purchaseBusinessId);
   const [bakongLoadError, setBakongLoadError] = useState(false);
   const [bakongUncertain, setBakongUncertain] = useState(false);
@@ -534,6 +535,7 @@ function PaymentCheckout({
           businessId?: string;
           preparedAttempt?: { id: string; businessId: string; canResume: boolean } | null;
           payWayAttemptId?: string | null;
+          payWayReviewRequired?: boolean;
         };
 
         if (!response.ok || !result.success || !result.businessId || (purchaseBusinessId && result.businessId !== purchaseBusinessId)) {
@@ -554,7 +556,10 @@ function PaymentCheckout({
             if (!result.preparedAttempt.canResume) throw new Error(t("An unfinished payment needs its requester's review.", "សំណើទូទាត់មិនទាន់រួច ត្រូវការអ្នកស្នើពិនិត្យ។"));
             enterAttempt("manual", result.preparedAttempt.id);
           } else if (result.payWayAttemptId) {
-            enterAttempt("payway", result.payWayAttemptId);
+            if (result.payWayReviewRequired) {
+              setPayWayReviewAttempt(result.payWayAttemptId);
+              onCheckoutOpened?.();
+            } else enterAttempt("payway", result.payWayAttemptId);
           }
         }
       } catch (error) {
@@ -1146,6 +1151,14 @@ function PaymentCheckout({
   if (statusAttempt) {
     return <PaymentAttemptView kind={statusAttempt.kind} attemptId={statusAttempt.id} businessId={purchaseBusinessId} />;
   }
+  if (payWayReviewAttempt) return <section className="mx-auto w-full max-w-md px-4 py-8 sm:py-12">
+    <div data-payment-card className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <h1 className="text-xl font-bold text-slate-950">{t("Previous payment needs review", "ការទូទាត់ពីមុនត្រូវការពិនិត្យ")}</h1>
+      <p role="status" className="mt-3 text-sm leading-6 text-slate-600">{t("An earlier payment is still unconfirmed. Billing support must reconcile it before another checkout can open. If you already paid, do not pay again.", "ការទូទាត់ពីមុនមិនទាន់បានបញ្ជាក់។ សូមទាក់ទងផ្នែកគាំទ្រការទូទាត់ ដើម្បីពិនិត្យមុនពេលបើកការទូទាត់ថ្មី។ ប្រសិនបើអ្នកបានបង់ប្រាក់រួច សូមកុំបង់ម្ដងទៀត។")}</p>
+      <a href={paymentAttemptUrl("payway", payWayReviewAttempt, purchaseBusinessId)} className="mt-4 inline-flex min-h-11 items-center rounded-xl border px-4 text-sm font-semibold">{t("View saved payment", "មើលការទូទាត់ដែលបានរក្សាទុក")}</a>
+      <a href="/dashboard/subscription" className="mt-4 block text-sm text-blue-700">{t("Back to subscription", "ត្រឡប់ទៅការជាវ")}</a>
+    </div>
+  </section>;
   if (bakongUncertain) return <section className="mx-auto mt-6 max-w-xl rounded-2xl border bg-white p-5">
     <h1 className="text-xl font-bold">{t("Payment status", "ស្ថានភាពទូទាត់")}</h1>
     <p role="status" className="mt-3 text-sm">{checkoutError ?? t("Checking the original payment attempt.", "កំពុងពិនិត្យប្រតិបត្តិការទូទាត់ដើម។")}</p>

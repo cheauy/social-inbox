@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- CommonJS/VM regression fixture. */
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -12,11 +13,12 @@ function fixture(options = {}) {
   seed.contacts[0].profile_picture_url = '/api/contacts/c1/facebook-avatar';
   seed.conversations[0].platform = 'facebook';
   seed.conversations[0].unread_count = 0;
-  const db = database(seed), calls = [], tokens = [], uploads = [];
+  const db = database(seed), calls = [], tokens = [], uploads = [], background = [];
   db.storage = { from: () => ({ upload: async (...args) => { uploads.push(args); return { error: null }; } }) };
   let now = Date.now();
   class Clock extends Date { static now() { return now; } }
   const load = loader({
+    'next/server': { after: task => background.push(task) },
     '@/lib/supabase/admin': { supabaseAdmin: db },
     '@/lib/facebook/get-facebook-page-access-token': { getFacebookPageAccessToken: async (...args) => { tokens.push(args); return 'fixture-only'; } },
     '@/lib/facebook/get-facebook-customer-profile': { getFacebookCustomerProfile: async () => {
@@ -37,11 +39,15 @@ function fixture(options = {}) {
   const api = load('lib/facebook/facebook-profile-photo.ts');
   const processMessage = load('lib/facebook/process-message.ts').processFacebookMessage;
   const scope = { businessId: 'b1', socialAccountId: 's1', contactId: 'c1', customerId: seed.contacts[0].platform_user_id, pageId: seed.social_accounts[0].platform_account_id };
-  const deliver = (echo = true, mid = 'fixture-mid') => processMessage({
+  const flush = async () => { while (background.length) await background.shift()(); };
+  const deliver = async (echo = true, mid = 'fixture-mid') => {
+    await processMessage({
     sender: { id: echo ? scope.pageId : scope.customerId }, recipient: { id: echo ? scope.customerId : scope.pageId },
     timestamp: now, message: { mid, is_echo: echo, text: 'Fixture message' },
-  });
-  return { db, api, scope, deliver, calls, tokens, uploads, advance: ms => { now += ms; } };
+    });
+    if (!options.deferBackground) await flush();
+  };
+  return { db, api, scope, deliver, flush, calls, tokens, uploads, advance: ms => { now += ms; } };
 }
 
 test('echo-only contact with an existing avatar gets a name after its message is saved', async () => {
@@ -89,6 +95,14 @@ test('echoes preserve custom names without another provider lookup', async () =>
   assert.equal(h.db.tables.conversation_activity.length, 0);
 });
 
+test('the existing photo fetch also preserves valid staff names', async () => {
+  const h = fixture({ name: 'Staff VIP Name' });
+  assert.equal((await h.api.syncFacebookContactProfilePhoto({ ...h.scope, pageAccessToken: 'fixture-only' })).stored, true);
+  assert.equal(h.db.tables.contacts[0].full_name, 'Staff VIP Name');
+  assert.equal(h.db.tables.conversation_activity.length, 0);
+  assert.equal(h.calls.length, 2);
+});
+
 test('incoming message enrichment also preserves a valid staff name', async () => {
   const h = fixture({ name: 'Staff VIP Name', genericProfile: { fullName: 'Provider Name', profilePictureUrl: null } });
   await h.deliver(false);
@@ -124,6 +138,17 @@ test('failed echo profile lookup preserves messages and has a bounded retry cool
   await h.deliver(true, 'three');
   assert.equal(h.calls.length, 2);
   assert.equal(h.db.tables.messages.length, 3);
+});
+
+test('a slow or denied profile cannot delay ingestion of the rest of the webhook batch', async () => {
+  const h = fixture({ failure: true, deferBackground: true });
+  await h.deliver(true, 'one');
+  await h.deliver(true, 'two');
+  assert.equal(h.db.tables.messages.length, 2);
+  assert.equal(h.calls.length, 0);
+  await h.flush();
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.db.tables.messages.length, 2);
 });
 
 test('concurrent missing-name lookups coalesce without caching provider tokens', async () => {

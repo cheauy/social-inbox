@@ -120,3 +120,12 @@ test('prepared manual proof ticket blocks PayWay and identifies the original man
  assert.equal(body.manualRequestId,'original-manual');assert.equal(body.businessId,'b1');
  assert.equal(JSON.stringify(instance.db.tables),before);assert.deepEqual(instance.effects,[]);
 });
+
+test('closed and expired UI sessions retain all unresolved financial guards against another upgrade',async()=>{
+ const {createPayWayCheckoutLifetime}=loader()('lib/payway/checkout-lifetime.ts');
+ for(const ended of [{checkout_session:{version:1,state:'closed',closed_at:'2026-10-17T12:00:00Z'}},createPayWayCheckoutLifetime(Date.now()-600001)]){
+  const instance=app([{id:'old',provider:'payway',provider_transaction_id:'old-closed',business_id:'b1',status:'pending',metadata:{checkout_contract_version:2,...ended}}]);
+  const before=JSON.stringify(instance.db.tables),response=await instance.post();assert.equal(response.status,409);
+  assert.equal((await response.json()).transactionId,'old-closed');assert.equal(JSON.stringify(instance.db.tables),before);assert.deepEqual(instance.effects,[]);
+ }
+});

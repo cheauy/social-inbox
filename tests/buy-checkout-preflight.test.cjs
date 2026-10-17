@@ -22,7 +22,7 @@ async function fixture(options={}){
   if(url.startsWith('/api/manual-payments?')){
    if(state.holdDiscovery)await wait(init,resolve=>{releaseDiscovery=resolve;});
    if(state.failDiscovery)return Response.json({success:false,error:'Unable to check saved payment.'},{status:503});
-   return Response.json({success:true,businessId:BUSINESS,payWayAttemptId:state.existing&&!options.existingAfterDiscovery?ID:null,config:{enabled:true,bankName:'Fixture bank',accountName:'Fixture',accountNumber:'0'},request:options.manualSubmitted?{id:'manual-original',status:'submitted'}:null});
+   return Response.json({success:true,businessId:BUSINESS,payWayAttemptId:state.existing&&!options.existingAfterDiscovery?ID:null,payWayReviewRequired:options.reviewRequired,config:{enabled:true,bankName:'Fixture bank',accountName:'Fixture',accountNumber:'0'},request:options.manualSubmitted?{id:'manual-original',status:'submitted'}:null});
   }
   if(url==='/api/payway/checkout'){
    if(state.holdCheckout)await wait(init,resolve=>{releaseCheckout=resolve;});
@@ -44,7 +44,7 @@ async function fixture(options={}){
  const Component=load(options.custom?'components/subscription/custom-subscription-builder.tsx':'components/subscription/buy-subscription-view.tsx')[options.custom?'CustomSubscriptionBuilder':'BuySubscriptionView'];
  const root=createRoot(dom.window.document.querySelector('#root'));
  await act(async()=>root.render(React.createElement(React.StrictMode,null,React.createElement(Component))));
- const buy=()=>[...dom.window.document.querySelectorAll('button')].find(b=>options.custom?b.textContent==='Continue to payment':b.textContent==='Buy Standard');
+ const buy=()=>[...dom.window.document.querySelectorAll('button')].find(b=>options.custom?b.textContent==='Continue to payment':b.hasAttribute('aria-busy')&&b.textContent.includes('Standard'));
  return{dom,state,requests,navigations,record,timers,transfers:()=>transfers,buy,
   click:async()=>act(async()=>{buy().click();buy()?.click();}),
   release:async()=>act(async()=>{state.holdDiscovery=false;releaseDiscovery();}),
@@ -110,4 +110,17 @@ test('sign-out during Buy preflight cannot restore prior private attempt or open
 
 test('switching checkout options and closing chooser never starts or cancels payment',async()=>{
  const f=await fixture();try{await f.click();await f.advance(100);await f.chooseManual();assert.equal(Boolean(f.dom.window.document.querySelector('input[type=file]')),false);await f.pay();assert.ok(f.dom.window.document.querySelector('input[type=file]'));await f.closeManual();await f.choosePayWay();assert.equal(Boolean(f.dom.window.document.querySelector('input[type=file]')),false);await f.chooseManual();assert.equal(Boolean(f.dom.window.document.querySelector('input[type=file]')),false);await f.pay();assert.ok(f.dom.window.document.querySelector('input[type=file]'));assert.equal(f.transfers(),0);assert.ok(!f.requests.some(r=>r.url==='/api/payway/checkout'));await f.closeManual();await f.closeChooser();assert.equal(f.navigations.at(-1),'/dashboard/subscription');assert.ok(!f.requests.some(r=>r.url.includes('cancel')));}finally{await f.close();}
+});
+
+test('ended unresolved checkout stays in review across reload/tabs instead of reopening the old attempt',async()=>{
+ for(const language of ['en','km'])for(let tab=0;tab<2;tab++){
+  const f=await fixture({existing:true,reviewRequired:true,language});try{
+   await f.click();await f.advance(60000);
+   assert.match(f.dom.window.document.querySelector('h1').textContent,language==='en'?/Previous payment needs review/:/ការទូទាត់ពីមុនត្រូវការពិនិត្យ/);
+   const saved=[...f.dom.window.document.querySelectorAll('a')].find(a=>a.href.includes('tran_id='+ID));assert.ok(saved);
+   assert.equal(f.transfers(),0);assert.deepEqual(f.navigations,[]);
+   assert.ok(!f.requests.some(r=>r.url==='/api/payway/checkout'||r.url.startsWith('/api/payway/status?')||r.url.startsWith('/api/subscription/payment-status?')));
+   assert.equal(f.dom.window.document.querySelector('[data-checkout-method-chooser]'),null);
+  }finally{await f.close();}
+ }
 });

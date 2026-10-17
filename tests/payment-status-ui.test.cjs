@@ -213,7 +213,7 @@ test('Cancel persists session closure, stops polling and returns once without a 
 });
 test('already-closed sessions survive reload and never trigger a provider inquiry',async()=>{
  const f=await fixture({record:{...deadlineRecord(),checkoutSessionClosedAt:'2026-10-17T12:00:00Z'}});try{
-  assert.equal(f.posts().length,0);assert.deepEqual(f.navigations,['/dashboard/subscription']);assert.equal(f.record.status,'pending');
+  assert.equal(f.posts().length,0);assert.deepEqual(f.navigations,[]);assert.equal(f.record.status,'pending');assert.equal(f.title(),'Checkout closed');
  }finally{await f.close();}
 });
 test('failed session close shows a retryable error and never navigates or fabricates cancellation',async()=>{
@@ -320,4 +320,15 @@ test('submitted review keeps one copy icon beside the complete reference and rem
       assert.ok(!f.requests.some(request=>request.url.includes('receipt=1')));
     }finally{await f.close();}
   }
+});
+
+test('reopening a durably closed saved attempt does not verify or redirect into an Upgrade loop',async()=>{
+ const closed={checkoutSessionClosedAt:'2026-10-17T11:59:00Z',...deadlineRecord(-1)};
+ for(const record of [closed,{...closed,status:'approved',application:'active'}]){
+  const f=await fixture({record});try{
+   await f.advance(60000);assert.deepEqual(f.navigations,[]);assert.equal(f.posts().length,0);
+   assert.equal(f.title(),record.status==='approved'?'Payment successful':'Checkout closed');
+   assert.equal(Boolean(f.dom.window.document.querySelector('[data-automatic-payment-check]')),false);
+  }finally{await f.close();}
+ }
 });

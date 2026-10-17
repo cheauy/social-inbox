@@ -14,6 +14,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getTrustedPlan, buildPurchaseRecord, type SubscriptionForQuote } from "@/lib/billing/subscription-purchase";
 import { syncBusinessSubscriptionLifecycle } from "@/lib/subscription/sync-subscription-lifecycle";
 import { getPendingBakongPayment } from "@/lib/billing/pending-bakong-payment";
+import { payWayCheckoutExpiresAt, payWayCheckoutSessionClosedAt } from "@/lib/payway/checkout-lifetime";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -443,14 +444,20 @@ export async function GET(request: Request) {
   // a saved-state read under the same authorized target workspace, with no
   // provider inquiry, preparation, cancellation, or settlement inference.
   const payWay = !requestId && url.searchParams.get("mode") === "checkout"
-    ? await supabaseAdmin.from("billing_transactions").select("provider_transaction_id")
+    ? await supabaseAdmin.from("billing_transactions").select("provider_transaction_id,metadata")
       .eq("business_id", businessId).eq("provider", "payway").in("status", ["pending", "processing", "draft", "created"])
       .order("created_at", { ascending: false }).limit(1).maybeSingle()
     : { data: null, error: null };
   if (payWay.error) return manualError("Unable to check existing payments. Try again.", 503);
+  const checkoutExpiresAt = payWayCheckoutExpiresAt(payWay.data?.metadata);
+  // Ending the UI session does not resolve money. Keep the purchase guard,
+  // but do not resume an ended checkout as an active payment again.
+  const payWayReviewRequired = Boolean(payWay.data && (payWayCheckoutSessionClosedAt(payWay.data.metadata) ||
+    (checkoutExpiresAt && Date.parse(checkoutExpiresAt) <= Date.now())));
   return manualJson({ success: true, businessId, memberId, config: getManualPaymentConfig(),
     request: saved.data ? requestDto(saved.data as ManualRequestRow) : null,
     payWayAttemptId: payWay.data?.provider_transaction_id ?? null,
+    payWayReviewRequired,
     preparedAttempt: ticket ? preparedDto(ticket, memberId) : null });
 }
 

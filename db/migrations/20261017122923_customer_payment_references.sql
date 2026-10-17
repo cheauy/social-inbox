@@ -10,6 +10,7 @@ create table public.customer_payment_references (
 );
 alter table public.customer_payment_references enable row level security;
 revoke all on public.customer_payment_references from public, anon, authenticated;
+revoke all on public.customer_payment_references from service_role;
 grant select, insert on public.customer_payment_references to service_role;
 
 -- Only the server proposes random candidates, after authorizing the original payment.

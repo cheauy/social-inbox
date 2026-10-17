@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import {
   randomInt,
 } from "node:crypto";
@@ -24,6 +25,7 @@ import {
   calculatePlanTotalCents,
   calculateUpgradeTotalCents,
   getBillingCycleDefinition,
+  getPlanDefinition,
   getTrustedSubscriptionQuote,
 } from "@/lib/subscription/plan-catalog";
 import { getPendingCheckoutBlocker, MAX_SUPERSEDED_PAYWAY_CHECKOUTS } from "@/lib/payway/pending-checkout-policy";
@@ -742,6 +744,23 @@ export async function POST(
      * IMPORTANT: do not send view_type here. The classic checkout2-0.js plugin
      * uses the form target/id contract from PayWay's eCommerce Checkout guide.
      */
+    const receiptPlanName = getPlanDefinition(plan.id)?.name ?? plan.name;
+    const receiptDescription = customUpgradeQuote
+      ? [
+          "Custom upgrade",
+          ...(customUpgradeQuote.capacityProrationCents > 0
+            ? ["remaining-term capacity adjustment"]
+            : []),
+          ...(customUpgradeQuote.extensionMonths > 0
+            ? [`${cycle.label} extension`]
+            : []),
+        ].join(" - ")
+      : `${receiptPlanName} ${
+          purchaseType === "upgrade"
+            ? "upgrade price difference"
+            : purchaseType === "renew-same" ? "renewal" : "subscription"
+        } - ${cycle.label}`;
+
     const fields: PayWayPurchaseFields = {
       req_time: reqTime,
       merchant_id: config.merchantId,
@@ -764,6 +783,12 @@ export async function POST(
         ? { payment_gate: "0" }
         : {}),
       amount,
+      // One descriptive package matches the actual charge, including discounts and upgrades.
+      items: Buffer.from(JSON.stringify([{
+        name: `TENH Chat ${receiptDescription} - ${plan.channels} connections / ${plan.users} users`,
+        quantity: 1,
+        price: Number(amount),
+      }]), "utf8").toString("base64"),
       currency: "USD",
       ...(config.callbackUrl
         ? {

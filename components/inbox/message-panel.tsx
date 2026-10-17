@@ -4821,7 +4821,7 @@ export function MessagePanel({
                       : "justify-start"
                   }`}
                 >
-                  <div className={`group ${isAudioMessage || isVoiceMessage ? "max-w-[71.4%] sm:max-w-[62.9%] xl:max-w-[52.7%]" : "max-w-[84%] sm:max-w-[74%] xl:max-w-[62%]"} ${isVideoMessage ? "w-[512px]" : ""}`}>
+                  <div className={`group ${albumActionTarget ? "relative ml-14 min-w-0" : ""} ${isAudioMessage || isVoiceMessage ? "max-w-[71.4%] sm:max-w-[62.9%] xl:max-w-[52.7%]" : "max-w-[84%] sm:max-w-[74%] xl:max-w-[62%]"} ${isVideoMessage ? "w-[512px]" : ""}`}>
                     <div
                       className={`text-sm transition ${
                         isBareSticker
@@ -5165,12 +5165,9 @@ export function MessagePanel({
                           photoGroup &&
                           photoGroup.members.length > 1 ? (
                           /*
-                           * Two photos stack, the way Telegram shows them.
-                           * Side by side forced each into a square and cut the
-                           * subject out of both -- with only two there is room
-                           * to show them wide instead. Three or four go 2x2,
-                           * more go three across so six reads as 3x2, and
-                           * those stay square to keep the rows aligned.
+                           * The frame fills each mosaic row, including odd
+                           * photo counts. Original ordering and media remain
+                           * unchanged; only the thumbnail cells are cropped.
                            *
                            * Held to the same 300px column as a single photo.
                            * `-mx-4` makes the grid span the bubble, and the
@@ -5212,12 +5209,7 @@ export function MessagePanel({
                                   data-album-action-target={albumActionTarget?.photo.id === photo.id || undefined}
                                   className={`group/photo relative ${photoSelected || jumpHighlightedMessageId === photo.id ? "z-10 ring-2 ring-inset ring-blue-500" : albumActionTarget?.photo.id === photo.id ? "ring-1 ring-inset ring-blue-400" : ""}`}>
                                 <div
-                                  className={`group/media block w-full cursor-zoom-in overflow-hidden bg-slate-100 ${
-                                    photoGroup.members
-                                      .length === 2
-                                      ? "aspect-[3/2]"
-                                      : "aspect-square"
-                                  }`}
+                                  className="group/media block h-full w-full cursor-zoom-in overflow-hidden bg-slate-100"
                                 >
                                   <InboxPhotoImage
                                     reference={photoReference}
@@ -5654,16 +5646,10 @@ export function MessagePanel({
                     <MessengerMessageActions
                       key={albumActionTarget?.message.id ?? message.id}
                       message={albumActionTarget?.message ?? message}
-                      copyControl={albumActionTarget?.photo.attachment_url ? <ImageCopyButton
-                        key={albumActionTarget.photo.id}
-                        src={albumActionTarget.photo.attachment_url}
-                        reference={{ conversationId: albumActionTarget.photo.conversation_id, messageId: albumActionTarget.photo.id }}
-                        className="max-w-full"
-                      /> : undefined}
                       platform={activeConversation.social_account?.platform}
                       onMessagePatched={onMessagePatched}
                       outgoing={isOutgoing}
-                      keepVisible={Boolean(albumActionTarget)}
+                      contextual={Boolean(albumActionTarget)}
                       reserveActions={albumActionTarget && isOutgoing && !isDeletedMessage && !isFacebookCommentMessage && ["facebook", "messenger", "telegram"].includes(activeConversation.social_account?.platform ?? "") ? {
                         reply: true, pin: true, edit: false,
                         delete: activeConversation.social_account?.platform === "telegram" || isTelegramMessage,

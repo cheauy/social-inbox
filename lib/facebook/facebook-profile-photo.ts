@@ -31,11 +31,11 @@ async function customerNameTarget(scope: CustomerNameScope) {
 
 /** Fill a provider name only while the same scoped contact still has a placeholder. */
 export async function saveFacebookCustomerName(scope: CustomerNameScope, fullName: string | null) {
-  if (isMissingFacebookCustomerName(fullName)) return false;
+  const name = fullName?.trim();
+  if (!name || isMissingFacebookCustomerName(name)) return false;
   try {
     const target = await customerNameTarget(scope);
     if (!target) return false;
-    const name = fullName!.trim();
     let query = supabaseAdmin.from("contacts").update({ full_name: name, updated_at: new Date().toISOString() })
       .eq("id", scope.contactId).eq("business_id", scope.businessId)
       .eq("platform", "facebook").eq("platform_user_id", scope.customerId);
