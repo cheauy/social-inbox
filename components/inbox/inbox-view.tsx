@@ -2143,8 +2143,8 @@ function applyFacebookProfileNameActivity(row: Record<string, unknown>) {
 
   setLiveConversations(current => current.map(conversation => {
     const contact = conversation.contact;
-    if (conversation.id !== row.conversation_id || conversation.business_id !== row.business_id ||
-        conversation.social_account?.id !== metadata.socialAccountId || contact?.id !== row.contact_id ||
+    if (!contact || conversation.id !== row.conversation_id || conversation.business_id !== row.business_id ||
+        conversation.social_account?.id !== metadata.socialAccountId || contact.id !== row.contact_id ||
         contact.business_id !== row.business_id || contact.full_name !== metadata.previousFullName) return conversation;
     return { ...conversation, contact: { ...contact, full_name: metadata.fullName as string } };
   }));
