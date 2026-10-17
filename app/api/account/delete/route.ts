@@ -30,6 +30,8 @@ type MembershipRow = {
 type SubscriptionRow = {
   business_id: string;
   status: string;
+  last_paid_amount?: number | string | null;
+  current_period_end?: string | null;
 };
 
 type BusinessRow = {
@@ -43,6 +45,7 @@ type ActiveMemberRow = {
   full_name: string;
   email: string | null;
   role: string;
+  user_id: string | null;
 };
 
 type OwnerCandidate = {
@@ -57,6 +60,7 @@ type BlockingSubscription = {
   businessName: string;
   status: string;
   candidates: OwnerCandidate[];
+  paidTimeRemaining: boolean;
 };
 
 type AccountDeletionImpact = {
@@ -64,6 +68,7 @@ type AccountDeletionImpact = {
   membershipCount: number;
   activeOwnedSubscriptionCount: number;
   blockingSubscriptions: BlockingSubscription[];
+  subscriptions: { businessId: string; businessName: string; status: string }[];
 };
 
 type OwnerDecision = "transfer" | "delete_subscriptions";
@@ -135,25 +140,26 @@ async function loadAccountDeletionImpact(
     ),
   );
 
-  if (ownerBusinessIds.length === 0) {
+  const membershipBusinessIds = [...new Set(membershipRows.filter(member => member.is_active).map(member => member.business_id))];
+  if (membershipBusinessIds.length === 0) {
     return {
       canDelete: true,
       membershipCount: membershipRows.length,
       activeOwnedSubscriptionCount: 0,
       blockingSubscriptions: [],
+      subscriptions: [],
     };
   }
 
   const [subscriptionsResult, businessesResult] = await Promise.all([
     supabaseAdmin
       .from("business_subscriptions")
-      .select("business_id,status")
-      .in("business_id", ownerBusinessIds)
-      .in("status", [...ACTIVE_SUBSCRIPTION_STATUSES]),
+      .select("business_id,status,last_paid_amount,current_period_end")
+      .in("business_id", membershipBusinessIds),
     supabaseAdmin
       .from("businesses")
       .select("id,name")
-      .in("id", ownerBusinessIds),
+      .in("id", membershipBusinessIds),
   ]);
 
   if (subscriptionsResult.error) {
@@ -168,8 +174,14 @@ async function loadAccountDeletionImpact(
     );
   }
 
-  const activeSubscriptions =
-    (subscriptionsResult.data ?? []) as SubscriptionRow[];
+  const businessNames = new Map(
+    ((businessesResult.data ?? []) as BusinessRow[]).map(business => [business.id, business.name?.trim() || "TENH Workspace"]),
+  );
+  const subscriptionRows = (subscriptionsResult.data ?? []) as SubscriptionRow[];
+  const subscriptions = subscriptionRows.map(subscription => ({ businessId: subscription.business_id,
+    businessName: businessNames.get(subscription.business_id) ?? "TENH Workspace", status: subscription.status }));
+  const activeSubscriptions = subscriptionRows.filter(subscription => ownerBusinessIds.includes(subscription.business_id) &&
+    ACTIVE_SUBSCRIPTION_STATUSES.some(status => status === subscription.status));
   const activeBusinessIds = Array.from(
     new Set(
       activeSubscriptions.map(
@@ -184,13 +196,14 @@ async function loadAccountDeletionImpact(
       membershipCount: membershipRows.length,
       activeOwnedSubscriptionCount: 0,
       blockingSubscriptions: [],
+      subscriptions,
     };
   }
 
   const { data: otherActiveMembers, error: membersError } =
     await supabaseAdmin
       .from("team_members")
-      .select("id,business_id,full_name,email,role")
+      .select("id,business_id,full_name,email,role,user_id")
       .in("business_id", activeBusinessIds)
       .eq("is_active", true)
       .neq("user_id", userId);
@@ -201,17 +214,7 @@ async function loadAccountDeletionImpact(
     );
   }
 
-  const businessNames = new Map(
-    ((businessesResult.data ?? []) as BusinessRow[]).map(
-      (business) => [
-        business.id,
-        business.name?.trim() || "TENH Workspace",
-      ],
-    ),
-  );
-
-  const activeMembers =
-    (otherActiveMembers ?? []) as ActiveMemberRow[];
+  const activeMembers = ((otherActiveMembers ?? []) as ActiveMemberRow[]).filter(member => Boolean(member.user_id));
   const subscriptionByBusiness = new Map(
     activeSubscriptions.map((subscription) => [
       subscription.business_id,
@@ -246,6 +249,9 @@ async function loadAccountDeletionImpact(
         status:
           subscriptionByBusiness.get(businessId)?.status ?? "active",
         candidates,
+        paidTimeRemaining: subscriptionByBusiness.get(businessId)?.status === "active" &&
+          Number(subscriptionByBusiness.get(businessId)?.last_paid_amount) > 0 &&
+          Date.parse(subscriptionByBusiness.get(businessId)?.current_period_end ?? "") > Date.now(),
       };
     });
 
@@ -254,6 +260,7 @@ async function loadAccountDeletionImpact(
     membershipCount: membershipRows.length,
     activeOwnedSubscriptionCount: activeBusinessIds.length,
     blockingSubscriptions,
+    subscriptions,
   };
 }
 
@@ -405,7 +412,7 @@ async function transferOwnedSubscriptions(
         );
       }
 
-      if (!member || !member.is_active || member.user_id === userId) {
+      if (!member || !member.is_active || !member.user_id || member.user_id === userId) {
         throw new Error(
           `The selected replacement Owner for ${subscription.businessName} is no longer an active eligible user. Refresh and choose another user.`,
         );
@@ -1248,7 +1255,7 @@ export async function DELETE(request: NextRequest) {
     // irreversible Auth deletion succeeded. Conversation history remains.
     if (ownerDecision === "delete_subscriptions") {
       await releaseEndedWorkspaceChannels(
-        impact.blockingSubscriptions.map(
+        workspaceClosureSnapshots.map(
           (item) => item.businessId,
         ),
       );
@@ -1262,7 +1269,7 @@ export async function DELETE(request: NextRequest) {
       success: true,
       endedSubscriptions:
         ownerDecision === "delete_subscriptions"
-          ? impact.blockingSubscriptions.map((item) => item.businessId)
+          ? workspaceClosureSnapshots.map((item) => item.businessId)
           : [],
     });
 

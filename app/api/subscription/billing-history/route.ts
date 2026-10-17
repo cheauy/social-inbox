@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getBillingOwnerAccess } from "@/lib/billing/owner-access";
 import { billingCurrency, billingDate, billingNumber, paymentMethodLabel, paymentProvenance, type BillingHistoryItem } from "@/lib/billing/payment-display";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { payWayCheckoutSessionClosedAt } from "@/lib/payway/checkout-lifetime";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,19 +15,25 @@ export async function GET() {
     const auth = await getBillingOwnerAccess();
     if (!auth.success) return NextResponse.json({ success: false, error: auth.error }, { status: auth.status, headers });
     if (!auth.businessIds.length) return NextResponse.json({ success: false, error: "Only an owner can view billing history." }, { status: 403, headers });
-    const [payway, manual, invoices, businesses] = await Promise.all([
+    const payWayPage = (offset: number) => supabaseAdmin.from("billing_transactions")
+      .select("id,business_id,provider,provider_transaction_id,plan_code,billing_cycle,amount,currency,status,provider_status,provider_status_code,provider_original_amount,provider_payment_amount,provider_payment_currency,provider_approval_code,verified_at,created_at,metadata")
+      .in("business_id", auth.businessIds).eq("provider", "payway").not("status", "in", "(draft,pending,processing,created,submitted)")
+      .order("created_at", { ascending: false }).order("id", { ascending: false }).range(offset, offset + 299);
+    const [payway, bakong, manual, invoices, businesses] = await Promise.all([
+      payWayPage(0),
+      // Preserve direct KHQR test/verified/review history whose financial status may still be pending.
       supabaseAdmin.from("billing_transactions")
         .select("id,business_id,provider,provider_transaction_id,plan_code,billing_cycle,amount,currency,status,provider_status,provider_status_code,provider_original_amount,provider_payment_amount,provider_payment_currency,provider_approval_code,verified_at,created_at,metadata")
-        .in("business_id", auth.businessIds).in("provider", ["payway", "bakong"]).order("created_at", { ascending: false }).limit(300),
+        .in("business_id", auth.businessIds).eq("provider", "bakong").order("created_at", { ascending: false }).limit(300),
       supabaseAdmin.from("manual_payment_requests")
         .select("id,business_id,plan_code,billing_cycle,amount,currency,status,review_note,reviewed_at,approved_at,created_at")
-        .in("business_id", auth.businessIds).order("created_at", { ascending: false }).limit(300),
+        .in("business_id", auth.businessIds).not("status", "in", "(draft,pending,processing,created,submitted)").order("created_at", { ascending: false }).limit(300),
       supabaseAdmin.from("tenh_billing_invoices")
         .select("id,business_id,invoice_number,source_type,source_payment_id,source_transaction_id,workspace_name,provider,status,amount,currency,paid_at,period_start,period_end,snapshot")
         .in("business_id", auth.businessIds).eq("status", "paid").order("issued_at", { ascending: false }).limit(600),
       supabaseAdmin.from("businesses").select("id,name").in("id", auth.businessIds),
     ]);
-    if (payway.error || manual.error || invoices.error || businesses.error) throw new Error("Billing data lookup failed.");
+    if (payway.error || bakong.error || manual.error || invoices.error || businesses.error) throw new Error("Billing data lookup failed.");
     const names = new Map((businesses.data ?? []).map(row => [row.id, text(row.name)]));
     const issued = new Map<string, Row>();
     for (const invoice of (invoices.data ?? []) as Row[]) {
@@ -60,7 +67,30 @@ export async function GET() {
         invoiceNumber: approved && invoice ? text(invoice.invoice_number) : null,
       };
     };
-    const items = [...((payway.data ?? []) as Row[]).map(row => item(row, row.provider === "bakong" ? "bakong" : "payway")), ...((manual.data ?? []) as Row[]).map(row => item(row, "manual"))]
+    const visiblePayWayRow = (row: Row) => {
+      if (!payWayCheckoutSessionClosedAt(row.metadata)) return true;
+      const metadata = row.metadata as Row;
+      const observation = metadata.payway_last_verification && typeof metadata.payway_last_verification === "object" ? metadata.payway_last_verification as Row : {};
+      // An ended unpaid checkout has no customer billing entry, even if a later
+      // inquiry marks it failed. Received money and reconciliation stay visible.
+      return row.status === "approved" || row.status === "recovery_required" || row.status === "refunded" || row.provider_status === "APPROVED" ||
+        observation.payment_status === "APPROVED" || Boolean(observation.conflict_reason) || issued.has(`${row.business_id}:payway:${row.id}`);
+    };
+    const visiblePayWay: Row[] = [];
+    let page = (payway.data ?? []) as Row[], offset = 0;
+    for (let index = 0; index < 10; index++) {
+      visiblePayWay.push(...page.filter(visiblePayWayRow));
+      if (visiblePayWay.length >= 300 || page.length < 300) break;
+      // Hidden ended checkouts must not consume the visible history cap. Bound
+      // the scan and fail explicitly rather than silently omit older receipts.
+      if (index === 9) throw new Error("Billing history scan limit reached.");
+      offset += page.length;
+      const next = await payWayPage(offset);
+      if (next.error) throw new Error("Billing history page lookup failed.");
+      page = (next.data ?? []) as Row[];
+    }
+    const items = [...visiblePayWay.slice(0, 300).map(row => item(row, "payway")), ...((bakong.data ?? []) as Row[]).map(row => item(row, "bakong")), ...((manual.data ?? []) as Row[]).map(row => item(row, "manual"))]
+      .filter(entry => !["draft", "pending", "processing", "created", "submitted"].includes(entry.status))
       .sort((a, b) => (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0) || b.id.localeCompare(a.id)).slice(0, 500);
     const approved = items.filter(item => item.status === "approved");
     const totalUsd = (entries: BillingHistoryItem[]) => entries.filter(item => item.currency === "USD").reduce((sum, item) => sum + (item.amount ?? 0), 0);

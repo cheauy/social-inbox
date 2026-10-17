@@ -7,7 +7,7 @@ const authContext=new AsyncLocalStorage(),business=uuid(900),channel=uuid(700),m
 const artifact=process.env.TENH_ENTRY_BASELINE_DIR;
 async function render(read){let value,error;async function Probe(){value=await read();return 'done'}const stream=await rsc.renderToReadableStream(React.createElement(Probe),{}, {onError:e=>{error=e}});const reader=stream.getReader();for(;;){const chunk=await reader.read();if(chunk.done)break}if(error)throw error;return value;}
 function fixture({baseline=false,delay=0,teamDelay=delay,offPage=false,sdkTransport=false}={}){
- const calls=[],controls={scopeDenied:false,channelDisabled:false,failSubscriptions:false,pageError:null};let started=performance.now();
+ const calls=[],avatarOwnerKeys=[],controls={scopeDenied:false,channelDisabled:false,failSubscriptions:false,pageError:null};let started=performance.now();
  const row=n=>({id:uuid(n),business_id:business,social_account_id:channel,contact:null,social_account:{id:channel,platform:'telegram'},status:'open',is_pinned:false,unread_count:0,last_message_at:'2026-10-04T00:00:00Z'});
  const data={team_members:[{id:member,business_id:business,user_id:user,is_active:true,full_name:'Fixture'}],business_subscriptions:[{id:uuid(400),business_id:business,status:'active',current_period_end:'2027-01-01T00:00:00Z',created_at:'2026-01-01'}],
   social_accounts:[{id:channel,business_id:business,is_active:true,platform:'telegram',telegram_token_status:'verified'}],inbox_saved_views:[],conversations:[row(1),row(2)],messages:[{id:uuid(100),conversation_id:offPage?uuid(2):uuid(1),business_id:business,platform_created_at:'2026-10-04T00:00:00Z',created_at:'2026-10-04T00:00:00Z'}]};
@@ -29,12 +29,19 @@ function fixture({baseline=false,delay=0,teamDelay=delay,offPage=false,sdkTransp
   const client=createClient('https://fixture.invalid','sb_secret_offline_fixture',{global:{fetch:transport},auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
   db={from:t=>{sdkQueries++;return client.from(t)},rpc:(...args)=>{sdkQueries++;return client.rpc(...args)}};
  }
- const mocks={'@/lib/auth/get-current-member':{getCurrentMember:currentMember},'@/lib/supabase/admin':{supabaseAdmin:db},'@/components/inbox/inbox-view':{InboxView:'view'},'next/server':{after(){}}};
+ const mocks={'@/lib/auth/get-current-member':{getCurrentMember:currentMember},'@/lib/supabase/admin':{supabaseAdmin:db},'@/components/inbox/inbox-view':{InboxView:'view'},'@/components/customer-avatar':{CustomerAvatarCacheProvider:'avatar-cache'},'next/server':{after(){}}};
  if(baseline)mocks['@/lib/inbox/get-conversations']=loader(mocks,{console:{log(){},error(){}},URLSearchParams})(path.join(artifact,'inbox-entry-baseline-conversations.ts'));
  const load=loader(mocks,{console:{log(){},error(){}},URLSearchParams}),page=load(baseline?path.join(artifact,'inbox-entry-baseline-page.tsx'):'app/dashboard/inbox/page.tsx').default,helpers=load(baseline?path.join(artifact,'inbox-entry-baseline-conversations.ts'):'lib/inbox/get-conversations.ts');
- async function run(params={conversation:offPage?uuid(2):uuid(1),channel}){started=performance.now();return render(async()=>{const tree=await page({searchParams:Promise.resolve(params)});return tree.props.children.props.children.props})}
- return{run,calls,controls,helpers,load,data,sdkQueries:()=>sdkQueries};
+ async function run(params={conversation:offPage?uuid(2):uuid(1),channel}){started=performance.now();return render(async()=>{const tree=await page({searchParams:Promise.resolve(params)});if(tree.type==='avatar-cache')avatarOwnerKeys.push(tree.key);return (tree.type==='avatar-cache'?tree.props.children:tree).props.children.props.children.props})}
+ return{run,calls,controls,helpers,load,data,avatarOwnerKeys,sdkQueries:()=>sdkQueries};
 }
+
+test('avatar owner follows the verified user while selected-thread keys remain independent',async()=>{
+ const f=fixture();await f.run();await f.run({conversation:uuid(2),channel});
+ const otherUser=uuid(601),otherMember=uuid(801);f.data.team_members.push({...f.data.team_members[0],id:otherMember,user_id:otherUser});
+ await authContext.run({userId:otherUser,businessId:business,memberId:otherMember},()=>f.run());
+ assert.deepEqual(f.avatarOwnerKeys,[user,user,otherUser]);
+});
 
 test('authenticated entry starts independent team loading before paging finishes, and selected messages need not wait for team',async()=>{
  const f=fixture({delay:5,teamDelay:100});const props=await f.run();assert.equal(props.activeConversationId,uuid(1));assert.equal(props.messages.length,1);

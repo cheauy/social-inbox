@@ -6,7 +6,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useWorkspaceLanguageId } from "@/components/display/workspace-language-text";
 import {
   type BillingHistoryItem,
-  type BillingHistorySummary,
   formatBillingDate,
   formatBillingMoney,
   paymentEnvironmentLabel,
@@ -19,10 +18,9 @@ type HistoryResponse = {
   success?: boolean;
   error?: string;
   items?: BillingHistoryItem[];
-  summary?: BillingHistorySummary;
 };
 
-type FilterKey = "all" | "approved" | "pending" | "attention";
+type FilterKey = "all" | "approved" | "attention";
 
 function titleCase(value: string) {
   return value
@@ -79,7 +77,6 @@ export function BillingHistoryView() {
   const t = (en: string, km: string) => (isKhmer ? km : en);
 
   const [items, setItems] = useState<BillingHistoryItem[]>([]);
-  const [summary, setSummary] = useState<HistoryResponse["summary"] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<"signin" | "forbidden" | "unavailable" | null>(null);
   const [retry, setRetry] = useState(0);
@@ -111,8 +108,7 @@ export function BillingHistoryView() {
         }
 
         if (!cancelled) {
-          setItems(result.items ?? []);
-          setSummary(result.summary ?? null);
+          setItems((result.items ?? []).filter(item => item.status !== "pending"));
         }
       } catch {
         if (!cancelled) setError("unavailable");
@@ -146,21 +142,16 @@ export function BillingHistoryView() {
   }, [filter, items]);
 
   const filters: Array<{ key: FilterKey; label: string; count: number }> = [
-    { key: "all", label: t("All", "ទាំងអស់"), count: summary?.total ?? items.length },
+    { key: "all", label: t("All", "ទាំងអស់"), count: items.length },
     {
       key: "approved",
       label: t("Approved", "បានអនុម័ត"),
-      count: summary?.approved ?? items.filter((item) => item.status === "approved").length,
-    },
-    {
-      key: "pending",
-      label: t("Pending", "កំពុងរង់ចាំ"),
-      count: summary?.pending ?? items.filter((item) => item.status === "pending").length,
+      count: items.filter((item) => item.status === "approved").length,
     },
     {
       key: "attention",
       label: t("Needs attention", "ត្រូវការការយកចិត្តទុកដាក់"),
-      count: summary?.attention ?? items.filter(isAttention).length,
+      count: items.filter(isAttention).length,
     },
   ];
 
@@ -193,9 +184,6 @@ export function BillingHistoryView() {
             <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
               {t("Billing history", "ប្រវត្តិការទូទាត់")}
             </h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-              {t("Review ABA PayWay and manual bank-transfer payments across all TENH subscriptions you own.", "ពិនិត្យការទូទាត់តាម ABA PayWay និងការផ្ទេរប្រាក់តាមធនាគារដោយដៃ សម្រាប់ការជាវ TENH ទាំងអស់ដែលអ្នកជាម្ចាស់។")}
-            </p>
           </div>
         </div>
 
@@ -214,13 +202,6 @@ export function BillingHistoryView() {
           </div>
         ) : null}
 
-        {summary && !error ? (
-          <div className="mt-6 flex flex-wrap gap-x-8 gap-y-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm sm:px-6">
-            <p className="text-slate-500">{t("Real paid total (USD)", "សរុបប្រាក់ដែលបានបង់ពិតប្រាកដ (USD)")} <span className="ml-2 font-bold text-slate-950">{formatBillingMoney(summary.approvedUsdTotal, "USD", isKhmer)}</span></p>
-            <p className="text-slate-500">{t("Test payments (USD)", "ការទូទាត់សាកល្បង (USD)")} <span className="ml-2 font-bold text-slate-700">{formatBillingMoney(summary.testUsdTotal, "USD", isKhmer)}</span></p>
-            <p className="text-slate-500">{t("Unverified approvals (USD)", "ការអនុម័តមិនទាន់ផ្ទៀងផ្ទាត់ (USD)")} <span className="ml-2 font-bold text-slate-700">{formatBillingMoney(summary.unverifiedUsdTotal, "USD", isKhmer)}</span></p>
-          </div>
-        ) : null}
         <section className="mt-6 overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-200 px-5 py-5 sm:px-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">

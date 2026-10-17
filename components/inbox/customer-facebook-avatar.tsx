@@ -108,7 +108,7 @@ export function CustomerFacebookAvatar({ conversation }: { conversation: InboxCo
 
 
   if (!contact) return null;
-  const image = <CustomerAvatar src={contact.profile_picture_url} name={contact.full_name} contactId={contact.id} platform={conversation.social_account?.platform} eager className="h-full w-full text-2xl" />;
+  const image = <CustomerAvatar src={contact.profile_picture_url} name={contact.full_name} contactId={contact.id} businessId={conversation.business_id} platform={conversation.social_account?.platform} eager className="h-full w-full text-2xl" />;
   const avatarClass = "block h-16 w-16 overflow-hidden rounded-full outline-none ring-offset-2 hover:ring-2 hover:ring-blue-400 focus-visible:ring-2";
   return <div className="relative flex shrink-0 flex-col items-start gap-1">
     {isFacebook && url ? <a href={url} target="_blank" rel="noopener noreferrer" title="View Facebook profile" aria-label="View customer Facebook profile" className={avatarClass}>{image}</a>

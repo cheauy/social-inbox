@@ -10,6 +10,12 @@ function postgresClient(db) {
     select(columns) { this.columns = columns; return this; }
     eq(column, value) { this.values.push(value); this.filters.push(`"${column}"=$${this.values.length}`); return this; }
     in(column, values) { if (!values.length) this.filters.push('false'); else this.filters.push(`"${column}" in (${values.map(value => { this.values.push(value); return '$' + this.values.length; }).join(',')})`); return this; }
+    not(column, operator, value) {
+      assert.equal(operator, 'in');
+      const values = value.replace(/^\(|\)$/g, '').split(',');
+      this.filters.push(`"${column}" not in (${values.map(entry => { this.values.push(entry); return '$' + this.values.length; }).join(',')})`);
+      return this;
+    }
     order(column, options = {}) { this.orders.push(`"${column}" ${options.ascending === false ? 'desc' : 'asc'}`); return this; }
     limit(value) { this.maximum = value; return this; }
     async execute(single = false) {

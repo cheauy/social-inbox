@@ -10,7 +10,6 @@ type Prepared = { purchase: Purchase; businessId: string; paymentUrl: string };
 
 /** Run the existing checkout guards while the customer stays on their Buy button. */
 export function useBuyCheckout() {
-  const [method, setMethod] = useState<"payway" | "manual">("payway");
   const [prepared, setPrepared] = useState<Prepared | null>(null);
   const [busy, setBusy] = useState(false);
   const [planCode, setPlanCode] = useState<PlanCode | null>(null);
@@ -88,9 +87,9 @@ export function useBuyCheckout() {
   }
 
   return {
-    start, busy, opened, error, planCode, manualHref, method, setMethod,
-    view: prepared ? <SubscriptionPaymentView planCode={prepared.purchase.planCode} billingCycle={prepared.purchase.billingCycle}
+    start, busy, opened, error, planCode, manualHref,
+    view: prepared ? <div data-buy-checkout className={opened ? "h-full min-h-0 overflow-y-auto" : "contents"}><SubscriptionPaymentView planCode={prepared.purchase.planCode} billingCycle={prepared.purchase.billingCycle}
       purchaseBusinessId={prepared.businessId} customConnections={prepared.purchase.connections} customUsers={prepared.purchase.users}
-      inlineBuy buyPaymentMethod={method} onCheckoutOpened={showAttempt} onCheckoutError={fail} /> : null,
+      inlineBuy onCheckoutOpened={showAttempt} onCheckoutError={fail} /></div> : null,
   };
 }

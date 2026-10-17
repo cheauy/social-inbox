@@ -63,12 +63,12 @@ test('restored destination server rejects revoked selection and independently re
  const load=loader({'@/lib/inbox/get-conversations':{preloadInboxConversationChannels:async()=>{},getInboxConversationScope:async()=>{if(signedOut)throw Error('sign in');return scope},getConversations:async(ids,filter)=>{calls.push(['selected',ids,filter]);return revoked||!ids.includes(row.business_id)?[]:[row]}},
   '@/lib/inbox/get-conversation-page':{ConversationPagingUnavailable:class extends Error{},getConversationPage:async request=>{calls.push(['page',request]);return{conversations:[],counts:{statusCounts:{}},total:0,hasMore:false,cursor:null}}},
   '@/lib/inbox/get-team-members':{getTeamMembers:async()=>[]},'@/lib/inbox/get-messages':{getMessages:async id=>{calls.push(['messages',id]);return[{id:'fresh'}]}},
-  '@/components/inbox/inbox-view':{InboxView:'view'}},{URLSearchParams});
+  '@/components/inbox/inbox-view':{InboxView:'view'},'@/components/customer-avatar':{CustomerAvatarCacheProvider:'avatar-cache'}},{URLSearchParams});
  const page=load('app/dashboard/inbox/page.tsx').default;
  const props={searchParams:Promise.resolve({channel,conversation})};
- let tree=await page(props),view=tree.props.children.props.children;assert.equal(view.props.activeConversationId,conversation);assert.equal(view.props.messages[0].id,'fresh');assert.equal(calls.filter(c=>c[0]==='messages').length,1);
- calls.length=0;revoked=true;tree=await page(props);view=tree.props.children.props.children;assert.equal(view.props.activeConversationId,null);assert.equal(view.props.messages.length,0);assert.equal(calls.filter(c=>c[0]==='messages').length,0);
+ let tree=await page(props),view=(tree.type==='avatar-cache'?tree.props.children:tree).props.children.props.children;assert.equal(view.props.activeConversationId,conversation);assert.equal(view.props.messages[0].id,'fresh');assert.equal(calls.filter(c=>c[0]==='messages').length,1);
+ calls.length=0;revoked=true;tree=await page(props);view=(tree.type==='avatar-cache'?tree.props.children:tree).props.children.props.children;assert.equal(view.props.activeConversationId,null);assert.equal(view.props.messages.length,0);assert.equal(calls.filter(c=>c[0]==='messages').length,0);
  assert.deepEqual(calls.find(c=>c[0]==='selected')[1],[business]);assert.equal(calls.find(c=>c[0]==='selected')[2].channelId,channel);
- calls.length=0;revoked=false;scope.accessibleBusinessIds=[];tree=await page(props);view=tree.props.children.props.children;assert.equal(view.props.activeConversationId,null);assert.equal(calls.filter(c=>c[0]==='messages').length,0);
+ calls.length=0;revoked=false;scope.accessibleBusinessIds=[];tree=await page(props);view=(tree.type==='avatar-cache'?tree.props.children:tree).props.children.props.children;assert.equal(view.props.activeConversationId,null);assert.equal(calls.filter(c=>c[0]==='messages').length,0);
  calls.length=0;signedOut=true;await assert.rejects(page(props),/sign in/);assert.equal(calls.length,0);
 });

@@ -34,12 +34,13 @@ async function fixture(options={}){
   throw Error('Unexpected request '+url);
  };
  const router={replace(url){navigations.push(url);if(options.failNavigation)throw Error('Synthetic navigation failure');}};
+ const testWindow=new Proxy(dom.window,{get(target,key){if(key==='location')return{origin:target.location.origin,href:target.location.href,replace:path=>navigations.push(path)};return Reflect.get(target,key,target);}});
  const Link=({children,href,...props})=>React.createElement('a',{href,...props},children);
  const load=loader({react:React,'next/navigation':{useRouter:()=>router,useSearchParams:()=>new URLSearchParams()},'next/link':{default:Link,__esModule:true},
   'next/script':{default:()=>null,__esModule:true},
   '@/components/display/workspace-language-text':{useWorkspaceLanguageId:()=>options.language||'en'},
   '@/lib/supabase/client':{createClient:()=>({auth:{onAuthStateChange(callback){listeners.add(callback);return{data:{subscription:{unsubscribe(){listeners.delete(callback);}}}};}}})},
- },{window:dom.window,document:dom.window.document,navigator:dom.window.navigator,fetch:fetcher,AbortController,URLSearchParams,setTimeout:later,clearTimeout:id=>timers.delete(id),performance:{now:()=>clock}});
+ },{window:testWindow,document:dom.window.document,navigator:dom.window.navigator,fetch:fetcher,AbortController,URLSearchParams,setTimeout:later,clearTimeout:id=>timers.delete(id),performance:{now:()=>clock}});
  const Component=load(options.custom?'components/subscription/custom-subscription-builder.tsx':'components/subscription/buy-subscription-view.tsx')[options.custom?'CustomSubscriptionBuilder':'BuySubscriptionView'];
  const root=createRoot(dom.window.document.querySelector('#root'));
  await act(async()=>root.render(React.createElement(React.StrictMode,null,React.createElement(Component))));
@@ -49,18 +50,22 @@ async function fixture(options={}){
   release:async()=>act(async()=>{state.holdDiscovery=false;releaseDiscovery();}),
   releaseCheckout:async()=>act(async()=>{state.holdCheckout=false;releaseCheckout();}),
   async advance(ms){const target=clock+ms;for(let count=0;count<1000;count++){const next=[...timers.entries()].sort((a,b)=>a[1].at-b[1].at)[0];if(!next||next[1].at>target)break;timers.delete(next[0]);clock=next[1].at;await act(async()=>{void next[1].fn();});}clock=target;},
-  async chooseManual(){await act(async()=>{const select=dom.window.document.querySelector('select');select.value='manual';select.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});},
+  async chooseManual(){await act(async()=>[...dom.window.document.querySelectorAll('[data-checkout-method-chooser] button')].find(b=>b.textContent.includes('Manual bank transfer')).click());},
+  async closeManual(){await act(async()=>dom.window.document.querySelector("dialog[open] header button").click());},
+  async choosePayWay(){await act(async()=>[...dom.window.document.querySelectorAll('[data-checkout-method-chooser] button')].find(b=>b.textContent.includes('ABA KHQR')).click());},
+  async pay(){await act(async()=>[...dom.window.document.querySelectorAll('button')].find(b=>b.textContent==='Checkout').click());},
+  async closeChooser(){await act(async()=>[...dom.window.document.querySelectorAll('button')].find(b=>b.textContent.includes('Close checkout')).click());},
   async signout(){await act(async()=>{for(const listener of listeners)listener('SIGNED_OUT');});},
   async close(){await act(async()=>root.unmount());dom.window.close();for(const[key,value]of Object.entries(previous)){if(value===undefined)delete global[key];else global[key]=value;}}
  };
 }
-test('Buy keeps preflight spinner on its button, deduplicates and opens the inline provider only after guards pass',async()=>{
+test('Buy preflight opens an unselected method chooser; only an explicit choice and continue can open PayWay',async()=>{
  const f=await fixture({holdDiscovery:true});try{
   await f.click();assert.equal(f.requests.filter(r=>r.url==='/api/workspaces/create-subscription').length,1);
   assert.equal(f.navigations.length,0);assert.equal(f.transfers(),0);assert.equal(f.dom.window.location.pathname,'/dashboard/subscription/buy');
   assert.ok(f.dom.window.document.querySelector('button[aria-busy=true][disabled] [class*="animate-spin"]'));
   assert.ok(!f.dom.window.document.body.textContent.includes('Checking existing payment'));
-  await f.release();await f.advance(100);assert.equal(f.requests.filter(r=>r.url==='/api/payway/checkout').length,1);assert.equal(f.transfers(),1);
+  await f.release();await f.advance(100);assert.equal(f.requests.filter(r=>r.url==='/api/payway/checkout').length,0);assert.equal(f.transfers(),0);assert.ok(f.dom.window.document.querySelector('[data-checkout-method-chooser]'));assert.ok(!f.dom.window.document.querySelector('[data-checkout-method-chooser] button[aria-pressed=true]'));await f.choosePayWay();assert.equal(f.transfers(),0);await f.pay();assert.equal(f.transfers(),1);
   assert.equal(f.navigations.length,1);assert.ok(f.navigations[0].includes('tran_id='+ID));assert.match(f.dom.window.document.body.textContent,/Checking payment/);
  }finally{await f.close();}
 });
@@ -68,7 +73,7 @@ test('preflight error is near Buy; retry reuses known workspace and preserves ma
  const f=await fixture({failDiscovery:true});try{
   await f.click();assert.equal(f.navigations.length,0);assert.equal(f.transfers(),0);assert.ok(!f.buy().disabled);
   const alert=f.dom.window.document.querySelector('[role=alert]');assert.match(alert.textContent,/Unable to check/);assert.ok(alert.closest('section').contains(f.buy()));
-  f.state.failDiscovery=false;await f.click();await f.advance(100);assert.equal(f.requests.filter(r=>r.url==='/api/workspaces/create-subscription').length,1);assert.equal(f.transfers(),1);
+  f.state.failDiscovery=false;await f.click();await f.advance(100);assert.equal(f.requests.filter(r=>r.url==='/api/workspaces/create-subscription').length,1);assert.equal(f.transfers(),0);await f.chooseManual();assert.equal(Boolean(f.dom.window.document.querySelector('input[type=file]')),false);await f.pay();assert.ok(f.dom.window.document.querySelector('input[type=file]'));
  }finally{await f.close();}
 });
 for(const status of ['pending','approved','expired'])test('Buy resumes original '+status+' attempt without another provider checkout',async()=>{
@@ -80,25 +85,29 @@ for(const status of ['pending','approved','expired'])test('Buy resumes original 
  }finally{await f.close();}
 });
 test('manual selection remains available through the same Buy preflight and never starts PayWay',async()=>{
- const f=await fixture();try{await f.chooseManual();await f.click();await f.advance(100);assert.equal(f.transfers(),0);assert.equal(f.requests.filter(r=>r.url==='/api/payway/checkout').length,0);assert.ok(f.dom.window.document.querySelector('input[type=file]'));await f.advance(30000);assert.ok(f.dom.window.document.querySelector('input[type=file]'));}finally{await f.close();}
+ const f=await fixture();try{await f.click();await f.advance(100);await f.chooseManual();await f.pay();assert.equal(f.transfers(),0);assert.equal(f.requests.filter(r=>r.url==='/api/payway/checkout').length,0);assert.ok(f.dom.window.document.querySelector('input[type=file]'));await f.advance(30000);assert.ok(f.dom.window.document.querySelector('input[type=file]'));}finally{await f.close();}
 });
 test('submitted manual proof resumes review and cannot start another checkout',async()=>{
- const f=await fixture({manualSubmitted:true});try{await f.click();await f.advance(5100);assert.match(f.dom.window.document.body.textContent,/Under review/);assert.equal(f.transfers(),0);assert.ok(!f.requests.some(r=>r.url==='/api/payway/checkout'));}finally{await f.close();}
+ const f=await fixture({manualSubmitted:true});try{await f.click();await f.advance(5100);assert.match(f.dom.window.document.body.textContent,/Payment submitted/);assert.equal(f.transfers(),0);assert.ok(!f.requests.some(r=>r.url==='/api/payway/checkout'));}finally{await f.close();}
 });
 test('unmount during checkout preparation aborts response and cannot later open provider or navigate',async()=>{
- const f=await fixture({holdCheckout:true});await f.click();await f.advance(100);assert.equal(f.transfers(),0);const request=f.requests.find(r=>r.url==='/api/payway/checkout');assert.ok(request);await f.close();assert.equal(request.signal.aborted,true);assert.deepEqual(f.navigations,[]);
+ const f=await fixture({holdCheckout:true});await f.click();await f.advance(100);await f.choosePayWay();await f.pay();assert.equal(f.transfers(),0);const request=f.requests.find(r=>r.url==='/api/payway/checkout');assert.ok(request);await f.close();assert.equal(request.signal.aborted,true);assert.deepEqual(f.navigations,[]);
 });
 test('navigation interruption preserves saved status and still opens exactly one provider iframe',async()=>{
- const f=await fixture({failNavigation:true});try{await f.click();await f.advance(100);assert.equal(f.transfers(),1);assert.equal(f.requests.filter(r=>r.url==='/api/payway/checkout').length,1);assert.match(f.dom.window.document.body.textContent,/Checking payment/);}finally{await f.close();}
+ const f=await fixture({failNavigation:true});try{await f.click();await f.advance(100);assert.equal(f.transfers(),0);await f.choosePayWay();await f.pay();assert.equal(f.transfers(),1);assert.equal(f.requests.filter(r=>r.url==='/api/payway/checkout').length,1);assert.match(f.dom.window.document.body.textContent,/Checking payment/);}finally{await f.close();}
 });
 test('Custom subscription uses the same guarded button flow',async()=>{
- const f=await fixture({custom:true,holdDiscovery:true});try{await f.click();assert.equal(f.navigations.length,0);assert.ok(f.dom.window.document.querySelector('button[aria-busy=true]'));await f.release();await f.advance(100);assert.equal(f.transfers(),1);}finally{await f.close();}
+ const f=await fixture({custom:true,holdDiscovery:true});try{await f.click();assert.equal(f.navigations.length,0);assert.ok(f.dom.window.document.querySelector('button[aria-busy=true]'));await f.release();await f.advance(100);assert.equal(f.transfers(),0);assert.ok(f.dom.window.document.querySelector('[data-checkout-method-chooser]'));await f.choosePayWay();await f.pay();assert.equal(f.transfers(),1);}finally{await f.close();}
 });
 
 test('a checkout created after discovery still resumes via server POST conflict without opening provider',async()=>{
- const f=await fixture({existing:true,existingAfterDiscovery:true});try{await f.click();await f.advance(5100);assert.equal(f.transfers(),0);assert.equal(f.requests.filter(r=>r.url==='/api/payway/checkout').length,1);assert.ok(f.navigations[0].includes('tran_id='+ID));}finally{await f.close();}
+ const f=await fixture({existing:true,existingAfterDiscovery:true});try{await f.click();await f.advance(5100);assert.equal(f.transfers(),0);await f.choosePayWay();await f.pay();await f.advance(5100);assert.equal(f.transfers(),0);assert.equal(f.requests.filter(r=>r.url==='/api/payway/checkout').length,1);assert.ok(f.navigations[0].includes('tran_id='+ID));}finally{await f.close();}
 });
 
 test('sign-out during Buy preflight cannot restore prior private attempt or open checkout',async()=>{
  const f=await fixture({holdDiscovery:true});try{await f.click();await f.signout();await f.advance(1000);assert.equal(f.transfers(),0);assert.deepEqual(f.navigations,[]);assert.ok(!f.requests.some(r=>r.url==='/api/payway/checkout'));assert.ok(f.buy());}finally{await f.close();}
+});
+
+test('switching checkout options and closing chooser never starts or cancels payment',async()=>{
+ const f=await fixture();try{await f.click();await f.advance(100);await f.chooseManual();assert.equal(Boolean(f.dom.window.document.querySelector('input[type=file]')),false);await f.pay();assert.ok(f.dom.window.document.querySelector('input[type=file]'));await f.closeManual();await f.choosePayWay();assert.equal(Boolean(f.dom.window.document.querySelector('input[type=file]')),false);await f.chooseManual();assert.equal(Boolean(f.dom.window.document.querySelector('input[type=file]')),false);await f.pay();assert.ok(f.dom.window.document.querySelector('input[type=file]'));assert.equal(f.transfers(),0);assert.ok(!f.requests.some(r=>r.url==='/api/payway/checkout'));await f.closeManual();await f.closeChooser();assert.equal(f.navigations.at(-1),'/dashboard/subscription');assert.ok(!f.requests.some(r=>r.url.includes('cancel')));}finally{await f.close();}
 });

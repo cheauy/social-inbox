@@ -42,6 +42,7 @@ test('retired direct Bakong remains absent even when a stale server advertises i
     const manual=buttons().find(button=>button.textContent.includes('Manual bank transfer'));
     assert.ok(manual);assert.equal(manual.disabled,false);
     await act(async()=>manual.click());
+    await act(async()=>dom.window.document.querySelector('[data-checkout-footer] button').click());
     assert.ok(dom.window.document.querySelector('input[type=file]'),'manual receipt input remains available');
     assert.equal(requests.filter(request=>request.method==='POST').length,0);
     assert.equal(paywayCalls,0);

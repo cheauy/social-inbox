@@ -1,5 +1,7 @@
 # PayWay checkout lifecycle — local review, 2026-10-17
 
+> Follow-up: the primary-folder integration and later UI clarifications supersede the Buy auto-start, visible detail headings, and navigation/clock behavior described below. See [the current primary report](local-primary-integration-20261017.md).
+
 Base: `0361e3579f3db62d516145a338f51668580a06a1` (verified fetched main).
 Branch: `fix-payway-popup-lifecycle`.
 Worktree: `C:/Users/TUF/AppData/Local/Temp/tenh-payway-popup-20261017`.
@@ -65,3 +67,25 @@ Tests changed/added: `tests/billing-payment-attempt.test.cjs`, `tests/buy-checko
 ## Publication and remaining action
 
 This is a local change only. No push, deployment, production settings, credentials, hosted schema, security policy, payment, refund, provider inquiry, close request or data purge was performed. No migration or environment-flag change is required for this patch. Production adoption requires independent review and explicit approval to publish/deploy this code branch; it does not change the existing sandbox/live configuration or retroactively assign deadlines to old records. There are no execution blockers.
+
+
+## Latest local scope: PayWay QR dismissal ends checkout (2026-10-17)
+
+The latest user clarification supersedes the earlier dismiss-only and QR-resume proposals. Closing the classic PayWay QR window, receiving its closed browser-return hint, or pressing the card's Cancel ends the TENH checkout session through the authenticated, same-origin checkout-session endpoint. It persists only the existing `checkout_session` metadata boundary. Financial status, settlement evidence, immutable transaction identity, access, invoices and late verification remain intact. No provider Close, refund, cancellation API or replacement Purchase is sent by dismissal.
+
+The close path waits for an in-flight saved read or verification. Already verified payment wins. A failed or lost close response triggers an exact-attempt saved-state reread; the UI says closure is unconfirmed until the backend confirms it, and offers retry. Confirmed closure returns with a full document replacement so the provider iframe and scroll lock are removed. Closed unpaid rows are absent from customer active Pending and Billing history, including a later failed inquiry. Received/refunded money, reconciliation and later issued receipts remain available. Manual Submitted review and the separate manual QR lightbox are unchanged.
+
+The bottom PayWay card retains Cancel. Its former Open/Show QR action is replaced with a spinner and exact English text “Checking payment automatically…”. This appears only while automatic checking is active, including its bounded scheduled checks; it disappears on offline/hidden pause, exhausted checks, error, close, expiry and terminal results. There is no payable QR reopening after closure.
+
+The in-progress provider-issued QR URL integration was removed after this clarification: no JSON Purchase transport, saved URL helper, iframe dialog, auto-show query flag, or resume DTO field is included. Classic PayWay creation remains byte-equivalent to current main. Existing financial duplicate-purchase guards remain enforced: closing TENH presentation does not prove the provider transaction unpaid or authorize a second financial attempt in the same workspace.
+
+Validation evidence: `C:/Users/TUF/AppData/Local/Temp/tenh-payway-resume-20261017/`. Focused suite after independent-review fixes: 120 passes; local embedded PostgreSQL application/late-settlement suite: 9 passes; final status suite and browser checkpoint recorded beside `close-review-checkpoint.json`. Eight EN/KM browser cases at 390/768/1024/1440 cover automatic checking, closure failure, actual QR dismissal, Cancel, expiry, frame/scroll cleanup and preserved manual flow. Browser requests are entirely loopback/mocked. The fixture waits for the Buy parent render before asserting its bounded scroll container.
+
+Implementation files for this latest phase: `components/subscription/payment-attempt-view.tsx`, `app/api/subscription/billing-history/route.ts`; supporting checkout-session/lifetime/status/pending DTO work remains in the earlier local integration. Tests: `tests/payment-status-ui.test.cjs`, `tests/billing-receipts-server.test.cjs`, `tests/fixtures/payment-attempt-browser.entry.cjs`, `tests/payment-attempt-browser.cjs`, plus existing route, pending, Buy, manual and local database checks.
+
+Local only. No commit, push, deployment, hosted write, environment change, credential removal, schema/security change, financial payment/refund or provider transaction request occurred. The direct Bakong retirement was already deployed in `0361e35`; no further production flag change is needed for this local UI/session patch. Publishing the accumulated primary edits remains a separate approval/review step.
+
+
+Independent-review fixes: the provider observer now follows desktop `#aba-checkout` and the actual sibling mobile `#aba_checkout_sheet #aba_checkout_app` iframe, including ancestor display/visibility/ARIA/hidden state. It requires a visible provider presentation before treating hiding/removal as closure. Regression covers hidden initialization and three mobile close paths. Billing history now pages deterministically by created timestamp and ID until it finds 300 visible PayWay rows or exhausts the source, scanning at most ten pages of 300 rows. An exhausted scan bound returns an explicit unavailable response, never a falsely complete empty/partial list. Regression covers 610 hidden newer failures before a valid older paid receipt, and explicit failure after 3,000 hidden rows. The shared in-memory query harness models range offsets; no database schema changed. Final review evidence uses the `close-review-fix-*` logs and browser folder.
+
+Final review browser: **8 English/Khmer cases, 1,120 assertions**, zero browser errors and external requests, `close-review-fix-browser/browser-results.json`. Latest status regression also covers pending/processing/draft/created QR dismissal; every closure preserves the original financial status. Final focused and type logs: `close-checkpoint-tests.txt` and `close-checkpoint-types.txt`.

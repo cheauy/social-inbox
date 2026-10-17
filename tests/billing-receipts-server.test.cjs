@@ -44,6 +44,22 @@ function fixture(options = {}) {
   const receipt = load('app/api/subscription/invoices/[invoiceId]/route.ts'), history = load('app/api/subscription/billing-history/route.ts');
   return { db, history: () => history.GET(), receipt: (invoiceId = id(101), query = '') => receipt.GET(new Request(`https://mock.invalid/api/subscription/invoices/${invoiceId}${query}`), { params: Promise.resolve({ invoiceId }) }), selectedCalls: () => selectedCalls };
 }
+
+test('customer history excludes unpaid projections before caps and counts, preserving terminal records and late payment receipts', async () => {
+  const pending = Array.from({ length: 310 }, (_, n) => payment(n + 1000, { status: 'pending', created_at: '2026-10-17' }));
+  const f = fixture({ payments: [...pending, payment(1), payment(2, { status: 'failed' }), payment(3, { status: 'refunded' }),
+    payment(4, { status: 'pending', provider: 'bakong', metadata: { bakong_state: 'test_paid', environment: 'sandbox' } })],
+    manual: [{ id: id(5), business_id: 'B', status: 'submitted' }, { id: id(6), business_id: 'B', status: 'rejected', amount: 3, currency: 'USD', created_at: paid }] });
+  const before = JSON.stringify(f.db.tables), first = await (await f.history()).json();
+  assert.equal(first.items.length, 5); assert.equal(first.summary.total, 5); assert.equal(first.summary.pending, 0);
+  assert.ok(first.items.some(x => x.status === 'failed') && first.items.some(x => x.status === 'refunded'));
+  assert.ok(first.items.some(x => x.source === 'bakong' && x.status === 'test_paid'));
+  assert.equal(JSON.stringify(f.db.tables), before); assert.ok(f.db.history.every(x => x.op === 'read'));
+  const row = f.db.tables.billing_transactions.find(x => x.id === id(1000)); row.status = 'approved';
+  f.db.tables.tenh_billing_invoices.push(invoice(1000));
+  const second = await (await f.history()).json(), late = second.items.find(x => x.sourceId === id(1000));
+  assert.equal(second.summary.total, 6); assert.equal(late.status, 'approved'); assert.equal(late.invoiceId, id(1100));
+});
 test('owner of A and B opens B invoice independently of A selected workspace', async () => {
   const f = fixture(), response = await f.receipt(), body = await response.json();
   assert.equal(response.status, 200); assert.equal(body.invoice.workspaceName, 'Workspace B at purchase'); assert.equal(f.selectedCalls(), 0);
@@ -82,7 +98,7 @@ test('history totals separate sandbox, confirmed production, manual and unverifi
 test('pending and unsuccessful persisted payments have no issued receipt action or paid date', async () => {
   const statuses = ['pending', 'failed', 'declined', 'rejected', 'cancelled', 'recovery_required', 'draft'];
   const f = fixture({ payments: statuses.map((status, i) => payment(i + 1, { status })), invoices: statuses.map((_, i) => invoice(i + 1)) });
-  const body = await (await f.history()).json(); assert.equal(body.items.length, statuses.length);
+  const body = await (await f.history()).json(); assert.equal(body.items.length, statuses.length - 2); assert.ok(body.items.every(item => !["pending", "draft"].includes(item.status)));
   for (const item of body.items) { assert.equal(item.invoiceId, null); assert.equal(item.paidAt, null); assert.equal(item.confirmedPaid, false); }
   assert.equal(body.summary.approvedUsdTotal, 0); assert.equal((await f.receipt()).status, 404);
 });
@@ -90,6 +106,32 @@ test('approved missing invoice remains unavailable, without writes or synthesize
   const f = fixture({ invoices: [] }); const item = (await (await f.history()).json()).items[0];
   assert.equal(item.invoiceId, null); assert.equal(item.periodStart, null); assert.equal(item.periodEnd, null); assert.equal((await f.receipt()).status, 404);
   assert.equal(f.db.history.every(entry => entry.op === 'read'), true);
+});
+
+test('ended unpaid PayWay sessions have no customer billing row; later money, review and receipts remain visible',async()=>{
+ const metadata={environment:'production',checkout_session:{version:1,state:'closed',closed_at:'2026-10-17T12:00:00Z'}};
+ const unpaid=payment(7,{status:'pending',provider_status:'PENDING',verified_at:null,metadata}),failed=payment(8,{status:'failed',provider_status:'FAILED',verified_at:null,metadata});
+ const f=fixture({payments:[unpaid,failed],invoices:[]}),before=JSON.stringify(f.db.tables);
+ assert.equal((await(await f.history()).json()).items.length,0);assert.equal(JSON.stringify(f.db.tables),before);assert.ok(f.db.history.every(x=>x.op==='read'));
+ const row=f.db.tables.billing_transactions[0];row.status='approved';row.metadata=payment(7).metadata;row.metadata.checkout_session=metadata.checkout_session;row.provider_status='APPROVED';row.verified_at=paid;
+ f.db.tables.tenh_billing_invoices.push(invoice(7));
+ const history=await(await f.history()).json();assert.equal(history.items.length,1);assert.equal(history.items[0].invoiceId,id(107));assert.equal(history.items[0].status,'approved');
+ f.db.tables.billing_transactions[1].status='recovery_required';assert.equal((await(await f.history()).json()).items.length,2);
+});
+
+test('hidden failed sessions do not consume the visible cap ahead of an older paid transaction and issued receipt',async()=>{
+ const metadata={environment:'production',checkout_session:{version:1,state:'closed',closed_at:'2026-10-17T12:00:00Z'}};
+ const hidden=Array.from({length:610},(_,n)=>payment(n+1000,{status:'failed',provider_status:'FAILED',verified_at:null,created_at:'2026-10-17',metadata}));
+ const f=fixture({payments:[...hidden,payment(1)],invoices:[invoice(1)]}),before=JSON.stringify(f.db.tables);
+ const response=await f.history(),result=await response.json();assert.equal(response.status,200);assert.equal(result.items.length,1);assert.equal(result.items[0].sourceId,id(1));assert.equal(result.items[0].invoiceId,id(101));assert.equal(result.summary.receipts,1);
+ assert.equal(JSON.stringify(f.db.tables),before);assert.ok(f.db.history.every(x=>x.op==='read'));assert.equal(f.db.history.filter(x=>x.table==='billing_transactions').length,4,'three scoped PayWay pages and unchanged historical Bakong lookup');
+});
+
+test('history fails explicitly at its bounded scan instead of silently returning an incomplete visible list',async()=>{
+ const metadata={checkout_session:{version:1,state:'closed',closed_at:'2026-10-17T12:00:00Z'}};
+ const hidden=Array.from({length:3000},(_,n)=>payment(n+1000,{status:'failed',provider_status:'FAILED',metadata}));
+ const f=fixture({payments:[...hidden,payment(1)],invoices:[invoice(1)]});const response=await f.history(),result=await response.json();
+ assert.equal(response.status,500);assert.equal(result.success,false);assert.equal(result.items,undefined);assert.equal(f.db.history.filter(x=>x.table==='billing_transactions').length,11);assert.ok(f.db.history.every(x=>x.op==='read'));
 });
 test('receipt and history preserve saved invoice amount, currency, reference, date and coverage', async () => {
   const saved = invoice(1, { amount: '81000', currency: 'KHR' }), f = fixture({ invoices: [saved] });

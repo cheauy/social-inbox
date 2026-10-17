@@ -4,6 +4,7 @@ import type { SubscriptionPendingPayment } from "@/lib/billing/subscription-pend
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { KHQR_CHECKOUT_ENABLED, PAYMENT_CANCELLATION_ENABLED } from "@/lib/billing/payment-cancellation-feature";
+import { payWayCheckoutExpiresAt, payWayCheckoutSessionClosedAt } from "@/lib/payway/checkout-lifetime";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,8 +37,8 @@ export async function GET() {
           .in("status", ["draft", "pending", "submitted", "cancelled"]),
         supabaseAdmin.from("manual_payment_uploads").select("id,business_id,member_id,request_payload")
           .in("business_id", businesses).in("member_id", [...members.values()].map(member => member.id)).eq("state", "prepared"),
-        supabaseAdmin.from("billing_transactions").select(`${paymentColumns},provider,provider_transaction_id`)
-          .in("business_id", businesses).in("provider", ["payway", "bakong"]).in("status", ["draft", "pending", "submitted", "cancelled"]),
+        supabaseAdmin.from("billing_transactions").select(`${paymentColumns},provider,provider_transaction_id,provider_status,metadata`)
+          .in("business_id", businesses).in("provider", ["payway", "bakong"]).in("status", ["draft", "pending", "processing", "created", "submitted", "cancelled", "recovery_required"]),
         supabaseAdmin.from("bakong_payment_attempts").select("id,business_id,expires_at,state,verified_hash")
           .in("business_id", businesses).in("state", ["pending", "review", "verified"]),
         cancellationKinds.length ? supabaseAdmin.from("payment_cancellations").select("kind,payment_id,outcome").in("business_id", businesses).in("kind", cancellationKinds) : { data: [], error: null },
@@ -78,8 +79,14 @@ export async function GET() {
       for (const row of billing.data ?? []) {
         if (row.status === "cancelled" && cancelled.get(`${row.provider}:${row.provider_transaction_id}`) !== "reconciliation_required") continue;
         if (row.provider === "payway") {
-          // PayWay's provider lifetime is not a persisted expires_at; do not manufacture one.
-          add("payway", row, "pending");
+          const metadata = row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata) ? row.metadata as Row : {};
+          const observation = metadata.payway_last_verification && typeof metadata.payway_last_verification === "object" ? metadata.payway_last_verification as Row : {};
+          const review = row.status === "recovery_required" || row.provider_status === "APPROVED" || Boolean(observation.conflict_reason) || observation.payment_status === "APPROVED" || cancelled.get(`payway:${row.provider_transaction_id}`) === "reconciliation_required";
+          const expires = payWayCheckoutExpiresAt(metadata);
+          // Only an explicit saved session boundary hides an unpaid checkout.
+          // Legacy attempts have no invented age limit; funds needing review remain visible.
+          if (!review && (payWayCheckoutSessionClosedAt(metadata) || (expires && Date.parse(expires) <= now))) continue;
+          add("payway", row, review ? "reconciliation_required" : "pending", review ? null : expires);
         } else {
           const qr = qrAttempts.get(row.id);
           if (!qr || qr.business_id !== row.business_id || typeof qr.expires_at !== "string") continue;

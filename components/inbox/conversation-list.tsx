@@ -1485,7 +1485,7 @@ const ConversationRow = memo(function ConversationRow({
                   >
                     <div className="relative mt-0.5 h-10 w-10 shrink-0">
                       <CustomerAvatar src={customerAvatarUrl} name={customerName}
-                        contactId={conversation.contact?.id} platform={conversationPlatform}
+                        contactId={conversation.contact?.id} businessId={conversation.business_id} platform={conversationPlatform}
                         className="h-10 w-10 text-sm" />
 
                       {conversationPlatform ? (

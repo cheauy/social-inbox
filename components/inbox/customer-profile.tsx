@@ -363,6 +363,7 @@ async function saveProfile() {
             src={contact.profile_picture_url}
             name={contact.full_name}
             contactId={contact.id}
+            businessId={activeConversation.business_id}
             platform={activeConversation.social_account?.platform}
             eager
             className="h-16 w-16 text-2xl"

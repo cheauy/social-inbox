@@ -86,7 +86,7 @@ async function checkoutChecks(prepare = true) {
   buttons().find(node=>node.querySelector('p')?.textContent==='ABA KHQR').click();button('Bakong KHQR','Bakong KHQR').click();await pause(30);
   if(!prepare)return;
   const show=button('Show QR','បង្ហាញ QR');show.click();show.click();
-  await until(()=>document.querySelector('img[alt]')&&document.body.textContent.includes('USD 13.00'),'saved QR status');
+  await until(()=>document.querySelector('figure img')&&document.body.textContent.includes('USD 13.00'),'saved QR status');
   check('double click prepares one purchase',requests.filter(item=>item.path==='/api/bakong/checkout'&&item.method==='POST').length===1);
   check('checkout is left and attempt/workspace are preserved in the URL',location.search.includes('bakong_attempt=')&&location.search.includes('purchase_business=')&&!button('Show QR','បង្ហាញ QR'));
   check('QR status shows exact amount, reference, workspace, expiry and test warning',document.body.textContent.includes('USD 13.00')&&document.body.textContent.includes('TC-SYNTHETIC-UI')&&document.body.textContent.includes('Fixture workspace A')&&document.body.textContent.includes(t('Test payment','ការទូទាត់សាកល្បង'))&&/\d+:\d\d/.test(document.body.textContent));
@@ -95,34 +95,34 @@ async function checkoutChecks(prepare = true) {
 }
 async function reloadChecks() {
   const id=new URLSearchParams(location.search).get('bakong_attempt'),item=records.get(id);check('deep link retains the committed attempt after real page reload',Boolean(item));
-  status(item);await until(()=>document.querySelector('img[alt]'),'restored QR');
+  status(item);await until(()=>document.querySelector('figure img'),'restored QR');
   const before=requests.filter(item=>item.method==='POST').length;
-  checkout();await until(()=>document.querySelector('img[alt]')&&document.body.textContent.includes('USD 13.00'),'old checkout recovery');
+  checkout();await until(()=>document.querySelector('figure img')&&document.body.textContent.includes('USD 13.00'),'old checkout recovery');
   check('back to old checkout discovers pending attempt without preparing or showing other pay controls',requests.filter(item=>item.method==='POST').length===before&&!button('Show QR','បង្ហាញ QR'));
 }
 async function stateChecks() {
   const first=[...records.values()][0];
   button('Check payment','ពិនិត្យការទូទាត់').click();await until(()=>document.querySelector('h1')?.textContent===t('Test payment confirmed','បានបញ្ជាក់ការទូទាត់សាកល្បង'),'test paid');
-  check('sandbox has no active subscription or another payment form',!document.body.textContent.includes(t('Subscription active','ការជាវសកម្ម'))&&!button('Show QR','បង្ហាញ QR')&&!document.querySelector('img[alt]'));
+  check('sandbox has no active subscription or another payment form',!document.body.textContent.includes(t('Payment successful','ការទូទាត់ជោគជ័យ'))&&!button('Show QR','បង្ហាញ QR')&&!document.querySelector('figure img'));
   const production=saved(B,'verified','production');production.qrImage=null;save();status(production);
   await until(()=>document.querySelector('h1')?.textContent===t('Payment received','បានទទួលការទូទាត់'),'activation pending');
   const calls=providerChecks;button('Check payment','ពិនិត្យការទូទាត់').click();
-  await until(()=>document.querySelector('h1')?.textContent===t('Subscription active','ការជាវសកម្ម'),'active entitlement');
-  check('activation retry does not verify or pay again',providerChecks===calls&&Boolean(button('Continue','បន្ត')));
-  button('Continue','បន្ត').click();await pause(50);
+  await until(()=>document.querySelector('h1')?.textContent===t('Payment successful','ការទូទាត់ជោគជ័យ'),'active entitlement');
+  check('activation retry does not verify or pay again',providerChecks===calls&&Boolean(button('Go to inbox','ទៅប្រអប់សារ')));
+  button('Go to inbox','ទៅប្រអប់សារ').click();await pause(50);
   check('Continue pins the purchased workspace and a navigation failure creates no new payment',requests.some(item=>item.path==='/api/workspaces/switch'&&item.body.businessId===B)&&providerChecks===calls);
   production.application='historical';save();status(production);await until(()=>document.body.textContent.includes(t('earlier subscription period','រយៈពេលជាវមុន')),'historical receipt');
-  check('historical approval cannot label current entitlement active',document.querySelector('h1')?.textContent!==t('Subscription active','ការជាវសកម្ម'));
+  check('historical approval cannot label current entitlement active',document.querySelector('h1')?.textContent!==t('Payment successful','ការទូទាត់ជោគជ័យ'));
   first.state='review';first.qrImage=null;first.canCheck=false;save();status(first);await until(()=>document.querySelector('h1')?.textContent===t('Payment needs review','ការទូទាត់ត្រូវការពិនិត្យ'),'review');
-  check('late/conflicting payment has review copy and no retry charge',!button('Show QR','បង្ហាញ QR')&&!document.querySelector('img[alt]'));
+  check('late/conflicting payment has review copy and no retry charge',!button('Show QR','បង្ហាញ QR')&&!document.querySelector('figure img'));
 }
 async function advance(ms) {offset+=ms;for(const[id,timer]of [...longTimers])if(timer.at<=now()){longTimers.delete(id);timer.callback();}await pause(100);}
 async function pollChecks() {
-  const item=saved(A);pendingOnly=true;status(item);await until(()=>document.querySelector('img[alt]'),'poll fixture');
+  const item=saved(A);pendingOnly=true;status(item);await until(()=>document.querySelector('figure img'),'poll fixture');
   const calls=providerChecks;await advance(60000);check('there is no provider poll every few seconds or after one minute',providerChecks===calls);
   for(let i=0;i<3;i++)await advance(300000);
   check('automatic checks are five-minute minimum and globally persisted remaining count stops at three',providerChecks-calls===3&&pollDelays.every(delay=>delay>=300000));
-  await advance(3600000);check('expired QR and exhausted automatic checks do not declare unpaid or open replacement checkout',providerChecks-calls===3&&!document.querySelector('img[alt]')&&!button('Show QR','បង្ហាញ QR')&&document.body.textContent.includes(t('QR expired','QR ផុតកំណត់')));
+  await advance(3600000);check('expired QR and exhausted automatic checks do not declare unpaid or open replacement checkout',providerChecks-calls===3&&!document.querySelector('figure img')&&!button('Show QR','បង្ហាញ QR')&&document.body.textContent.includes(t('QR expired','QR ផុតកំណត់')));
   pendingOnly=false;offset=0;
 }
 async function isolationChecks() {
@@ -130,9 +130,9 @@ async function isolationChecks() {
   status(b);await until(()=>document.body.textContent.includes('Fixture workspace B'),'workspace B');releaseA();delayA=false;await pause(80);
   check('delayed A response cannot contaminate B or restore its QR',document.body.textContent.includes('Fixture workspace B')&&!document.body.textContent.includes('Fixture workspace A'));
   denied=true;status(b);await until(()=>document.querySelector('[role=alert]'),'revocation');
-  check('revoked access removes private QR and payment details',!document.querySelector('img[alt]')&&!document.body.textContent.includes('Fixture workspace B'));denied=false;
-  status(b);await until(()=>document.querySelector('img[alt]'),'auth boundary fixture');for(const listener of listeners)listener('SIGNED_OUT');await pause(50);
-  check('session change immediately removes private payment state',!document.querySelector('img[alt]')&&!document.body.textContent.includes('Fixture workspace B'));
+  check('revoked access removes private QR and payment details',!document.querySelector('figure img')&&!document.body.textContent.includes('Fixture workspace B'));denied=false;
+  status(b);await until(()=>document.querySelector('figure img'),'auth boundary fixture');for(const listener of listeners)listener('SIGNED_OUT');await pause(50);
+  check('session change immediately removes private payment state',!document.querySelector('figure img')&&!document.body.textContent.includes('Fixture workspace B'));
 }
 window.bakongFixture={checkoutChecks,reloadChecks,stateChecks,pollChecks,isolationChecks,result:()=>({checks,requests,navigations,mockedProviderChecks:providerChecks,actualProviderRequests:0,realPayments:0,realCredentialsUsed:false,language:window.fixtureLanguage})};
 

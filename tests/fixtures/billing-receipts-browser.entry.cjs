@@ -133,7 +133,7 @@ function render(patch = {}) {
 }
 async function history() {
   render({ screen: "history", mount: state.mount + 1 });
-  await until(() => document.querySelectorAll("article").length === items.length, "history loaded");
+  await until(() => document.querySelectorAll("article").length === items.filter(item=>item.status !== "pending").length, "history loaded");
 }
 async function receipt(name = "sandbox", autoPrint = false, fresh = true) {
   render({ screen: "receipt", invoiceId: ids[name], autoPrint, ...(fresh ? { mount: state.mount + 1 } : {}) });
@@ -150,11 +150,9 @@ const noPaidClaim = text => !/(?:\bPaid\b|\bVerified by PayWay\b|Payment verifie
 async function runHistoryChecks() {
   await history();
   check("history no horizontal overflow", document.documentElement.scrollWidth <= innerWidth + 1, `${document.documentElement.scrollWidth}/${innerWidth}`);
-  for (const [label, amount] of [[t("Real paid total (USD)", "សរុបប្រាក់ដែលបានបង់ពិតប្រាកដ (USD)"), 40], [t("Test payments (USD)", "ការទូទាត់សាកល្បង (USD)"), 900], [t("Unverified approvals (USD)", "ការអនុម័តមិនទាន់ផ្ទៀងផ្ទាត់ (USD)"), 705]]) {
-    const value = [...document.querySelectorAll("p")].find(element => element.textContent.startsWith(label))?.querySelector("span")?.textContent;
-    check(`${label} excludes other evidence categories`, value === new Intl.NumberFormat(window.fixtureLanguage === "km" ? "km-KH" : "en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 }).format(amount), value);
-  }
+  check("history hides the requested intro and financial summary metrics", !/Review ABA PayWay|Real paid total|Test payments \(USD\)|Unverified approvals \(USD\)/.test(document.body.textContent));
   for (const item of items) {
+    if(item.status === "pending") { check(`${item.id} pending is absent from history`, ![...document.querySelectorAll("article")].some(row=>row.textContent.includes(item.workspaceName))); continue; }
     const row = [...document.querySelectorAll("article")].find(element => element.textContent.includes(item.workspaceName));
     check(`${item.id} workspace name visible`, Boolean(row));
     const hasReceipt = item.status === "approved" && Boolean(item.invoiceId);

@@ -10,6 +10,7 @@ export type ConfirmActionIcon = "trash" | "unplug" | "warning";
 type ConfirmActionDialogProps = {
   open: boolean;
   title: string;
+  subtitle?: string;
   description: string;
   /** Optional extra line shown under the description, e.g. what is preserved. */
   note?: string;
@@ -45,6 +46,7 @@ const ICONS = {
 export function ConfirmActionDialog({
   open,
   title,
+  subtitle,
   description,
   note,
   confirmLabel = "Confirm",
@@ -64,6 +66,7 @@ export function ConfirmActionDialog({
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const descriptionId = useId();
+  const subtitleId = useId();
   useEffect(() => {
     if (!open) return;
     const previous = document.activeElement;
@@ -113,7 +116,7 @@ export function ConfirmActionDialog({
         role={tone === "primary" ? "dialog" : "alertdialog"}
         aria-modal="true"
         aria-labelledby={titleId}
-        aria-describedby={descriptionId}
+        aria-describedby={subtitle ? `${subtitleId} ${descriptionId}` : descriptionId}
         aria-busy={loading}
         onClick={(event) => {
           if (loading || event.target !== event.currentTarget) return;
@@ -143,12 +146,10 @@ export function ConfirmActionDialog({
           >
             <Icon className="h-5 w-5" strokeWidth={2.2} />
           </span>
-          <h2
-            id={titleId}
-            className="min-w-0 flex-1 text-xl font-extrabold tracking-tight text-slate-950"
-          >
-            {title}
-          </h2>
+          <div className="min-w-0 flex-1">
+            <h2 id={titleId} className="text-xl font-extrabold tracking-tight text-slate-950">{title}</h2>
+            {subtitle ? <p id={subtitleId} className="mt-1 text-sm text-slate-600">{subtitle}</p> : null}
+          </div>
           <button
             type="button"
             onClick={onCancel}

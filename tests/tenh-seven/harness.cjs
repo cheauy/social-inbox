@@ -7,12 +7,13 @@ function database(seed) {
  const tables = clone(seed), history = [], failures = [];
  function val(row,key) { if(key==='conversation.social_account_id') return tables.conversations?.find(c=>c.id===row.conversation_id)?.social_account_id;return row[key]; }
  class Query {
-  constructor(name){this.name=name;this.op='read';this.filters=[];this.body=null;this.options={};this.singleResult=false;this.count=Infinity;}
+  constructor(name){this.name=name;this.op='read';this.filters=[];this.body=null;this.options={};this.singleResult=false;this.count=Infinity;this.offset=0;}
   select(){return this;} order(){return this;}limit(n){this.count=n;return this;} returns(){return this;}
+  range(start,end){this.offset=start;this.count=end-start+1;return this;}
   eq(k,v){this.filters.push(row=>k==='raw_payload'?JSON.stringify(row[k])===(typeof v==='string'?v:JSON.stringify(v)):val(row,k)===v);return this;}
   is(k,v){this.filters.push(row=>(val(row,k)??null)===v);return this;}
   in(k,vs){this.filters.push(row=>vs.includes(val(row,k)));return this;}
-  not(k,op,v){this.filters.push(row=>op==='is'&&(v===null||v==='null')?val(row,k)!=null:val(row,k)!==v);return this;}
+  not(k,op,v){this.filters.push(row=>op==='in'?!v.replace(/^\(|\)$/g,'').split(',').includes(val(row,k)):op==='is'&&(v===null||v==='null')?val(row,k)!=null:val(row,k)!==v);return this;}
   gt(k,v){this.filters.push(row=>val(row,k)>v);return this;}
   or(s){this.filters.push(row=>s.split(',').some(part=>{const [key,op,...vs]=part.split('.');const value=vs.join('.');return op==='is'?row[key]==null:op==='lt'?row[key]!=null&&row[key]<value:false;}));return this;}
   update(body){this.op='update';this.body=clone(body);return this;}
@@ -26,7 +27,7 @@ function database(seed) {
    const fail = failures.find(f=>f.table===this.name && (!f.op||f.op===this.op) && (!f.when||f.when(this)));
    if(fail){if(fail.once) failures.splice(failures.indexOf(fail),1);return {data:null,error:{message:fail.message||'Injected error',code:fail.code||'FAIL'}};}
    if(!tables[this.name]) return {data:null,error:{code:'42P01',message:'Missing table'}};
-   const rows=tables[this.name];let found=rows.filter(r=>this.filters.every(fn=>fn(r))).slice(0,this.count);
+   const rows=tables[this.name];let found=rows.filter(r=>this.filters.every(fn=>fn(r))).slice(this.offset,this.offset+this.count);
    if(this.op==='update')found.forEach(r=>Object.assign(r,clone(this.body)));
    if(this.op==='delete')for(const row of found){const i=rows.indexOf(row);if(i>=0)rows.splice(i,1);}
    if(this.op==='upsert'||this.op==='insert') {

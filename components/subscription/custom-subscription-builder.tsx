@@ -495,11 +495,7 @@ export function CustomSubscriptionBuilder({
               </div>
             </div>
 
-            <label className="mt-5 block text-sm font-medium text-slate-600">{t("Payment method", "វិធីទូទាត់")}
-              <select value={checkout.method} disabled={working} onChange={event => checkout.setMethod(event.target.value as "payway" | "manual")} className="mt-2 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-slate-900">
-                <option value="payway">ABA PayWay</option><option value="manual">{t("Manual bank transfer", "ផ្ទេរប្រាក់តាមធនាគារដោយដៃ")}</option>
-              </select>
-            </label>
+
             <button
               type="button"
               disabled={working}

@@ -327,11 +327,7 @@ export function BuySubscriptionView() {
           </div>
         </section>
 
-        <label className="mt-5 flex flex-wrap items-center gap-3 text-sm font-medium text-slate-600">{t("Payment method", "វិធីទូទាត់")}
-          <select value={checkout.method} disabled={checkout.busy} onChange={event => checkout.setMethod(event.target.value as "payway" | "manual")} className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 text-slate-900">
-            <option value="payway">ABA PayWay</option><option value="manual">{t("Manual bank transfer", "ផ្ទេរប្រាក់តាមធនាគារដោយដៃ")}</option>
-          </select>
-        </label>
+
         <div className="mt-5 grid gap-4 lg:grid-cols-3">
           {TENH_PLANS.map((plan) => {
             const totalCents =

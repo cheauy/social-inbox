@@ -1,0 +1,35 @@
+✔ PayWay uses the approved teal checking card and exact saved amount without extra animation requests (481.2808ms)
+✔ manual submission uses a static amber clock and never claims approval or verifies with PayWay (172.5668ms)
+✔ close X is a keyboard accessible navigation link and makes no cancellation mutation (180.5173ms)
+✔ verification timeout stops the spinner and offers an accessible retry for the same saved attempt (145.5814ms)
+✔ failed verification retries only the saved identity and does not create another checkout (185.5052ms)
+✔ the existing twenty-refresh limit stops the spinner until explicit status retry (185.8643ms)
+✔ saved historical and review outcomes cannot become active through the new presentation (218.7881ms)
+✔ Khmer manual review and saved currency render without copied mockup values (129.613ms)
+✔ only authoritative saved activation ends checking and enables Continue (120.1322ms)
+✔ unavailable saved status exposes no amount and remains retryable without a provider request (119.7596ms)
+✔ workspace navigation failure never replaces the authoritative confirmed payment status (162.4332ms)
+✔ ten-minute saved countdown is inside card beside accessible X; expiry replaces once and never cancels (1061.9339ms)
+✔ newly reopened expired saved link performs read-only final check with no provider inquiry or timer reset (94.5239ms)
+✔ deadline waits for in-flight verification and paid activation wins at boundary (100.3004ms)
+✔ pending verification at boundary closes only after final saved read, preserving late payment evidence (151.3268ms)
+✔ a paid result racing the final expiry read keeps success instead of navigating away (160.0216ms)
+✔ unmount aborts expiry read and clears all timers without redirecting (118.9526ms)
+✔ checkout preserves visible saved detail contents and environment metadata without the removed labels (92.4357ms)
+✔ manual submitted review ignores PayWay checkout deadline and never auto-closes (136.8839ms)
+✔ non-resumable provider iframe close durably ends only the checkout session (116.8397ms)
+✔ reload uses saved original deadline and elapsed server time instead of resetting to ten minutes (105.7285ms)
+✔ provider return hint updates an already mounted attempt without resetting its identity or checking again (146.6531ms)
+✔ a delayed first saved response cannot extend checkout time or start provider verification after expiry (114.4093ms)
+✔ Cancel persists session closure, stops polling and returns once without a financial cancellation or new Purchase (111.2252ms)
+✔ already-closed sessions survive reload and never trigger a provider inquiry (94.5497ms)
+✔ failed session close shows a retryable error and never navigates or fabricates cancellation (118.9759ms)
+✔ approval racing Cancel wins, displaying paid success instead of redirecting (146.7822ms)
+ℹ tests 27
+ℹ suites 0
+ℹ pass 27
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6020.4858

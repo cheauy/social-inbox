@@ -31,10 +31,10 @@ function fixture({baseline=false,delay=0,teamDelay=delay,offPage=false,sdkTransp
   const client=createClient('https://fixture.invalid','sb_secret_offline_fixture',{global:{fetch:transport},auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
   db={from:t=>{sdkQueries++;return client.from(t)},rpc:(...args)=>{sdkQueries++;return client.rpc(...args)}};
  }
- const mocks={'@/lib/auth/get-current-member':{getCurrentMember:currentMember},'@/lib/supabase/admin':{supabaseAdmin:db},'@/components/inbox/inbox-view':{InboxView:'view'},'next/server':{after(){}}};
+ const mocks={'@/lib/auth/get-current-member':{getCurrentMember:currentMember},'@/lib/supabase/admin':{supabaseAdmin:db},'@/components/inbox/inbox-view':{InboxView:'view'},'@/components/customer-avatar':{CustomerAvatarCacheProvider:'avatar-cache'},'next/server':{after(){}}};
  if(baseline){const baseLoad=loader(mocks,{console:{log(){},error(){}},URLSearchParams});mocks['./get-search-matches']=baseLoad('lib/inbox/get-search-matches.ts');mocks['@/lib/inbox/get-conversations']=baseLoad(path.join(artifact,'inbox-return-latency-baseline-conversations.ts'));mocks['@/lib/inbox/get-conversation-page']=loader(mocks,{console:{log(){},error(){}},URLSearchParams})(path.join(artifact,'inbox-return-latency-baseline-page-helper.ts'));}
  const load=loader(mocks,{console:{log(){},error(){}},URLSearchParams}),page=load(baseline?path.join(artifact,'inbox-return-latency-baseline-page.tsx'):'app/dashboard/inbox/page.tsx').default,helpers=load(baseline?path.join(artifact,'inbox-return-latency-baseline-conversations.ts'):'lib/inbox/get-conversations.ts');
- async function run(params={conversation:offPage?uuid(2):uuid(1),channel}){started=performance.now();return render(async()=>{const tree=await page({searchParams:Promise.resolve(params)});return tree.props.children.props.children.props})}
+ async function run(params={conversation:offPage?uuid(2):uuid(1),channel}){started=performance.now();return render(async()=>{const tree=await page({searchParams:Promise.resolve(params)});return (tree.type==='avatar-cache'?tree.props.children:tree).props.children.props.children.props})}
  return{run,calls,controls,helpers,load,data,sdkQueries:()=>sdkQueries};
 }
 

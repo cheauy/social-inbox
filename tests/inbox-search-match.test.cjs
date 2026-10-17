@@ -31,7 +31,7 @@ test('batched history matches are scoped, newest and not crowded out by prolific
 
 test('avatar remount starts with the candidate that loaded; a different identity tries its own photo', () => {
   let h = hooks();
-  const React = new Proxy({}, { get(_target, key) { return h.React[key]; } });
+  const React = new Proxy({}, { get(_target, key) { return key==='createContext' ? value=>({value}) : key==='useContext' ? context=>context.value : h.React[key]; } });
   const load = loader({ react: React, 'react/jsx-runtime': h.jsx });
   const { CustomerAvatar } = load('components/customer-avatar.tsx');
   const props = { contactId: 'c1', platform: 'facebook', src: 'https://example.test/photo', name: 'Jane' };

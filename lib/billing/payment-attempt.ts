@@ -1,5 +1,5 @@
 import { billingCurrency, billingDate, billingNumber, paymentProvenance, type PaymentEnvironment } from "./payment-display";
-import { payWayCheckoutExpiresAt } from "@/lib/payway/checkout-lifetime";
+import { payWayCheckoutExpiresAt, payWayCheckoutSessionClosedAt } from "@/lib/payway/checkout-lifetime";
 
 type Row = Record<string, unknown>;
 export type PaymentAttempt = {
@@ -9,6 +9,7 @@ export type PaymentAttempt = {
   application: "active" | "scheduled" | "pending" | "review" | "historical" | null;
   effectiveAt: string | null; reason: string | null; canRetry: false;
   checkoutExpiresAt?: string | null; serverTime?: string;
+  checkoutSessionClosedAt?: string | null;
   upload?: { fileName: string; mimeType: string; sizeBytes: number };
 };
 const text = (value: unknown) => typeof value === "string" && value.trim() ? value : null;
@@ -40,7 +41,7 @@ export function describePaymentAttempt({ source, payment, invoice, subscription,
     status: recovery ? "recovery_required" : status, environment: provenance.environment,
     invoiceId: documentMatches ? text(invoice?.id) : null, application: null,
     effectiveAt: null, reason: null, canRetry: false,
-    ...(source === "payway" ? { checkoutExpiresAt: payWayCheckoutExpiresAt(payment.metadata), serverTime: new Date(now).toISOString() } : {}),
+    ...(source === "payway" ? { checkoutExpiresAt: payWayCheckoutExpiresAt(payment.metadata), checkoutSessionClosedAt: payWayCheckoutSessionClosedAt(payment.metadata), serverTime: new Date(now).toISOString() } : {}),
   };
   const fileName = text(payment.file_name), mimeType = text(payment.mime_type), sizeBytes = billingNumber(payment.size_bytes);
   if (source === "manual" && status === "prepared" && fileName && mimeType && sizeBytes !== null && Number.isSafeInteger(sizeBytes) && sizeBytes > 0) {

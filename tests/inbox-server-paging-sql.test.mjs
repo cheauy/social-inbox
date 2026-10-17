@@ -107,11 +107,11 @@ if(!engineRoot){test('isolated Inbox PostgreSQL execution',{skip:'Supply an alre
    where c.business_id=ANY($1::uuid[]) and c.id=ANY($2::uuid[]) and ($3::uuid is null or c.social_account_id=$3) and ($4::uuid is null or c.business_id=$4)`,[businesses,filter.conversationIds??[],filter.channelId??null,filter.workspaceId??null])).rows.map(r=>r.row);
   const load=loader({'next/server':{NextResponse:Response,after:()=>{}},'@/lib/auth/get-current-member':{getCurrentMember:async()=>signedOut?{success:false,status:401,error:'Fixture signed out'}:{success:true,user:{id:U},member:{id:M,business_id:B}}},
    '@/lib/supabase/admin':{supabaseAdmin:admin},'@/lib/inbox/get-conversations':{preloadInboxConversationChannels:async()=>{},getInboxConversationScope:scope,getConversations:getRows},
-   '@/lib/inbox/get-messages':{getMessages:async()=>[]},'@/lib/inbox/get-team-members':{getTeamMembers:async()=>[]},'@/components/inbox/inbox-view':{InboxView:()=>null}});
+   '@/lib/inbox/get-messages':{getMessages:async()=>[]},'@/lib/inbox/get-team-members':{getTeamMembers:async()=>[]},'@/components/inbox/inbox-view':{InboxView:()=>null},'@/components/customer-avatar':{CustomerAvatarCacheProvider:'avatar-cache'}});
   const api=load('app/api/inbox/conversation-page/route.ts');const request=body=>new Request('http://127.0.0.1/api/inbox/conversation-page',{method:'POST',body:JSON.stringify(body)});
   const result=await api.POST(request({view:'comment',memberIds:{[B]:id(9999)}}));assert.equal(result.status,200);assert.equal(result.headers.get('Cache-Control'),'private, no-store');const payload=await result.json();assert.equal(payload.page.conversations.length,30);assert.equal(payload.page.total,52);
   const snapshot=await api.POST(request({view:'unread',snapshot:true}));assert.equal((await snapshot.json()).page.readTargets.length,204);
-  const page=load('app/dashboard/inbox/page.tsx').default;const tree=await page({searchParams:Promise.resolve({conversation:id(260)})});const props=tree.props.children.props.children.props;
+  const page=load('app/dashboard/inbox/page.tsx').default;const tree=await page({searchParams:Promise.resolve({conversation:id(260)})});const props=(tree.type==='avatar-cache'?tree.props.children:tree).props.children.props.children.props;
   assert.equal(props.conversations.length,31);assert.equal(props.pagination.page.ids.length,30);assert.equal(props.pagination.page.ids.includes(id(260)),false);assert.equal(props.activeConversationId,id(260));
   signedOut=true;assert.equal((await api.POST(request({}))).status,401);
   // Real server route/page functions and SQL; browser hydration and real Supabase cookies are not exercised here.

@@ -33,9 +33,9 @@ function route(seed = saved(), options = {}) {
   const api = loader({ 'next/server': { NextResponse: { json: (data, init) => Response.json(data, init) } },
     '@/lib/billing/payment-cancellation-feature': { PAYMENT_CANCELLATION_ENABLED: options.lifecycleEnabled ?? true },
     '@/lib/supabase/admin': { supabaseAdmin: db },
-    '@/lib/supabase/server': { createClient: async () => ({ auth: { getUser: async () => ({ data: { user: options.signedOut ? null : { id: 'user-1' } }, error: null }) } }) },
+    '@/lib/supabase/server': { createClient: async () => ({ auth: { getUser: async () => { options.onAuthRead?.(); return { data: { user: options.signedOut ? null : { id: 'user-1' } }, error: null }; } } }) },
     '@/lib/auth/require-permission': { memberHasPermission: async () => !options.denied },
-  })('app/api/subscription/payment-status/route.ts');
+  }, options.globals ?? {})('app/api/subscription/payment-status/route.ts');
   const get = async (query) => { const response = await api.GET(new Request('https://test.invalid/api/subscription/payment-status?' + query)); return { response, body: await response.json() }; };
   return { db, rpc, get };
 }
@@ -203,4 +203,20 @@ test('saved checkout deadline survives rereads and older attempts are never assi
  const old={...lifetime,checkout_lifetime_minutes:5,checkout_expires_at:new Date(now+300000).toISOString()};
  assert.equal(payWayCheckoutExpiresAt(old),old.checkout_expires_at,'a saved earlier five-minute lifetime is preserved');
  assert.equal(first.status,'pending');assert.equal(first.application,'pending');
+});
+
+test('status clock is sampled at request entry so response transit includes auth and database time once',async()=>{
+ let clock=now;
+ class FakeDate extends Date {constructor(...args){super(...(args.length?args:[clock]));}static now(){return clock;}}
+ const f=route(saved({status:'pending',metadata:{environment:'production',live_enabled:true,...createPayWayCheckoutLifetime(now)}}),{globals:{Date:FakeDate},onAuthRead:()=>{clock+=5000;}});
+ const result=await f.get('tran_id=transaction-1');assert.equal(result.response.status,200);assert.equal(result.body.attempt.serverTime,new Date(now).toISOString());assert.equal(clock,now+5000);assert.equal(result.body.attempt.checkoutExpiresAt,new Date(now+600000).toISOString());
+});
+
+test('saved checkout closure survives status rereads without changing pending financial state or exposing member metadata',async()=>{
+ const closedAt='2026-10-17T12:00:00Z';
+ const input=saved({status:'pending',metadata:{environment:'sandbox',live_enabled:false,...createPayWayCheckoutLifetime(now),checkout_session:{version:1,state:'closed',closed_at:closedAt,closed_by_member_id:'PRIVATE-MEMBER'}}});
+ const f=route(input),result=await f.get('tran_id=transaction-1');
+ assert.equal(result.body.attempt.checkoutSessionClosedAt,closedAt);assert.equal(result.body.attempt.status,'pending');
+ assert.equal(result.body.attempt.checkoutExpiresAt,createPayWayCheckoutLifetime(now).checkout_expires_at);
+ assert.ok(!JSON.stringify(result.body).includes('PRIVATE-MEMBER'));assert.ok(f.db.history.every(x=>x.op==='read'));
 });

@@ -12,6 +12,9 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 type Row = Record<string, unknown>;
 
 export async function GET(request: Request) {
+  // Sample at request entry so the client can include the full request time
+  // without counting database/authorization work twice in its checkout clock.
+  const serverTime = new Date().toISOString();
   try {
     const params = new URL(request.url).searchParams;
     const manualId = params.get("manual_request"), transactionId = params.get("tran_id"), expectedBusiness = params.get("purchase_business");
@@ -60,7 +63,7 @@ export async function GET(request: Request) {
     if (cancellation.error) throw new Error("Cancellation status unavailable.");
     if (cancellation.data && ["processing", "reconciliation_required", "withdrawn"].includes(cancellation.data.outcome) && payment.status !== "approved") {
       const attempt = describePaymentAttempt({ source, payment: { ...payment, status: "recovery_required" }, invoice: null, subscription: null, businessName: null });
-      return NextResponse.json({ success: true, attempt }, { headers });
+      return NextResponse.json({ success: true, attempt: { ...attempt, ...(source === "payway" ? { serverTime } : {}) } }, { headers });
     }
     if (prepared) {
       const business = await supabaseAdmin.from("businesses").select("name").eq("id", payment.business_id).maybeSingle();
@@ -86,7 +89,7 @@ export async function GET(request: Request) {
       recoveryEvents: recovery.data as Row[] });
     // Issued receipts retain the active-owner access policy used by billing history.
     if (membership.data.role !== "owner") attempt.invoiceId = null;
-    return NextResponse.json({ success: true, attempt }, { headers });
+    return NextResponse.json({ success: true, attempt: { ...attempt, ...(source === "payway" ? { serverTime } : {}) } }, { headers });
   } catch (error) {
     console.error("[TENH Payment] Unable to read saved attempt:", error);
     return NextResponse.json({ success: false, error: "Payment status is temporarily unavailable." }, { status: 503, headers });

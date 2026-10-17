@@ -1,5 +1,5 @@
 const test=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');const vm=require('node:vm');const ts=require('typescript');
-const compile=file=>ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText;
+const compile=file=>ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText;
 function routeHarness({authorized=true,photo=true,repaired=true}={}){
  let downloads=0,repairs=0;const image=new Blob(['photo'],{type:'image/jpeg'});
  const chain={select(){return this},eq(){return this},maybeSingle:async()=>({data:{id:'contact',business_id:'business',platform:'facebook'}})};
@@ -32,7 +32,12 @@ function repairHarness({accountBusiness='business',stored=true}={}){
 }
 test('concurrent repairs and repeated denied lookups are coalesced and cached',async()=>{const h=repairHarness({stored:false});assert.deepEqual(await Promise.all([h.run(),h.run()]),[false,false]);await h.run();assert.equal(h.count(),1);assert.ok(h.filters.some(([k,v])=>k==='business_id'&&v==='business'));});
 test('repair never uses a Page from a different workspace',async()=>{const h=repairHarness({accountBusiness:'other'});assert.equal(await h.run(),false);assert.equal(h.count(),0);});
-const jsx=(type,props,key)=>({type,props,key});
-function avatarHarness(){let state=[],lastKey;const exports={};vm.runInNewContext(compile('components/customer-avatar.tsx'),{exports,require:name=>name==='react'?{useState:()=>[state,update=>state=update(state)]}:{jsx,jsxs:jsx}});return props=>{const element=exports.CustomerAvatar(props);if(element.key!==lastKey){state=[];lastKey=element.key;}return element.type(element.props).props.children[1];};}
+function avatarHarness(){
+ // eslint-disable-next-line @typescript-eslint/no-require-imports -- Reuse the existing CommonJS test harness.
+ const {hooks}=require('../tests/inbox-recovery-harness.cjs');let h=hooks(),lastKey;
+ const React=new Proxy({}, {get(_target,key){return key==='createContext'?value=>({value}):key==='useContext'?context=>context.value:h.React[key];}});
+ const exports={};vm.runInNewContext(compile('components/customer-avatar.tsx'),{exports,require:name=>name==='react'?React:h.jsx});
+ return props=>{const element=exports.CustomerAvatar(props);if(element.key!==lastKey){h.cleanup();h=hooks();lastKey=element.key;}return h.render(element.type,element.props).props.children[1];};
+}
 test('Facebook uses stable stored photo before expiring remote URL and falls back on failure',()=>{const render=avatarHarness();const props={src:'https://example.test/expiring.jpg',contactId:'contact',platform:'facebook'};const img=render(props);assert.equal(img.props.src,'/api/contacts/contact/facebook-avatar');img.props.onError();assert.equal(render(props).props.src,props.src);});
 test('late photo sync retries a previously failed proxy even when its path is unchanged',()=>{const render=avatarHarness();const props={src:null,contactId:'contact',platform:'facebook'};render(props).props.onError();assert.equal(render(props),null);assert.equal(render({...props,src:'/api/contacts/contact/facebook-avatar'}).props.src,'/api/contacts/contact/facebook-avatar');});

@@ -3,6 +3,8 @@
 import Script from "next/script";
 import { useRouter } from "next/navigation";
 import { PaymentAttemptView, paymentAttemptUrl } from "./payment-attempt-view";
+import { CheckoutDialog } from "./checkout-dialog";
+import { ManualQrPreview } from "./manual-qr-preview";
 import {
   useEffect,
   useMemo,
@@ -95,15 +97,6 @@ function PaymentCheckIcon({ className = "h-4 w-4" }: { className?: string }) {
   );
 }
 
-function PaymentEditIcon({ className = "h-4 w-4" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
-      <path d="M12 20h9" />
-      <path d="m16.5 3.5 4 4L8 20l-5 1 1-5L16.5 3.5Z" />
-    </svg>
-  );
-}
-
 function PaymentUploadIcon({ className = "h-7 w-7" }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
@@ -167,7 +160,6 @@ type SubscriptionPaymentViewProps = {
   transactionReturnOnly?: boolean;
   /** Buy keeps discovery/plugin preparation on its disabled button. */
   inlineBuy?: boolean;
-  buyPaymentMethod?: "payway" | "manual";
   onCheckoutOpened?: () => void;
   onCheckoutError?: (message: string) => void;
 
@@ -211,48 +203,6 @@ type SubscriptionPaymentViewProps = {
   upgradeTotalCents?: number | null;
 };
 
-function statusPanelClasses(
-  state: PayWayPaymentState,
-) {
-  if (state === "approved") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-800";
-  }
-
-  if (
-    state === "declined" ||
-    state === "cancelled" ||
-    state === "failed"
-  ) {
-    return "border-red-200 bg-red-50 text-red-800";
-  }
-
-  return "border-blue-200 bg-blue-50 text-blue-800";
-}
-
-function payWayStateLabel(
-  state: PayWayPaymentState,
-  isKhmer = false,
-) {
-  switch (state) {
-    case "recovery_required":
-      return "Payment requires billing review";
-    case "approved":
-      return isKhmer ? "ការទូទាត់បានអនុម័ត — កំពុងដំណើរការ workspace របស់អ្នក" : "Payment approved — activating your workspace";
-    case "declined":
-      return isKhmer ? "ការទូទាត់ត្រូវបានបដិសេធ" : "Payment declined";
-    case "cancelled":
-      return isKhmer ? "ការទូទាត់ត្រូវបានបោះបង់" : "Payment cancelled";
-    case "failed":
-      return isKhmer ? "ការផ្ទៀងផ្ទាត់ការទូទាត់បានបរាជ័យ" : "Payment verification failed";
-    case "pending":
-    case "waiting":
-      return isKhmer ? "កំពុងរង់ចាំការបញ្ជាក់ការទូទាត់" : "Waiting for payment confirmation";
-    case "idle":
-    default:
-      return isKhmer ? "រួចរាល់សម្រាប់ការទូទាត់" : "Ready for checkout";
-  }
-}
-
 export function SubscriptionPaymentView(props: SubscriptionPaymentViewProps) {
   const [sessionEpoch, setSessionEpoch] = useState(0);
   useEffect(() => {
@@ -272,7 +222,6 @@ function PaymentCheckout({
   savedTransactionTotalCents = null,
   transactionReturnOnly = false,
   inlineBuy = false,
-  buyPaymentMethod = "payway",
   onCheckoutOpened,
   onCheckoutError,
   purchaseBusinessId = null,
@@ -466,7 +415,8 @@ function PaymentCheckout({
   const manualAttemptId = useRef<string | null>(null);
   const alive = useRef(true);
   const checkoutRequest = useRef<AbortController | null>(null);
-  useEffect(() => { alive.current = true; return () => { alive.current = false; checkoutRequest.current?.abort(); }; }, []);
+  const manualSubmissionRequest = useRef<AbortController | null>(null);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; checkoutRequest.current?.abort(); manualSubmissionRequest.current?.abort(); }; }, []);
 
   function enterAttempt(kind: "manual" | "payway" | "bakong", id: string) {
     if (!alive.current) return;
@@ -477,7 +427,8 @@ function PaymentCheckout({
   }
 
   const [checkoutMethod, setCheckoutMethod] =
-    useState<CheckoutMethod>(inlineBuy ? buyPaymentMethod : "payway");
+    useState<CheckoutMethod | null>(inlineBuy ? null : "payway");
+  const [manualDialogOpen, setManualDialogOpen] = useState(false);
   const [checkoutLoading, setCheckoutLoading] =
     useState(false);
   const [checkoutError, setCheckoutError] =
@@ -663,7 +614,7 @@ function PaymentCheckout({
   }, [manualPaymentEndpoint, statusAttempt]);
 
   async function startPayWayCheckout() {
-    if (transactionReturnOnly || submitting.current || statusAttempt || manualPaymentLoading || manualLoadError || !bakongSafety) return;
+    if (checkoutMethod !== "payway" || transactionReturnOnly || submitting.current || statusAttempt || manualPaymentLoading || manualLoadError || !bakongSafety) return;
     const payWayBridge = window.TenhAbaPaywayBridge;
 
     if (
@@ -812,30 +763,39 @@ function PaymentCheckout({
     }
   }
 
-  const buyStarted = useRef(false);
   useEffect(() => {
-    if (!inlineBuy || statusAttempt || (buyPaymentMethod === "manual" && !manualPaymentLoading && bakongSafety)) return;
+    if (!inlineBuy || statusAttempt || (!manualPaymentLoading && bakongSafety)) return;
     const timer = setTimeout(() => onCheckoutError?.(t("Checkout preparation took too long. Try again.", "ការរៀបចំការទូទាត់យូរពេក។ សូមព្យាយាមម្តងទៀត។")), 30000);
     return () => clearTimeout(timer);
-  // The timeout belongs to this Buy preparation, and never cancels a payment.
+  // This only bounds discovery; it never cancels a saved payment.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inlineBuy, buyPaymentMethod, manualPaymentLoading, bakongSafety, statusAttempt, onCheckoutError]);
+  }, [inlineBuy, manualPaymentLoading, bakongSafety, statusAttempt, onCheckoutError]);
   useEffect(() => {
     if (!inlineBuy || statusAttempt) return;
-    const failure = manualLoadError || (bakongLoadError ? t("Unable to check existing payment. Try again.", "មិនអាចពិនិត្យការទូទាត់ដែលមានបានទេ។ សូមព្យាយាមម្តងទៀត។") : null) || (buyPaymentMethod === "payway" ? checkoutError : null);
+    const failure = manualLoadError || (bakongLoadError ? t("Unable to check existing payment. Try again.", "មិនអាចពិនិត្យការទូទាត់ដែលមានបានទេ។ សូមព្យាយាមម្តងទៀត។") : null);
     if (failure) { onCheckoutError?.(failure); return; }
-    if (!manualPaymentLoading && bakongSafety && buyPaymentMethod === "manual") { onCheckoutOpened?.(); return; }
-    if (!manualPaymentLoading && bakongSafety && payWayPluginReady && !buyStarted.current) {
-      buyStarted.current = true;
-      void startPayWayCheckout();
-    }
-  // Reuse every discovery check and the guarded POST. The ref also prevents
-  // StrictMode or a rerender submitting twice while Buy shows its spinner.
+    // Reveal the method chooser after discovery. Provider preparation starts
+    // only from its explicit selected-method action, never from Buy itself.
+    if (!manualPaymentLoading && bakongSafety) onCheckoutOpened?.();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inlineBuy, buyPaymentMethod, statusAttempt, manualPaymentLoading, bakongSafety, payWayPluginReady, manualLoadError, bakongLoadError, checkoutError, onCheckoutError, onCheckoutOpened]);
+  }, [inlineBuy, statusAttempt, manualPaymentLoading, bakongSafety, manualLoadError, bakongLoadError, onCheckoutError, onCheckoutOpened]);
+
+  async function manualStage<T>(run: (signal: AbortSignal) => Promise<T>, parent: AbortSignal, milliseconds = 20000): Promise<T> {
+    if (parent.aborted) throw new Error("Checkout closed.");
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let abort: () => void = () => {};
+    try {
+      return await Promise.race([run(controller.signal), new Promise<T>((_, reject) => {
+        abort = () => { controller.abort(); reject(new Error(t("Submission is not confirmed yet. Please try again with the same receipt.", "ការដាក់ស្នើមិនទាន់បានបញ្ជាក់ទេ។ សូមព្យាយាមម្ដងទៀតជាមួយបង្កាន់ដៃដដែល។"))); };
+        parent.addEventListener("abort", abort, { once: true });
+        timer = setTimeout(abort, milliseconds);
+      })]);
+    } finally { clearTimeout(timer); parent.removeEventListener("abort", abort); }
+  }
 
   async function submitManualPayment() {
-    if (transactionReturnOnly || submitting.current || statusAttempt || manualPaymentLoading || !bakongSafety) return;
+    if (checkoutMethod !== "manual" || transactionReturnOnly || submitting.current || statusAttempt || manualPaymentLoading || !bakongSafety) return;
     if (!manualPaymentConfig?.enabled) {
       setManualPaymentError(
         t("Manual payment is not available right now.", "ការទូទាត់តាមធនាគារដោយដៃមិនអាចប្រើបាននៅពេលនេះទេ។"),
@@ -862,15 +822,18 @@ function PaymentCheckout({
       return;
     }
     submitting.current = true;
+    const request = new AbortController();
+    manualSubmissionRequest.current = request;
     manualAttemptId.current ??= crypto.randomUUID();
     setManualPaymentSubmitting(true);
     setManualPaymentError(null);
-    let mayHavePrepared = true;
 
     try {
+      const { response: prepareResponse, result: prepareResult } = await manualStage(async signal => {
       const prepareResponse = await fetch(
         "/api/manual-payments",
         {
+          signal,
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -916,6 +879,8 @@ function PaymentCheckout({
           token: string | null;
         };
       };
+      return { response: prepareResponse, result: prepareResult };
+      }, request.signal);
 
       if (
         !prepareResponse.ok ||
@@ -924,13 +889,11 @@ function PaymentCheckout({
         !prepareResult.upload
       ) {
         if (prepareResult.bakongAttemptId && prepareResult.businessId === purchaseBusinessId) {
-          mayHavePrepared = false;
           enterAttempt("bakong", prepareResult.bakongAttemptId);
           return;
         }
         // A definite validation rejection did not commit an upload reservation.
-        mayHavePrepared = ![400, 401, 403, 409].includes(prepareResponse.status) && !["TENH_MANUAL_UPLOAD_MIGRATION_REQUIRED", "TENH_BILLING_APPLICATION_MIGRATION_REQUIRED"].includes(prepareResult.code ?? "");
-        if ([401, 403, 409].includes(prepareResponse.status)) setManualLoadError(prepareResult.error ?? t("Check the existing payment before trying again.", "ពិនិត្យការទូទាត់ដែលមាន មុនព្យាយាមម្ដងទៀត។"));
+        if ([401, 403].includes(prepareResponse.status)) setManualLoadError(prepareResult.error ?? t("Check the existing payment before trying again.", "ពិនិត្យការទូទាត់ដែលមាន មុនព្យាយាមម្ដងទៀត។"));
         throw new Error(
           prepareResult.error ??
             t("Unable to prepare the payment proof upload.", "មិនអាចរៀបចំការផ្ទុកភស្តុតាងការទូទាត់បានទេ។"),
@@ -942,7 +905,7 @@ function PaymentCheckout({
       const { bucket, path, token } = prepareResult.upload;
 
       if (!prepareResult.proofUploaded && !token) throw new Error("Upload link unavailable.");
-      const uploadError = prepareResult.proofUploaded ? null : (await supabase.storage
+      const uploadError = prepareResult.proofUploaded ? null : (await manualStage(() => supabase.storage
         .from(bucket)
         .uploadToSignedUrl(
           path,
@@ -951,16 +914,18 @@ function PaymentCheckout({
           {
             contentType: manualProof.type,
           },
-        )).error;
+        ), request.signal)).error;
 
       if (uploadError && !/already exists|duplicate/i.test(uploadError.message)) {
         throw new Error(uploadError.message);
       }
       if (!alive.current) return;
 
+      const { response: finalizeResponse, result } = await manualStage(async signal => {
       const finalizeResponse = await fetch(
         "/api/manual-payments",
         {
+          signal,
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -999,6 +964,8 @@ function PaymentCheckout({
         error?: string;
         request?: ManualPaymentRequest;
       };
+      return { response: finalizeResponse, result };
+      }, request.signal);
 
       if (
         !finalizeResponse.ok ||
@@ -1011,22 +978,42 @@ function PaymentCheckout({
         );
       }
 
-      if (result.request.id !== manualAttemptId.current) throw new Error("Payment attempt changed.");
+      if (result.request.id !== manualAttemptId.current || !["submitted", "approved", "rejected", "cancelled"].includes(result.request.status)) throw new Error("Payment submission is not confirmed. Please check its status and try again.");
       if (!alive.current) return;
       setManualPaymentRequest(result.request);
       setManualCustomerNote("");
       setManualProof(null);
+      setManualDialogOpen(false);
       enterAttempt("manual", result.request.id);
     } catch (error) {
       if (!alive.current) return;
-      // A committed-but-lost response is read by exact ID before any retry.
-      if (mayHavePrepared && manualAttemptId.current) enterAttempt("manual", manualAttemptId.current);
+      // A lost finalization reply may already have committed. Close only after
+      // an exact, authorized saved-state read confirms this same submitted proof.
+      if (manualAttemptId.current) {
+        try {
+          const query = new URLSearchParams({ manual_request: manualAttemptId.current });
+          if (purchaseBusinessId) query.set("purchase_business", purchaseBusinessId);
+          const { response, saved } = await manualStage(async signal => {
+            const response = await fetch(`/api/subscription/payment-status?${query}`, { cache: "no-store", signal });
+            return { response, saved: await response.json() };
+          }, request.signal, 10000);
+          if (!alive.current) return;
+          if (response.ok && saved.success && saved.attempt?.kind === "manual" && saved.attempt.id === manualAttemptId.current &&
+              ["submitted", "approved", "rejected", "cancelled"].includes(saved.attempt.status) && saved.attempt.businessId && (!purchaseBusinessId || saved.attempt.businessId === purchaseBusinessId)) {
+            setManualDialogOpen(false); setManualProof(null); setManualCustomerNote("");
+            enterAttempt("manual", manualAttemptId.current); return;
+          }
+        } catch { /* Retain the same proof and request ID for an idempotent retry. */ }
+      }
+      if (!alive.current) return;
+      // Keep the dialog, selected proof and same request identity on failure.
       setManualPaymentError(
         error instanceof Error
           ? error.message
           : t("Unable to submit manual payment proof.", "មិនអាចដាក់ស្នើភស្តុតាងការទូទាត់បានទេ។"),
       );
     } finally {
+      if (manualSubmissionRequest.current === request) manualSubmissionRequest.current = null;
       submitting.current = false;
       if (alive.current) setManualPaymentSubmitting(false);
     }
@@ -1181,8 +1168,6 @@ function PaymentCheckout({
     return null;
   }
 
-  const hasSubmittedManual =
-    manualPaymentRequest?.status === "submitted";
   const showPreviousManualRejection =
     manualPaymentRequest?.status === "rejected";
   const showPreviousManualApproval =
@@ -1211,7 +1196,7 @@ function PaymentCheckout({
   }
 
   return (
-    <div hidden={inlineBuy && buyPaymentMethod === "payway"} className="min-h-full bg-white px-4 py-6 sm:px-6 lg:px-8">
+    <div data-checkout-page className="min-h-full bg-white px-4 py-5 sm:px-5">
       <Script
         id="tenh-payway-classic-bridge-payment-page"
         strategy="afterInteractive"
@@ -1262,33 +1247,23 @@ function PaymentCheckout({
         }}
       />
 
-      <div className="mx-auto w-full max-w-[1040px]">
-        <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div data-checkout-scroll className="mx-auto w-full max-w-[900px]">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <p className="inline-flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-[0.18em] text-blue-600">
               <PaymentLockIcon className="h-3.5 w-3.5" />
               {t("Secure payment", "ការទូទាត់មានសុវត្ថិភាព")}
             </p>
 
-            <h1 className="mt-1.5 text-[28px] font-extrabold tracking-[-0.035em] text-slate-950 sm:text-[32px]">
-              {checkoutKind === "upgrade"
+            <h1 className="mt-1.5 text-2xl font-extrabold tracking-[-0.035em] text-slate-950 sm:text-[28px]">
+              {inlineBuy ? t("Checkout", "ទូទាត់") : checkoutKind === "upgrade"
                 ? t("Complete your upgrade", "បញ្ចប់ការអាប់ក្រេដរបស់អ្នក")
                 : checkoutKind === "reactivate"
                   ? t("Reactivate your subscription", "ធ្វើឲ្យការជាវរបស់អ្នកសកម្មឡើងវិញ")
                   : t("Complete your new subscription", "បញ្ចប់ការជាវថ្មីរបស់អ្នក")}
             </h1>
 
-            <p className="mt-1.5 max-w-4xl text-xs leading-5 text-slate-500 sm:text-sm">
-              {checkoutKind === "upgrade"
-                ? t(
-                    "Review exactly what is changing, then choose how you want to pay. No upgrade is applied until payment is approved.",
-                    "ពិនិត្យមើលអ្វីដែលកំពុងផ្លាស់ប្តូរ រួចជ្រើសរើសវិធីទូទាត់។ ការអាប់ក្រេដនឹងមិនត្រូវបានអនុវត្តរហូតដល់ការទូទាត់ត្រូវបានអនុម័ត។",
-                  )
-                : t(
-                    "Review your selected subscription, then choose how you want to pay. TENH verifies the amount before activation.",
-                    "ពិនិត្យការជាវដែលបានជ្រើស រួចជ្រើសរើសវិធីទូទាត់។ TENH នឹងផ្ទៀងផ្ទាត់ចំនួនទឹកប្រាក់មុនពេលបើកដំណើរការ។",
-                  )}
-            </p>
+            {checkoutKind === "upgrade" ? <p className="mt-1.5 max-w-4xl text-sm leading-5 text-slate-500">{t("Review exactly what is changing, then choose how you want to pay. No upgrade is applied until payment is approved.", "ពិនិត្យការផ្លាស់ប្ដូរ រួចជ្រើសរើសវិធីទូទាត់។ ការអាប់ដេតអនុវត្តក្រោយការទូទាត់ត្រូវបានអនុម័ត។")}</p> : null}
           </div>
 
           <button
@@ -1300,10 +1275,10 @@ function PaymentCheckout({
               }
               void leaveCheckoutSafely();
             }}
-            className="inline-flex shrink-0 items-center justify-center gap-2 self-start rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+            className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 self-start rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
           >
             <span aria-hidden="true" className="text-base leading-none">←</span>
-            {payWayPaymentState === "approved"
+            {inlineBuy ? t("Close checkout", "បិទការទូទាត់") : payWayPaymentState === "approved"
               ? t("Close", "បិទ")
               : checkoutKind === "upgrade"
                 ? t("Cancel upgrade", "បោះបង់ការអាប់ក្រេដ")
@@ -1311,8 +1286,8 @@ function PaymentCheckout({
           </button>
         </div>
 
-        <section className="grid gap-5 lg:grid-cols-[390px_minmax(0,1fr)]">
-          <aside className="relative overflow-hidden rounded-[24px] border border-[#0B3A82] bg-[#012A72] p-4 text-white shadow-[0_18px_55px_rgba(1,42,114,0.22)] sm:p-6">
+        <section className="grid gap-4 lg:grid-cols-[330px_minmax(0,1fr)]">
+          <aside className="relative overflow-hidden rounded-[24px] border border-[#0B3A82] bg-[#012A72] p-4 text-white shadow-[0_18px_55px_rgba(1,42,114,0.22)] sm:p-5">
             <div className="flex items-center justify-between gap-3">
               <p className="text-xs font-extrabold uppercase tracking-[0.20em] text-blue-100">
                 {summaryHeading}
@@ -1324,7 +1299,7 @@ function PaymentCheckout({
 
             <div className="mt-4 rounded-[20px] border border-white/20 bg-white/[0.08] p-4 shadow-sm backdrop-blur-sm">
               <div className="flex items-start gap-4">
-                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white/95 shadow-sm">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white/95 shadow-sm">
                   {planCode === "custom" ? (
                     <img
                       src="/images/custom.png"
@@ -1452,28 +1427,10 @@ function PaymentCheckout({
               ) : null}
             </dl>
 
-            {payWayPaymentState !== "approved" ? (
-              <button
-                type="button"
-                onClick={() => void leaveCheckoutSafely()}
-                className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-blue-300 hover:text-blue-200"
-              >
-                {checkoutKind === "upgrade"
-                  ? t("Edit upgrade", "កែការអាប់ក្រេដ")
-                  : t("Change selection", "ប្តូរការជ្រើសរើស")}
-                <PaymentEditIcon />
-              </button>
-            ) : null}
 
-            <p className="mt-3 text-xs leading-5 text-blue-100/65">
-              {t(
-                "Safe to go back: your subscription changes only after payment is approved.",
-                "អាចត្រឡប់ក្រោយដោយសុវត្ថិភាព៖ ការជាវរបស់អ្នកនឹងផ្លាស់ប្តូរតែបន្ទាប់ពីការទូទាត់ត្រូវបានអនុម័តប៉ុណ្ណោះ។",
-              )}
-            </p>
           </aside>
 
-          <div className="relative overflow-hidden rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_18px_55px_rgba(15,23,42,0.07)] sm:p-4 lg:p-6">
+          <div data-payment-method-card className="relative flex min-w-0 flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_18px_55px_rgba(15,23,42,0.07)]"><div className="p-4 lg:p-5">
               {payWayPaymentState === "approved" ? (
                 <div className="absolute inset-0 z-20 flex min-h-[520px] items-center justify-center bg-white p-5 sm:p-7">
                   <div className="w-full max-w-[560px] text-center">
@@ -1571,21 +1528,23 @@ function PaymentCheckout({
                 )}
               </p>
 
-              <div className="mt-4 grid gap-2.5">
+              <div data-checkout-method-chooser className="mt-4 grid gap-2.5">
                 <button
                   type="button"
+                  disabled={checkoutLoading || manualPaymentSubmitting}
+                  aria-pressed={checkoutMethod === "payway"}
                   onClick={() => {
                     setCheckoutMethod("payway");
                     setManualPaymentError(null);
                   }}
-                  className={`rounded-2xl border p-4 text-left transition ${
+                  className={`rounded-2xl border p-3.5 text-left transition ${
                     checkoutMethod === "payway"
                       ? "border-blue-500 bg-blue-50/45 ring-1 ring-blue-100"
                       : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"
                   }`}
                 >
                   <div className="flex items-center gap-4">
-                    <div className="relative flex h-14 w-14 shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                    <div className="relative flex h-12 w-12 shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                       <div className="flex flex-1 items-center justify-center bg-[#0C5967] text-sm font-black tracking-[0.18em] text-white">
                         ABA
                       </div>
@@ -1613,8 +1572,9 @@ function PaymentCheckout({
 
                 <button
                   type="button"
+                  aria-pressed={checkoutMethod === "manual"}
                   disabled={
-                    transactionReturnOnly ||
+                    checkoutLoading || manualPaymentSubmitting || transactionReturnOnly ||
                     manualPaymentLoading ||
                     !manualPaymentConfig?.enabled
                   }
@@ -1622,14 +1582,14 @@ function PaymentCheckout({
                     setCheckoutMethod("manual");
                     setCheckoutError(null);
                   }}
-                  className={`rounded-2xl border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                  className={`rounded-2xl border p-3.5 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${
                     checkoutMethod === "manual"
                       ? "border-blue-500 bg-blue-50/45 ring-1 ring-blue-100"
                       : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"
                   }`}
                 >
                   <div className="flex items-center gap-4">
-                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-sm">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-sm">
                       <PaymentBankIcon />
                     </div>
                     <div className="min-w-0 flex-1">
@@ -1671,94 +1631,74 @@ function PaymentCheckout({
                 </div>
               </div>
 
-              {checkoutMethod === "payway" ? (
-                <div className="mt-5 rounded-[22px] border border-slate-200 bg-slate-50/70 p-4">
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-[0.14em] text-blue-600">
-                        ABA PayWay
-                      </p>
-                      <p className="mt-1 text-sm font-medium text-slate-500">
-                        {t("Total", "សរុប")}
-                      </p>
-                      <p className="mt-1 text-2xl font-black tracking-tight text-slate-950">
-                        {formatUsdFromCents(totalCents)}
-                      </p>
-                    </div>
+              {!checkoutMethod ? <p role="status" className="mt-5 text-sm text-slate-500">{t("Choose a payment method to continue.", "ជ្រើសរើសវិធីទូទាត់ដើម្បីបន្ត។")}</p> : null}
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void startPayWayCheckout();
-                      }}
-                      disabled={
-                        transactionReturnOnly ||
-                        checkoutLoading ||
-                        !payWayPluginReady
-                      }
-                      className="inline-flex min-w-[230px] items-center justify-center gap-2 rounded-2xl bg-blue-600 px-6 py-4 text-base font-extrabold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
-                    >
-                      <PaymentLockIcon />
-                      {checkoutLoading
-                        ? t("Opening ABA PayWay...", "កំពុងបើក ABA PayWay...")
-                        : !payWayPluginReady
-                          ? t("Loading PayWay...", "កំពុងផ្ទុក PayWay...")
-                          : t("Checkout", "ទូទាត់")}
-                    </button>
-                  </div>
+            </div>
+            <footer data-checkout-footer className="sticky bottom-0 z-20 mt-auto shrink-0 border-t border-slate-200 bg-white px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-6px_24px_rgba(15,23,42,0.04)] sm:px-5">
+        <div className="mx-auto w-full max-w-[900px]">
+          {checkoutError ? <p role="alert" className="mb-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">{checkoutError}</p> : null}
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0"><p className="text-sm text-slate-500">{t("Total", "សរុប")}</p><p className="text-2xl font-extrabold tracking-tight text-slate-950">{formatUsdFromCents(totalCents)}</p></div>
+            <button type="button" onClick={() => { if (checkoutMethod === "manual") setManualDialogOpen(true); else if (checkoutMethod === "payway") void startPayWayCheckout(); }}
+              disabled={!checkoutMethod || transactionReturnOnly || checkoutLoading || manualPaymentSubmitting || manualPaymentLoading || !bakongSafety || (checkoutMethod === "payway" && !payWayPluginReady) || (checkoutMethod === "manual" && !manualPaymentConfig?.enabled)}
+              className="inline-flex min-h-11 min-w-36 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 sm:min-w-48">
+              <PaymentLockIcon />{checkoutLoading ? t("Opening ABA PayWay…", "កំពុងបើក ABA PayWay…") : t("Checkout", "ទូទាត់")}
+            </button>
+          </div>
+        </div>
+      </footer>
+          </div>
+        </section>
 
-                  {checkoutError ? (
-                    <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                      {checkoutError}
-                    </div>
-                  ) : null}
+        <div className="mt-5 grid gap-3 border-t border-slate-200 pt-4 sm:grid-cols-3">
+          <div className="flex items-start gap-3 px-2">
+            <span className="mt-0.5 text-emerald-600">
+              <PaymentShieldIcon />
+            </span>
+            <div>
+              <p className="text-sm font-extrabold text-slate-900">
+                {t("Secure payment", "ការទូទាត់មានសុវត្ថិភាព")}
+              </p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">
+                {t("One-time payment. Activated after approval.", "ការទូទាត់តែម្តង។ ដំណើរការបន្ទាប់ពីអនុម័ត។")}
+              </p>
+            </div>
+          </div>
 
-                  {payWayTransactionId || payWayPaymentState === "cancelled" ? (
-                    <div
-                      className={`mt-4 rounded-xl border px-4 py-3 text-sm ${statusPanelClasses(
-                        payWayPaymentState,
-                      )}`}
-                    >
-                      <p className="font-semibold">
-                        {payWayStateLabel(payWayPaymentState, isKhmer)}
-                      </p>
-                      <p className="mt-1 text-xs opacity-80">
-                        {payWayTransactionId
-                          ? isKhmer
-                            ? `ប្រតិបត្តិការ ${payWayTransactionId}`
-                            : `Transaction ${payWayTransactionId}`
-                          : t("No payment was applied.", "មិនមានការទូទាត់ត្រូវបានអនុវត្តទេ។")}
-                        {payWayStatusText
-                          ? ` · ${payWayStatusText}`
-                          : ""}
-                      </p>
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
+          <div className="flex items-start gap-3 border-slate-200 px-2 sm:border-l sm:pl-5">
+            <span className="mt-0.5 text-amber-500">
+              <PaymentClockIcon />
+            </span>
+            <div>
+              <p className="text-sm font-extrabold text-slate-900">
+                {t("One-time payment", "ការទូទាត់តែម្តង")}
+              </p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">
+                {t("Pay once for this selected subscription period.", "បង់តែម្តងសម្រាប់រយៈពេលការជាវដែលបានជ្រើសនេះ។")}
+              </p>
+            </div>
+          </div>
 
-              {checkoutMethod === "manual" ? (
-                <div className="mt-4">
-                  {hasSubmittedManual ? (
-                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                      <div className="flex items-start gap-3">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-lg font-bold">
-                          ✓
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-base font-bold">{t("Payment submitted", "បានដាក់ស្នើការទូទាត់")}</p>
-                          <p className="mt-1 leading-6 text-amber-700">
-                            {t(
-                              "TENH billing is reviewing your transfer. Approval typically takes 1-2 business days. This page checks the status automatically.",
-                              "ក្រុមទូទាត់ TENH កំពុងត្រួតពិនិត្យការផ្ទេររបស់អ្នក។ ជាធម្មតាការអនុម័តចំណាយពេល 1-2 ថ្ងៃធ្វើការ ហើយទំព័រនេះនឹងពិនិត្យស្ថានភាពដោយស្វ័យប្រវត្តិ។",
-                            )}
-                          </p>
-                        </div>
-                      </div>
+          <div className="flex items-start gap-3 border-slate-200 px-2 sm:border-l sm:pl-5">
+            <span className="mt-0.5 text-violet-600">
+              <PaymentHeadsetIcon />
+            </span>
+            <div>
+              <p className="text-sm font-extrabold text-slate-900">
+                {t("Need help?", "ត្រូវការជំនួយ?")}
+              </p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">
+                {t("Contact TENH support if you need payment assistance.", "ទាក់ទងក្រុមជំនួយ TENH ប្រសិនបើអ្នកត្រូវការជំនួយអំពីការទូទាត់។")}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
 
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
+      <CheckoutDialog open={manualDialogOpen} busy={manualPaymentSubmitting} title={t("Manual bank transfer", "ផ្ទេរប្រាក់តាមធនាគារដោយដៃ")}
+        description={t("Make sure the transfer amount and transaction details match your order. Approval usually takes 1-2 business days.", "សូមប្រាកដថាចំនួនប្រាក់និងព័ត៌មានប្រតិបត្តិការត្រូវនឹងការបញ្ជាទិញ។ ការអនុម័តជាធម្មតាចំណាយពេល 1-2 ថ្ងៃធ្វើការ។")}
+        closeLabel={t("Close transfer details", "បិទព័ត៌មានផ្ទេរប្រាក់")} onClose={() => { if (!submitting.current) { setManualDialogOpen(false); setManualQrPreviewOpen(false); } }}>
+        <div className="space-y-3.5">
                       {showPreviousManualRejection ? (
                         <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
                           <div className="flex items-start gap-3">
@@ -1795,45 +1735,45 @@ function PaymentCheckout({
                         </div>
                       ) : null}
 
-                      <div className="grid gap-3 md:grid-cols-2">
-                        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <div className="grid gap-2.5 md:grid-cols-2">
+                        <section className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm">
                           <h3 className="text-base font-extrabold text-slate-950">
                             {t("Transfer details", "ព័ត៌មានផ្ទេរប្រាក់")}
                           </h3>
 
                           <dl className="mt-3 divide-y divide-dashed divide-slate-200">
-                            <div className="flex items-center justify-between gap-4 py-3">
+                            <div className="flex items-center justify-between gap-3 py-2.5">
                               <dt className="text-sm text-slate-500">{t("Payment amount", "ចំនួនទឹកប្រាក់ទូទាត់")}</dt>
                               <dd className="text-base font-extrabold text-slate-950">
                                 {formatUsdFromCents(totalCents)}
                               </dd>
                             </div>
-                            <div className="flex items-center justify-between gap-4 py-3">
+                            <div className="flex items-center justify-between gap-3 py-2.5">
                               <dt className="text-sm text-slate-500">{t("Bank", "ធនាគារ")}</dt>
-                              <dd className="text-right text-sm font-bold text-slate-950">
+                              <dd className="min-w-0 max-w-[60%] break-words text-right text-sm font-bold text-slate-950">
                                 {manualPaymentConfig?.bankName || "—"}
                               </dd>
                             </div>
-                            <div className="flex items-center justify-between gap-4 py-3">
+                            <div className="flex items-center justify-between gap-3 py-2.5">
                               <dt className="text-sm text-slate-500">{t("Account name", "ឈ្មោះគណនី")}</dt>
-                              <dd className="text-right text-sm font-bold text-slate-950">
+                              <dd className="min-w-0 max-w-[60%] break-words text-right text-sm font-bold text-slate-950">
                                 {manualPaymentConfig?.accountName || "—"}
                               </dd>
                             </div>
-                            <div className="flex items-center justify-between gap-4 py-3">
+                            <div className="flex items-center justify-between gap-3 py-2.5">
                               <dt className="text-sm text-slate-500">{t("Account number", "លេខគណនី")}</dt>
-                              <dd className="text-right text-sm font-bold text-slate-950">
+                              <dd className="min-w-0 max-w-[60%] break-words text-right text-sm font-bold text-slate-950">
                                 {manualPaymentConfig?.accountNumber || "—"}
                               </dd>
                             </div>
-                            <div className="flex items-center justify-between gap-4 py-3">
+                            <div className="flex items-center justify-between gap-3 py-2.5">
                               <dt className="text-sm text-slate-500">{t("Currency", "រូបិយប័ណ្ណ")}</dt>
                               <dd className="text-sm font-bold text-slate-950">USD</dd>
                             </div>
                           </dl>
                         </section>
 
-                        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <section className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm">
                           <h3 className="text-base font-extrabold text-slate-950">
                             {t("Scan ABA KHQR", "ស្កេន ABA KHQR")}
                           </h3>
@@ -1843,14 +1783,17 @@ function PaymentCheckout({
                               <button
                                 type="button"
                                 onClick={() => setManualQrPreviewOpen(true)}
+                                disabled={manualPaymentSubmitting}
+                                aria-haspopup="dialog"
                                 className="mx-auto mt-3 block rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-blue-300 hover:shadow-md"
-                                aria-label={t("View payment QR larger", "មើល QR ទូទាត់ឱ្យធំ")}
+                                aria-label={t("View QR code", "មើលកូដ QR")}
                               >
                                 <img
                                   src={manualPaymentConfig.qrImageUrl}
                                   alt={t("TENH manual payment QR", "QR ទូទាត់ TENH")}
-                                  className="mx-auto h-[122px] w-[122px] rounded-xl object-contain"
+                                  className="mx-auto h-32 w-32 max-w-full object-contain"
                                 />
+                                <span className="mt-2 block text-center text-xs font-semibold text-blue-700">{t("View QR code", "មើលកូដ QR")}</span>
                               </button>
 
                               <p className="mt-3 text-center text-sm font-medium text-slate-600">
@@ -1871,16 +1814,16 @@ function PaymentCheckout({
                         </section>
                       </div>
 
-                      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <section className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm">
                         <h3 className="text-base font-extrabold text-slate-950">
                           {t("Upload payment receipt", "ផ្ទុកបង្កាន់ដៃទូទាត់")}
                         </h3>
 
-                        <label className="relative mt-3 flex min-h-[108px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-blue-200 bg-blue-50/20 px-4 py-4 text-center transition hover:border-blue-400 hover:bg-blue-50/40">
+                        <label className="relative mt-3 flex min-h-[96px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-blue-200 bg-blue-50/20 px-4 py-4 text-center transition hover:border-blue-400 hover:bg-blue-50/40">
                           <span className="text-blue-600">
                             <PaymentUploadIcon />
                           </span>
-                          <span className="mt-2 text-sm font-semibold text-slate-700">
+                          <span className="mt-2 max-w-full break-words text-sm font-semibold text-slate-700">
                             {manualProof ? manualProof.name : t("Upload your receipt here", "ផ្ទុកបង្កាន់ដៃរបស់អ្នកនៅទីនេះ")}
                           </span>
                           <span className="mt-1 text-sm text-slate-500">
@@ -1892,6 +1835,7 @@ function PaymentCheckout({
 
                           <input
                             type="file"
+                            disabled={manualPaymentSubmitting}
                             accept="image/jpeg,image/png,image/webp,application/pdf"
                             onChange={(event) =>
                               setManualProof(event.target.files?.[0] ?? null)
@@ -1901,24 +1845,13 @@ function PaymentCheckout({
                           />
                         </label>
 
-                        <div className="mt-3 flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-700">
-                          <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-amber-400 font-bold">
-                            !
-                          </span>
-                          <p>
-                            {t(
-                              "Make sure the transfer amount and transaction details match your order. Approval usually takes 1-2 business days.",
-                              "សូមប្រាកដថាចំនួនទឹកប្រាក់ផ្ទេរ និងព័ត៌មានប្រតិបត្តិការ ត្រូវគ្នានឹងការបញ្ជាទិញរបស់អ្នក។ ជាធម្មតាការអនុម័តចំណាយពេល 1-2 ថ្ងៃធ្វើការ។",
-                            )}
-                          </p>
-                        </div>
-
                         <label className="mt-4 block text-sm font-semibold text-slate-900">
                           {t("Note", "ចំណាំ")}
                           <span className="ml-1 text-xs font-normal text-slate-500">{t("(optional)", "(មិនចាំបាច់)")}</span>
 
                           <textarea
                             rows={2}
+                            disabled={manualPaymentSubmitting}
                             maxLength={1000}
                             value={manualCustomerNote}
                             onChange={(event) => setManualCustomerNote(event.target.value)}
@@ -1930,13 +1863,14 @@ function PaymentCheckout({
                         <button
                           type="button"
                           onClick={() => void submitManualPayment()}
+                          aria-busy={manualPaymentSubmitting}
                           disabled={
                             transactionReturnOnly ||
                             !manualPaymentConfig?.enabled ||
                             manualPaymentSubmitting ||
                             !manualProof
                           }
-                          className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-extrabold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
+                          className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-extrabold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
                         >
                           <PaymentLockIcon />
                           {manualPaymentSubmitting
@@ -1948,95 +1882,14 @@ function PaymentCheckout({
                       </section>
 
                       {manualPaymentError ? (
-                        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">
+                        <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                           {manualPaymentError}
                         </div>
                       ) : null}
                     </div>
-                  )}
-                </div>
-              ) : null}
-          </div>
-        </section>
-
-        <div className="mt-5 grid gap-3 border-t border-slate-200 pt-4 sm:grid-cols-3">
-          <div className="flex items-start gap-3 px-2">
-            <span className="mt-0.5 text-emerald-600">
-              <PaymentShieldIcon />
-            </span>
-            <div>
-              <p className="text-sm font-extrabold text-slate-900">
-                {t("Secure payment", "ការទូទាត់មានសុវត្ថិភាព")}
-              </p>
-              <p className="mt-1 text-xs leading-5 text-slate-500">
-                {t("Your payment is protected and verified.", "ការទូទាត់របស់អ្នកត្រូវបានការពារ និងផ្ទៀងផ្ទាត់។")}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-3 border-slate-200 px-2 sm:border-l sm:pl-5">
-            <span className="mt-0.5 text-amber-500">
-              <PaymentClockIcon />
-            </span>
-            <div>
-              <p className="text-sm font-extrabold text-slate-900">
-                {t("One-time payment", "ការទូទាត់តែម្តង")}
-              </p>
-              <p className="mt-1 text-xs leading-5 text-slate-500">
-                {t("Pay once for this selected subscription period.", "បង់តែម្តងសម្រាប់រយៈពេលការជាវដែលបានជ្រើសនេះ។")}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-3 border-slate-200 px-2 sm:border-l sm:pl-5">
-            <span className="mt-0.5 text-violet-600">
-              <PaymentHeadsetIcon />
-            </span>
-            <div>
-              <p className="text-sm font-extrabold text-slate-900">
-                {t("Need help?", "ត្រូវការជំនួយ?")}
-              </p>
-              <p className="mt-1 text-xs leading-5 text-slate-500">
-                {t("Contact TENH support if you need payment assistance.", "ទាក់ទងក្រុមជំនួយ TENH ប្រសិនបើអ្នកត្រូវការជំនួយអំពីការទូទាត់។")}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {manualQrPreviewOpen && manualPaymentConfig?.qrImageUrl ? (
-        <div
-          className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm"
-          onClick={() => setManualQrPreviewOpen(false)}
-          role="presentation"
-        >
-          <div
-            className="relative max-h-[94vh] w-full max-w-3xl overflow-auto rounded-[28px] bg-white p-4 shadow-2xl sm:p-6"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <button
-              type="button"
-              onClick={() => setManualQrPreviewOpen(false)}
-              className="absolute right-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-xl font-semibold text-slate-600 shadow-sm hover:bg-slate-50"
-              aria-label={t("Close QR preview", "បិទការមើល QR")}
-            >
-              ×
-            </button>
-
-            <img
-              src={manualPaymentConfig.qrImageUrl}
-              alt={t("Payment QR enlarged", "QR ទូទាត់ទំហំធំ")}
-              className="mx-auto max-h-[78vh] w-auto max-w-full rounded-2xl object-contain"
-            />
-            <p className="mt-4 text-center text-sm font-medium text-slate-600">
-              {t(
-                "Scan this QR code with your banking app to complete the payment.",
-                "ស្កេន QR នេះជាមួយកម្មវិធីធនាគាររបស់អ្នក ដើម្បីបញ្ចប់ការទូទាត់។",
-              )}
-            </p>
-          </div>
-        </div>
-      ) : null}
+      </CheckoutDialog>
+      <ManualQrPreview open={manualDialogOpen && manualQrPreviewOpen && Boolean(manualPaymentConfig?.qrImageUrl)}
+        src={manualPaymentConfig?.qrImageUrl ?? ""} onClose={() => setManualQrPreviewOpen(false)} />
     </div>
   );
 }

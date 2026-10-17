@@ -150,3 +150,20 @@ test('guard readiness detects disabled triggers and private baselines remain ser
     await assert.rejects(() => db.query('delete from tenh_billing_private.payment_application_baselines where source_payment_id=$1', [row.id]), /immutable|append-only|cannot/i);
   } finally { await db.close(); }
 });
+
+test('checkout session closure metadata preserves immutable payment fields, observations and late guarded approval', async () => {
+  const db = await database();
+  try {
+    const fixture = await trial(db), row = await purchase(db, fixture), before = await subscription(db, fixture.businessId);
+    const closed = { version: 1, state: 'closed', closed_at: '2026-10-17T12:00:00Z', closed_by_member_id: 'synthetic-member' };
+    await db.query("update billing_transactions set metadata=metadata||jsonb_build_object('checkout_session',$2::jsonb) where id=$1", [row.id, closed]);
+    const after = (await db.query('select * from billing_transactions where id=$1', [row.id])).rows[0];
+    assert.equal(after.status, 'pending'); assert.equal(after.amount, row.amount); assert.equal(after.provider_transaction_id, row.provider_transaction_id);
+    assert.deepEqual(await subscription(db, fixture.businessId), before);
+    await db.query('select tenh_observe_payway_verification($1,$2,false)', [row.provider_transaction_id, { payment_status: 'PENDING', provider_status_code: '00', provider_transaction_id: row.provider_transaction_id }]);
+    assert.equal((await activate(db, row)).subscription_status, 'active');
+    const paid = (await db.query('select * from billing_transactions where id=$1', [row.id])).rows[0];
+    assert.equal(paid.status, 'approved'); assert.deepEqual(paid.metadata.checkout_session, closed);
+    assert.equal(paid.metadata.payway_last_verification.payment_status, 'PENDING'); assert.equal(await invoiceCount(db, row.id), 1);
+  } finally { await db.close(); }
+});

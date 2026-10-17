@@ -1,6 +1,7 @@
 import { getConversationPage, ConversationPagingUnavailable } from "@/lib/inbox/get-conversation-page";
 import { parseConversationPageRequest } from "@/lib/inbox/conversation-page-contract";
 import { InboxView } from "@/components/inbox/inbox-view";
+import { CustomerAvatarCacheProvider } from "@/components/customer-avatar";
 import {
   getConversations,
   getInboxConversationScope,
@@ -196,6 +197,7 @@ export default async function InboxPage({
   };
 
   return (
+    <CustomerAvatarCacheProvider key={inboxScope.userId}>
     <div data-inbox-page className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-slate-50 p-1.5 sm:p-2.5">
       <div className="min-h-0 flex-1 overflow-hidden">
         <InboxView
@@ -226,5 +228,6 @@ export default async function InboxPage({
         />
       </div>
     </div>
+    </CustomerAvatarCacheProvider>
   );
 }

@@ -73,6 +73,7 @@ async function run() {
   if (serveDemo) { assets["/"] = assets["/fixture.html"]; assets["/dashboard/subscription"] = assets["/fixture.html"]; }
   server = http.createServer((request, response) => {
     const route = new URL(request.url, "http://127.0.0.1").pathname, asset = assets[route];
+    if(!serveDemo && route==="/dashboard/subscription"){response.writeHead(200,{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store"});response.end('<!doctype html><html><body><main data-subscription-after-expiry>Subscription</main></body></html>');return;}
     if (!asset) { response.writeHead(route === "/favicon.ico" ? 204 : 404); response.end(); return; }
     response.writeHead(200, { "Content-Type": asset[1], "Cache-Control": "no-store", ...(serveDemo ? { "Content-Security-Policy": "default-src 'self'; connect-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-src 'none'; form-action 'none'; base-uri 'none'" } : {}) }); fs.createReadStream(asset[0]).pipe(response);
   });
@@ -172,13 +173,51 @@ async function run() {
     const closedScreenshot=await screenshot(`${language}-${width}-payway-closed`);
     await evaluate("paymentAttemptFixture.sandboxDetailsChecks()");
     const detailsScreenshot=await screenshot(`${language}-${width}-payway-sandbox-details`);
+    await evaluate("paymentAttemptFixture.manualModalPreview()");
+    const manualModalScreenshot=await screenshot(`${language}-${width}-manual-transfer-popup`);
     await evaluate("paymentAttemptFixture.prepareBuy()");
     const buyScreenshot=await screenshot(`${language}-${width}-buy-preflight`);
+    await evaluate("paymentAttemptFixture.openBuyChooser()");
+    const chooserScreenshot=await screenshot(`${language}-${width}-buy-method-chooser`);
     await evaluate("paymentAttemptFixture.finishBuy()");
     const completed=await evaluate("paymentAttemptFixture.result()");
     completed.checks=[...beforeReload.checks,...completed.checks];
     assert.ok(completed.checks.every(check=>check.passed));
-    reports.push({ language, width, submission, submittedScreenshot, successScreenshot, terminalScreenshot, validationScreenshot, paywayScreenshot, closedScreenshot, detailsScreenshot, buyScreenshot, ...completed });
+    const providerUI=await evaluate("paymentAttemptFixture.prepareExpiryOverlay()");
+    assert.ok(providerUI.overlayMounted&&providerUI.bodyLocked,"provider iframe owns an overlay and body lock before expiry");
+    let expiryNavigation;
+    for(let attempt=0;attempt<120;attempt++){
+      await pause(50);
+      try{expiryNavigation=await evaluate("({path:location.pathname,replaced:Boolean(document.querySelector('[data-subscription-after-expiry]')),overlay:Boolean(document.querySelector('#aba-checkout,iframe[name=aba_webservice]')),bodyLocked:getComputedStyle(document.body).overflowY==='hidden'})");}catch{continue;}
+      if(expiryNavigation.replaced)break;
+    }
+    assert.ok(expiryNavigation?.replaced&&expiryNavigation.path==='/dashboard/subscription',"expiry replaces the whole document with Subscription");
+    assert.ok(!expiryNavigation.overlay&&!expiryNavigation.bodyLocked,"provider iframe and scrolling lock are absent after expiry");
+    completed.checks.push({name:'expiry replaces full document with Subscription',passed:true},{name:'provider iframe and body scroll lock disappear after expiry',passed:true});
+    const expiryScreenshot=await screenshot(`${language}-${width}-expiry-subscription`);
+    await send("Page.navigate", { url: `${origin}/fixture.html?lang=${language}&width=${width}` });
+    for(let attempt=0;attempt<100;attempt++){await pause(40);try{if(await evaluate("Boolean(window.paymentAttemptFixture)"))break;}catch{}}
+    await evaluate("paymentAttemptFixture.prepareCancelOverlay()");
+    let cancelNavigation;
+    for(let attempt=0;attempt<120;attempt++){
+      await pause(40);try{cancelNavigation=await evaluate("({path:location.pathname,replaced:Boolean(document.querySelector('[data-subscription-after-expiry]')),overlay:Boolean(document.querySelector('#aba-checkout,iframe[name=aba_webservice]')),bodyLocked:getComputedStyle(document.body).overflowY==='hidden'})");}catch{continue;}
+      if(cancelNavigation.replaced)break;
+    }
+    assert.ok(cancelNavigation?.replaced&&cancelNavigation.path==='/dashboard/subscription'&&!cancelNavigation.overlay&&!cancelNavigation.bodyLocked,"Cancel replaces document and clears provider overlay and scrolling lock");
+    completed.checks.push({name:'Cancel returns to Subscription without an iframe or body scroll lock',passed:true});
+    const cancelScreenshot=await screenshot(`${language}-${width}-cancel-subscription`);
+    await send("Page.navigate", { url: `${origin}/fixture.html?lang=${language}&width=${width}` });
+    for(let attempt=0;attempt<100;attempt++){await pause(40);try{if(await evaluate("Boolean(window.paymentAttemptFixture)"))break;}catch{}}
+    await evaluate("paymentAttemptFixture.prepareDismissOverlay()");
+    let dismissNavigation;
+    for(let attempt=0;attempt<120;attempt++){
+      await pause(40);try{dismissNavigation=await evaluate("({path:location.pathname,replaced:Boolean(document.querySelector('[data-subscription-after-expiry]')),overlay:Boolean(document.querySelector('#aba-checkout,iframe[name=aba_webservice]')),bodyLocked:getComputedStyle(document.body).overflowY==='hidden',saved:JSON.parse(sessionStorage.getItem('payment-attempt-fixture')||'null')})");}catch{continue;}
+      if(dismissNavigation.replaced)break;
+    }
+    const dismissed=dismissNavigation?.saved?.attempts?.find(([key])=>key==='payway:fixture-dismiss')?.[1];
+    assert.ok(dismissNavigation?.replaced&&dismissNavigation.path==='/dashboard/subscription'&&!dismissNavigation.overlay&&!dismissNavigation.bodyLocked&&dismissed?.status==='pending'&&dismissed.checkoutSessionClosedAt,"QR dismissal saves checkout-only closure before returning without provider overlay");
+    completed.checks.push({name:'QR dismissal persists session end while retaining financial pending audit row',passed:true});
+    reports.push({ language, width, submission, submittedScreenshot, successScreenshot, terminalScreenshot, validationScreenshot, paywayScreenshot, closedScreenshot, detailsScreenshot, buyScreenshot, chooserScreenshot, expiryScreenshot, cancelScreenshot, manualModalScreenshot, ...completed });
     fs.writeFileSync(path.join(evidence, "browser-results.json"), JSON.stringify({ passed: false, complete: false, reports, browserErrors, network, temp }, null, 2));
     console.log(`${language}/${width}px: ${completed.checks.length} assertions passed`);
   }

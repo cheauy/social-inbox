@@ -1,6 +1,15 @@
 // PayWay Purchase accepts a signed lifetime in minutes (minimum 3).
 export const PAYWAY_CHECKOUT_LIFETIME_MINUTES = 10;
 
+export function payWayCheckoutSessionClosedAt(metadata: unknown): string | null {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return null;
+  const session = (metadata as Record<string, unknown>).checkout_session;
+  if (!session || typeof session !== "object" || Array.isArray(session)) return null;
+  const saved = session as Record<string, unknown>;
+  return saved.version === 1 && saved.state === "closed" && typeof saved.closed_at === "string" && Number.isFinite(Date.parse(saved.closed_at))
+    ? saved.closed_at : null;
+}
+
 export function createPayWayCheckoutLifetime(now = Date.now()) {
   // Match the precision of the signed UTC req_time. This is TENH's checkout
   // window; closing it never changes the saved financial outcome.

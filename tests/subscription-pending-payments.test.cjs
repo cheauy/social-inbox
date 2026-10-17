@@ -21,6 +21,29 @@ function server(options = {}) {
 }
 const billing = (patch = {}) => ({ id: ID, business_id: A, provider: 'bakong', provider_transaction_id: ID,
   plan_code: 'pro', billing_cycle: 'monthly', amount: '32.53', currency: 'USD', status: 'pending', created_at: '2026-10-16T10:00:00Z', ...patch });
+
+test('PayWay saved deadlines and explicit closure hide only inactive checkout sessions; legacy and manual review remain', async () => {
+  const { createPayWayCheckoutLifetime } = loader()('lib/payway/checkout-lifetime.ts');
+  const expired = createPayWayCheckoutLifetime(Date.now() - 3600000), future = createPayWayCheckoutLifetime(Date.now());
+  const closed = { ...future, checkout_session: { version: 1, state: 'closed', closed_at: new Date().toISOString() } };
+  const rows = [billing({ id: 'expired', provider: 'payway', provider_transaction_id: 'expired', metadata: expired }),
+    billing({ id: 'closed', provider: 'payway', provider_transaction_id: 'closed', metadata: closed }),
+    billing({ id: 'live', provider: 'payway', provider_transaction_id: 'live', metadata: future }),
+    billing({ id: 'review', provider: 'payway', provider_transaction_id: 'review', metadata: { ...closed, payway_last_verification: { payment_status: 'APPROVED', conflict_reason: 'AMOUNT_MISMATCH' } } }),
+    ...Array.from({ length: 6 }, (_, n) => billing({ id: `legacy-${n}`, provider: 'payway', provider_transaction_id: `legacy-${n}`, created_at: '2020-01-01', metadata: { environment: 'sandbox', live_enabled: false } }))];
+  const f = server({ seed: { billing_transactions: rows, manual_payment_requests: [billing({ id: 'proof', status: 'submitted' })] } });
+  const before = JSON.stringify(f.db.tables);
+  for (let count = 0; count < 2; count++) {
+    const data = await (await f.get()).json();
+    assert.equal(data.items.length, 9); assert.ok(!data.items.some(x => ['closed', 'expired'].includes(x.id)));
+    assert.equal(data.items.find(x => x.id === 'live').expiresAt, future.checkout_expires_at);
+    assert.equal(data.items.find(x => x.id === 'review').status, 'reconciliation_required');
+    assert.equal(data.items.find(x => x.id === 'review').expiresAt, null);
+    assert.equal(data.items.find(x => x.id === 'proof').status, 'submitted');
+    assert.equal(data.items.filter(x => x.id.startsWith('legacy-')).length, 6);
+  }
+  assert.equal(JSON.stringify(f.db.tables), before); assert.ok(f.db.history.every(x => x.op === 'read'));
+});
 test('read-only summary scopes private attempts to current billing managers, with no proof or provider payload', async () => {
   const f = server({ seed: { billing_transactions: [billing(), billing({ id: 'other', business_id: B, provider: 'payway' }), billing({ id: 'removed', business_id: 'removed' }), billing({ id: 'unrelated', business_id: 'other' })],
     bakong_payment_attempts: [{ id: ID, business_id: A, state: 'pending', expires_at: '2099-01-01T00:00:00Z', qr: 'PRIVATE', credential_fingerprint: 'SECRET' }],

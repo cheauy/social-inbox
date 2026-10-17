@@ -45,7 +45,7 @@ function dto(attempt) { return { id: attempt.id, planCode: attempt.planCode, bil
 function render(mode, props, fresh = true) {
   if (fresh) mount++;
   const Component = mode === 'buy' ? BuySubscriptionView : mode === 'checkout' ? SubscriptionPaymentView : PaymentAttemptView;
-  flushSync(() => root.render(h(React.StrictMode, null, h('main', { className: 'min-h-dvh bg-slate-50' }, h(Component, { ...props, key: mount })))));
+  flushSync(() => root.render(h(React.StrictMode, null, h('main', { className: mode==='buy'?'h-dvh min-h-0 overflow-hidden bg-slate-50':'min-h-dvh bg-slate-50' }, h(Component, { ...props, key: mount })))));
 }
 function reset(next = {}) { attempts = new Map(); denied = new Set(); gate = null; signedOut = false; scenario = next; persist(); }
 window.fixtureRouter = { replace(url) { navigations.push({ url, failed: Boolean(scenario.failNavigation) }); persist(); if (scenario.failNavigation) throw new Error('Synthetic navigation interruption'); } };
@@ -75,6 +75,13 @@ window.fetch = async (url, options = {}) => {
     const snapshot = copy(attempt);
     if (gate?.id === id) await gate.promise;
     return Response.json({ success: true, attempt: snapshot });
+  }
+  if (target.pathname === '/api/payway/checkout-session') {
+    const attempt=attempts.get(key('payway',body.transactionId));
+    check('Cancel closes only the saved checkout session with explicit intent',method==='POST'&&body.confirmed===true&&attempt?.businessId===body.businessId);
+    if(scenario.failClose)return Response.json({success:false},{status:503});
+    put({...attempt,checkoutSessionClosedAt:new Date().toISOString()});
+    return Response.json({success:true,outcome:'closed',closedAt:new Date().toISOString(),transactionId:attempt.id,businessId:attempt.businessId});
   }
   if (target.pathname === '/api/payway/status') {
     const id = target.searchParams.get('tran_id'), attempt = attempts.get(key('payway', id));
@@ -131,9 +138,29 @@ async function checkout(next = {}) {
   check('StrictMode checkout enables existing methods after identity discovery', true);
 }
 async function chooseManual() {
+  const footer=document.querySelector('[data-checkout-footer]'),card=document.querySelector('[data-payment-method-card]');
   buttons().find(element => element.textContent.includes(t('Manual bank transfer', 'ផ្ទេរប្រាក់តាមធនាគារដោយដៃ'))).click();
-  await until(() => document.querySelector('input[type=file]'), 'manual proof form'); setFile(); await pause(35);
-  return buttons().find(element => /Submit payment|ដាក់ស្នើការទូទាត់/.test(element.textContent));
+  await pause(35);
+  check('Manual selection keeps transfer details out of inline checkout',!document.querySelector('input[type=file]'));
+  check('Both methods use one persistent footer anchored to payment card bottom',footer===document.querySelector('[data-checkout-footer]')&&Math.abs(card.getBoundingClientRect().bottom-footer.getBoundingClientRect().bottom)<2);
+  const checkout=footer.querySelector('button');checkout.focus();checkout.click();await until(()=>document.querySelector('dialog[open] input[type=file]'),'manual transfer popup');
+  let modal=document.querySelector('dialog[open]');
+  check('Manual popup is accessible and starts focus inside',modal.getAttribute('aria-modal')==='true'&&Boolean(document.getElementById(modal.getAttribute('aria-labelledby')))&&modal.contains(document.activeElement));
+  check('Transfer guidance is in the popup header',modal.querySelector('header').textContent.includes('1-2')&&Boolean(modal.querySelector('input[type=file]')));
+  const rect=modal.getBoundingClientRect();check('Manual popup fits the responsive viewport without horizontal overflow',rect.left>=0&&rect.right<=innerWidth+1&&rect.top>=0&&rect.bottom<=innerHeight+1&&modal.scrollWidth<=modal.clientWidth+1);
+  const controls=[...modal.querySelectorAll('button:not([disabled]),input:not([disabled]),textarea:not([disabled])')].filter(element=>element.getClientRects().length>0),first=controls[0],last=controls.at(-1);
+  last.focus();last.dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',bubbles:true,cancelable:true}));check('Manual popup traps forward Tab',document.activeElement===first);
+  first.dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',shiftKey:true,bubbles:true,cancelable:true}));check('Manual popup traps backward Tab',document.activeElement===last);
+  modal.dispatchEvent(new Event('cancel',{cancelable:true}));await until(()=>!document.querySelector('dialog[open]'),'Escape closes manual popup');
+  check('Closing popup restores focus and body scrolling without a payment mutation',document.activeElement===checkout&&document.body.style.overflowY!=='hidden');
+  checkout.click();await until(()=>document.querySelector('dialog[open] input[type=file]'),'manual popup reopened');setFile();await pause(35);
+  modal=document.querySelector('dialog[open]');modal.querySelector('header button').click();await until(()=>!document.querySelector('dialog[open]'),'manual proof retained after close');
+  checkout.click();await until(()=>document.querySelector('dialog[open] input[type=file]'),'manual proof reopened');await pause(35);
+  check('Manual receipt selection survives close and reopen',document.querySelector('dialog[open]').textContent.includes('fixture-proof.png'));
+  modal=document.querySelector('dialog[open]');modal.scrollTop=modal.scrollHeight;await pause(35);
+  const header=modal.querySelector('header').getBoundingClientRect();check('Popup header remains visible while transfer content scrolls',header.top>=modal.getBoundingClientRect().top-1&&header.top<=modal.getBoundingClientRect().top+2);
+  layout('Manual transfer popup');
+  return document.querySelector('dialog[open] button[aria-busy]');
 }
 async function paywayButton() {
   await until(() => { const control = button('Checkout', 'ទូទាត់'); return control && !control.disabled; }, 'PayWay plugin ready');
@@ -142,14 +169,14 @@ async function paywayButton() {
 async function submissionChecks() {
   await checkout({ failNavigation: true, finalizeLost: true });
   const before = requests.length, submit = await chooseManual(); check('selected proof enables explicit submission', submit && !submit.disabled); submit.click();
-  await until(() => heading() === t('Under review', 'កំពុងពិនិត្យ'), 'committed manual response reconciles');
+  await until(() => heading() === t('Payment submitted','បានដាក់ស្នើការទូទាត់'), 'committed manual response reconciles');
   const mutations = requests.slice(before).filter(request => request.method === 'POST');
   const prepares = mutations.filter(request => request.body?.action === 'prepare-upload'), finalizes = mutations.filter(request => request.body?.action === 'finalize-upload');
   check('one manual prepare and finalize despite lost response and failed navigation', prepares.length === 1 && finalizes.length === 1);
   check('manual same ID survives prepare, finalize and exact status', prepares[0].body.requestId === finalizes[0].body.requestId && [...attempts.values()][0].id === prepares[0].body.requestId);
   check('navigation failure leaves the saved status mounted', navigations.at(-1)?.failed === true);
   noPayControls('submitted manual'); layout('submitted manual');
-  check('manual submission shows the approved amber review clock and receipt copy without automatic approval', Boolean(document.querySelector('[class*="text-amber-500"]')) && !document.querySelector('[class*="animate-spin"]') && document.body.textContent.includes(t('Receipt submitted','បានផ្ញើបង្កាន់ដៃ')));
+  check('manual submission shows the approved amber review clock and receipt copy without automatic approval', Boolean(document.querySelector('[class*="text-amber-500"]')) && !document.querySelector('[class*="animate-spin"]') && document.body.textContent.includes(t('Approval usually takes 1-2 business days.','ការអនុម័តជាធម្មតាចំណាយពេល 1-2 ថ្ងៃធ្វើការ។')));
   const close=document.querySelector('a[aria-label]'), beforeClose=requests.length;
   check('status close is a compact keyboard accessible link to Subscription', close?.getAttribute('href')==='/dashboard/subscription' && close.classList.contains('h-11') && close.classList.contains('w-11'));
   close.focus(); check('close accepts keyboard focus',document.activeElement===close);
@@ -163,7 +190,7 @@ function prepareReload() {
   persist(); return id;
 }
 async function reloadChecks() {
-  await until(() => heading() === t('Under review', 'កំពុងពិនិត្យ'), 'real document reload restores exact submitted request');
+  await until(() => heading() === t('Payment submitted','បានដាក់ស្នើការទូទាត់'), 'real document reload restores exact submitted request');
   check('reload retains exact request identity', params.get('manual_request') === sessionStorage.getItem('payment-reload-id'));
   noPayControls('reloaded submitted manual'); layout('reloaded status');
 }
@@ -171,7 +198,7 @@ async function statusChecks() {
   for (const [status, application, en, km] of [['approved', 'active', 'Payment successful', 'ការទូទាត់ជោគជ័យ'], ['rejected', 'historical', 'Payment rejected', 'ការទូទាត់ត្រូវបានបដិសេធ']]) {
     reset(); put(saved('manual', manualA, status, application)); render('status', { kind: 'manual', attemptId: manualA });
     await until(() => heading() === t(en, km), `initial ${status}`); const initial = heading(); noPayControls(`initial ${status}`);
-    reset(); put(saved()); render('status', { kind: 'manual', attemptId: manualA }); await until(() => heading() === t('Under review', 'កំពុងពិនិត្យ'), 'pending before actual poll');
+    reset(); put(saved()); render('status', { kind: 'manual', attemptId: manualA }); await until(() => heading() === t('Payment submitted','បានដាក់ស្នើការទូទាត់'), 'pending before actual poll');
     put(saved('manual', manualA, status, application)); await until(() => heading() === initial, `poll reaches ${status}`);
     check(`initial and automatically polled ${status} use the same state`, heading() === initial); noPayControls(`polled ${status}`);
   }
@@ -212,7 +239,7 @@ async function statusChecks() {
 async function preparedChecks() {
   reset(); put(saved('manual', manualA, 'prepared')); render('status', { kind: 'manual', attemptId: manualA });
   await until(() => document.querySelector('input[type=file]'), 'prepared recovery'); setFile(); await pause(40); const before = requests.length;
-  button('Resume upload', 'បន្តផ្ទុក').click(); await until(() => heading() === t('Under review', 'កំពុងពិនិត្យ'), 'resume same proof');
+  button('Resume upload', 'បន្តផ្ទុក').click(); await until(() => heading() === t('Payment submitted','បានដាក់ស្នើការទូទាត់'), 'resume same proof');
   const recovery = requests.slice(before).filter(request => request.method === 'POST');
   check('prepared recovery resumes and finalizes the exact saved ID without prepare', recovery.some(request => request.body?.action === 'resume-upload' && request.body.requestId === manualA) && recovery.some(request => request.body?.action === 'finalize-upload' && request.body.requestId === manualA) && !recovery.some(request => request.body?.action === 'prepare-upload'));
   noPayControls('resumed proof');
@@ -220,7 +247,7 @@ async function preparedChecks() {
   await until(() => document.querySelector('input[type=file]'), 'prepared recovery with existing proof'); setFile(); await pause(40);
   const existingProofStart = requests.length, existingUploadCount = uploads.length;
   button('Resume upload', 'បន្តផ្ទុក').click();
-  await until(() => heading() === t('Under review', 'កំពុងពិនិត្យ'), 'existing proof finalizes without another upload');
+  await until(() => heading() === t('Payment submitted','បានដាក់ស្នើការទូទាត់'), 'existing proof finalizes without another upload');
   const existingProofRecovery = requests.slice(existingProofStart).filter(request => request.method === 'POST');
   check('verified existing proof with null upload token skips SDK upload and finalizes same saved ID', uploads.length === existingUploadCount && existingProofRecovery.some(request => request.body?.action === 'resume-upload' && request.body.requestId === manualA) && existingProofRecovery.some(request => request.body?.action === 'finalize-upload' && request.body.requestId === manualA) && attempts.get(key('manual', manualA)).status === 'submitted' && !existingProofRecovery.some(request => request.body?.action === 'prepare-upload'));
   reset(); put(saved('manual', manualA, 'prepared')); denied.add(manualA); render('status', { kind: 'manual', attemptId: manualA });
@@ -264,36 +291,69 @@ async function paywayChecks() {
   await until(()=>heading()===t('Checking payment','កំពុងពិនិត្យការទូទាត់'),'approved checking card');
   check('saved PayWay pending uses the teal spinner and no copied sample amount',Boolean(document.querySelector('[class*="border-t-teal-600"]')) && document.body.textContent.includes('$12.00') && !document.body.textContent.includes('$25.00'));
   check('production pending has no test-payment label or direct Bakong option',!document.body.textContent.includes('Test payment')&&!document.body.textContent.includes('Bakong'));
+  check('pending footer retains Cancel and honest automatic checking without QR reopening',Boolean(button('Cancel','បោះបង់'))&&document.querySelector('[data-automatic-payment-check]')?.textContent===t('Checking payment automatically…','កំពុងពិនិត្យការទូទាត់ដោយស្វ័យប្រវត្តិ…')&&!button('Show QR code','បង្ហាញកូដ QR'));
   const timed={...saved('payway','fixture-countdown','pending'),checkoutExpiresAt:new Date(Date.now()+600000).toISOString(),serverTime:new Date().toISOString()};put(timed);render('status',{kind:'payway',attemptId:timed.id});
   await until(()=>document.querySelector('time'),'server-saved countdown');
   const time=document.querySelector('time'),close=document.querySelector('a[aria-label]'),card=document.querySelector('[data-payment-card]');
   check('countdown and accessible X share card without overlap',card.contains(time)&&card.contains(close)&&time.getBoundingClientRect().right+4<=close.getBoundingClientRect().left);
-  check('details are inside card and redundant Back link is absent',card.contains(document.querySelector('details'))&&!document.body.textContent.includes(t('Back to subscription','ត្រឡប់ទៅការជាវ')));
+  check('details are inside card and redundant Back link is absent',card.contains(document.querySelector('[data-payment-summary]'))&&!document.body.textContent.includes(t('Back to subscription','ត្រឡប់ទៅការជាវ')));
   layout('approved checking card');
 }
 async function popupCloseChecks(){
- reset();const pending={...saved('payway','fixture-closed','pending'),checkoutExpiresAt:new Date(Date.now()+600000).toISOString(),serverTime:new Date().toISOString()};put(pending);render('status',{kind:'payway',attemptId:pending.id});await until(()=>heading()===t('Checking payment','កំពុងពិនិត្យការទូទាត់'),'mounted payment before close return');render('status',{kind:'payway',attemptId:pending.id,checkoutClosed:true},false);
- await until(()=>heading()===t('Checkout closed','បានបិទការទូទាត់'),'closed provider presentation');
- check('provider close leaves saved pending and no false financial cancellation',attempts.get(key('payway',pending.id)).status==='pending'&&!document.querySelector('[class*="animate-spin"]'));
+ reset({failClose:true});const pending={...saved('payway','fixture-closed','pending'),checkoutExpiresAt:new Date(Date.now()+600000).toISOString(),serverTime:new Date().toISOString()};put(pending);render('status',{kind:'payway',attemptId:pending.id});await until(()=>heading()===t('Checking payment','កំពុងពិនិត្យការទូទាត់'),'mounted payment before close return');render('status',{kind:'payway',attemptId:pending.id,checkoutClosed:true},false);
+ await until(()=>heading()===t('QR window closed','បានបិទផ្ទាំង QR')&&document.querySelector('[role=alert]'),'unconfirmed session closure');
+ check('failed close retains backend pending with truthful error and no automatic checking claim',attempts.get(key('payway',pending.id)).status==='pending'&&!attempts.get(key('payway',pending.id)).checkoutSessionClosedAt&&!document.querySelector('[data-automatic-payment-check]'));
  layout('provider closed card');
 }
 async function sandboxDetailsChecks(){
- reset();const pending={...saved('payway','fixture-sandbox','pending'),environment:'sandbox',checkoutExpiresAt:new Date(Date.now()+600000).toISOString(),serverTime:new Date().toISOString()};put(pending);render('status',{kind:'payway',attemptId:pending.id,checkoutClosed:true});
- await until(()=>document.querySelector('details')&&document.querySelector('time'),'saved sandbox details');const details=document.querySelector('details');details.open=true;
- check('sandbox truth is concise and inside payment details',details.textContent.includes(t('Test payment','ការទូទាត់សាកល្បង'))&&details.closest('[data-payment-card]'));
- layout('sandbox payment details');
+ reset();const pending={...saved('payway','fixture-sandbox','pending'),environment:'sandbox',checkoutExpiresAt:new Date(Date.now()+600000).toISOString(),serverTime:new Date().toISOString()};put(pending);render('status',{kind:'payway',attemptId:pending.id});
+ await until(()=>document.querySelector('[data-payment-summary]')&&document.querySelector('time'),'saved payment summary');const summary=document.querySelector('[data-payment-summary]');
+ check('detail contents stay visible without removed heading or test strip',summary.closest('[data-payment-card]')&&summary.textContent.includes('Fixture Workspace A')&&summary.textContent.includes('fixture-sandbox')&&!document.body.textContent.includes('Payment details')&&!document.body.textContent.includes('Test payment'));
+ check('sandbox metadata is retained without claiming real payment',attempts.get(key('payway',pending.id)).environment==='sandbox'&&heading()===t('Checking payment','កំពុងពិនិត្យការទូទាត់'));
+ layout('saved payment summary');
 }
+async function manualModalPreview(){await checkout();await chooseManual();return {open:Boolean(document.querySelector('dialog[open]'))};}
 async function prepareBuy(){
- let resolve;const discoveryPromise=new Promise(done=>{resolve=done;});reset({holdDiscovery:true,discoveryPromise,resolveDiscovery:resolve});window.fixtureBuyPreflight=true;render('buy',{});
+ let resolve;const discoveryPromise=new Promise(done=>{resolve=done;});reset({holdDiscovery:true,discoveryPromise,resolveDiscovery:resolve,buyRequestStart:requests.length});window.fixtureBuyPreflight=true;render('buy',{});
  await until(()=>button('Buy Standard','ទិញ Standard'),'Buy page');button('Buy Standard','ទិញ Standard').click();
  await until(()=>document.querySelector('button[aria-busy=true]'),'Buy preflight spinner');document.querySelector('button[aria-busy=true]').scrollIntoView({block:'center'});
  check('Buy stays on plan page while discovery runs without standalone legacy page',Boolean(document.querySelector('button[aria-busy=true][disabled] [class*="animate-spin"]'))&&!document.body.textContent.includes('Checking existing payment'));
  layout('Buy preflight button');
 }
-async function finishBuy(){
+async function openBuyChooser(){
  const before=secureTransfers;scenario.holdDiscovery=false;scenario.resolveDiscovery();window.fixtureBuyPreflight=false;
- await until(()=>secureTransfers===before+1,'guarded Buy opens inline provider');await until(()=>heading()===t('Checking payment','កំពុងពិនិត្យការទូទាត់'),'saved Buy status');
- check('Buy opens one inline checkout after preflight, without window.open',secureTransfers===before+1);noPayControls('Buy saved status');layout('Buy status');
+ await until(()=>document.querySelector('[data-checkout-method-chooser]'),'checkout method chooser');
+ check('Buy opens a method chooser with no provider request or default selection',secureTransfers===before&&!document.querySelector('[data-checkout-method-chooser] button[aria-pressed=true]')&&!requests.slice(scenario.buyRequestStart).some(r=>r.path==='/api/payway/checkout'));
+ await until(()=>{const scroller=document.querySelector('[data-buy-checkout]');return scroller&&getComputedStyle(scroller).overflowY==='auto';},'Buy parent commits its bounded checkout scroller');
+ const scroller=document.querySelector('[data-buy-checkout]');check('Checkout remains scrollable inside the bounded dashboard viewport',scroller&&getComputedStyle(scroller).overflowY==='auto');document.querySelector('[data-checkout-method-chooser]').scrollIntoView({block:'center'});
+ layout('Buy method chooser');
+}
+async function finishBuy(){
+ const before=secureTransfers;buttons().find(b=>b.textContent.includes('ABA KHQR')).click();await until(()=>button('Checkout','ទូទាត់')&&!button('Checkout','ទូទាត់').disabled,'selected PayWay action');button('Checkout','ទូទាត់').click();
+ await until(()=>secureTransfers===before+1,'selected method explicitly opens provider');await until(()=>heading()===t('Checking payment','កំពុងពិនិត្យការទូទាត់'),'saved Buy status');
+ check('only selected-method confirmation opens one provider iframe',secureTransfers===before+1);noPayControls('Buy saved status');layout('Buy status');
+}
+async function prepareCancelOverlay(){
+ reset();const pending={...saved('payway','fixture-cancel-overlay','pending'),checkoutExpiresAt:new Date(Date.now()+600000).toISOString(),serverTime:new Date().toISOString()};put(pending);render('status',{kind:'payway',attemptId:pending.id});
+ await until(()=>button('Cancel','បោះបង់')&&!button('Cancel','បោះបង់').disabled,'Cancel ready');
+ const overlay=document.createElement('div');overlay.id='aba-checkout';overlay.innerHTML='<iframe name="aba_webservice" src="about:blank"></iframe>';document.body.appendChild(overlay);document.body.style.overflowY='hidden';
+ button('Cancel','បោះបង់').click();
+}
+async function prepareExpiryOverlay(){
+ reset();const pending={...saved('payway','fixture-expiry-overlay','pending'),checkoutExpiresAt:new Date(Date.now()+2000).toISOString(),serverTime:new Date().toISOString()};put(pending);render('status',{kind:'payway',attemptId:pending.id});
+ await until(()=>document.querySelector('time'),'saved deadline before native expiry');
+ const overlay=document.createElement('div');overlay.id='aba-checkout';overlay.className='aba-checkout-desktop';overlay.innerHTML='<iframe name="aba_webservice" src="about:blank"></iframe>';document.body.appendChild(overlay);document.body.style.overflowY='hidden';
+ return {overlayMounted:Boolean(document.querySelector('#aba-checkout iframe')),bodyLocked:getComputedStyle(document.body).overflowY==='hidden'};
+}
+async function prepareDismissOverlay(){
+ reset();const pending={...saved('payway','fixture-dismiss','pending'),checkoutExpiresAt:new Date(Date.now()+600000).toISOString(),serverTime:new Date().toISOString()};put(pending);render('status',{kind:'payway',attemptId:pending.id});
+ await until(()=>document.querySelector('[data-automatic-payment-check]'),'automatic checking before QR dismissal');
+ const mobile=innerWidth<768,overlay=document.createElement('div');overlay.id=mobile?'aba_checkout_sheet':'aba-checkout';
+ overlay.innerHTML=mobile?'<div id="aba_checkout_app"><iframe name="aba_webservice" src="about:blank"></iframe></div>':'<iframe name="aba_webservice" src="about:blank"></iframe>';
+ if(mobile){overlay.style.display='none';overlay.setAttribute('aria-hidden','true');}
+ document.body.appendChild(overlay);document.body.style.overflowY='hidden';await pause(30);
+ if(mobile){check('hidden mobile QR initialization does not close checkout',!attempts.get(key('payway',pending.id)).checkoutSessionClosedAt);overlay.style.display='block';overlay.setAttribute('aria-hidden','false');await pause(30);overlay.setAttribute('aria-hidden','true');}
+ else overlay.remove();
 }
 async function successChecks() {
   reset({workspaceSwitchFailure:true}); put({...saved('payway','fixture-confirmed','approved','active'),invoiceId:'fixture-invoice'});
@@ -309,6 +369,6 @@ async function navigationChecks() {
   check('workspace navigation failure preserves confirmed success and never verifies payment again',heading()===title && requests.slice(before).filter(r=>r.path==='/api/workspaces/switch').length===1 && !requests.slice(before).some(r=>r.path==='/api/payway/status'||r.path==='/api/payway/checkout'));
 }
 function motionChecks(){check('reduced motion stops the decorative checking animation',matchMedia('(prefers-reduced-motion: reduce)').matches && getComputedStyle(document.querySelector('[class*="border-t-teal-600"]')).animationName==='none');}
-window.paymentAttemptFixture = { prepareBuy, finishBuy, popupCloseChecks, sandboxDetailsChecks, successChecks, navigationChecks, motionChecks, submissionChecks, prepareReload, reloadChecks, statusChecks, preparedChecks, paywayChecks,
+window.paymentAttemptFixture = { manualModalPreview, prepareCancelOverlay, prepareDismissOverlay, openBuyChooser, prepareExpiryOverlay, prepareBuy, finishBuy, popupCloseChecks, sandboxDetailsChecks, successChecks, navigationChecks, motionChecks, submissionChecks, prepareReload, reloadChecks, statusChecks, preparedChecks, paywayChecks,
   result: () => ({ checks: [...checks], requests: [...requests], uploads: [...uploads], navigations: [...navigations], secureTransfers, mockedOnly: true, paymentBytesTransferred: 0, language: window.fixtureLanguage }) };
 if (restored && params.get('manual_request')) render('status', { kind: 'manual', attemptId: params.get('manual_request') });

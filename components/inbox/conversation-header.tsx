@@ -329,7 +329,7 @@ export function ConversationHeader({
     }}>
       <div className="flex min-h-[82px] w-full flex-wrap items-center justify-between gap-3 border-b border-slate-200/90 bg-white px-4 py-2.5 shadow-[0_5px_18px_rgba(15,23,42,0.055)]">
         <button data-inbox-chat-back type="button" onClick={onBack} aria-label={isKhmer ? "ត្រឡប់ទៅការសន្ទនា" : "Back to conversations"}><ArrowLeft className="h-5 w-5" /></button>
-        {compactWeb && <div data-inbox-chat-avatar><CustomerAvatar src={conversation.contact?.profile_picture_url} name={customerName} contactId={conversation.contact?.id} platform={channelPlatform} eager className="h-10 w-10" /></div>}
+        {compactWeb && <div data-inbox-chat-avatar><CustomerAvatar src={conversation.contact?.profile_picture_url} name={customerName} contactId={conversation.contact?.id} businessId={conversation.business_id} platform={channelPlatform} eager className="h-10 w-10" /></div>}
         <div data-inbox-chat-identity className="min-w-0 basis-48 flex-1">
           <p className="truncate text-[18px] font-bold leading-tight tracking-[-0.02em] text-slate-950">
             {customerName}
