@@ -43,9 +43,9 @@ async function fixture() {
 test('pilot stays off without both the server flag and an explicit private authorization', async () => {
   const f = await fixture();
   try {
-    assert.equal((await f.postCheckout()).status, 503);
+    assert.equal((await f.postCheckout()).status, 410);
     await f.authorize(); f.env.BAKONG_PILOT_ENABLED = 'false';
-    assert.equal((await f.postCheckout()).status, 503);
+    assert.equal((await f.postCheckout()).status, 410);
     assert.equal(f.state.calls, 0);
     assert.equal((await f.db.query('select count(*)::int n from billing_transactions')).rows[0].n, 0);
     assert.equal((await f.db.query('select count(*)::int n from tenh_bakong_private.capacity_reviews')).rows[0].n, 0);
@@ -104,7 +104,7 @@ test('parallel preparation and a lost reply preserve one issued quote and a life
   const f = await fixture();
   try {
     await f.authorize(); f.state.losePrepare = true;
-    const [one, two] = await Promise.all([f.start(), f.start()]);
+    const [one, two] = await Promise.all([f.seedExistingAttempt(), f.seedExistingAttempt()]);
     assert.equal(one.attemptId, two.attemptId);
     const row = (await f.db.query('select * from tenh_bakong_private.pilot_authorizations')).rows[0];
     assert.equal(row.attempt_id, one.attemptId);
@@ -115,7 +115,7 @@ test('parallel preparation and a lost reply preserve one issued quote and a life
     assert.equal(view.pilot_authorization_id, undefined);
     assert.ok(!JSON.stringify(view).includes(f.config.fingerprint));
     const freshIntent = await f.postCheckout({ ...f.body, purchaseIntent: randomUUID() });
-    assert.equal((await freshIntent.json()).attemptId, one.attemptId);
+    assert.equal(freshIntent.status, 410);
     assert.equal((await f.db.query('select count(*)::int n from bakong_payment_attempts')).rows[0].n, 1);
     await assert.rejects(f.db.query('update tenh_bakong_private.pilot_authorizations set approved_max_cents=approved_max_cents+1'), /immutable/);
     await assert.rejects(f.db.query('delete from tenh_bakong_private.pilot_authorizations'), /Retain/);
@@ -125,7 +125,7 @@ test('parallel preparation and a lost reply preserve one issued quote and a life
 test('customer/admin concurrent checks and failed inquiries share a hard lifetime cap of three', async () => {
   const f = await fixture();
   try {
-    await f.authorize(); const started = await f.start(); f.state.observation = 'unresolved'; f.state.admin = true;
+    await f.authorize(); const started = await f.seedExistingAttempt(); f.state.observation = 'unresolved'; f.state.admin = true;
     const admin = f.load('app/api/bakong/admin/route.ts');
     const reconcile = () => admin.POST(f.post('/api/bakong/admin', { attemptId: started.attemptId, action: 'reconcile' }));
     await Promise.all([f.check(started.attemptId), reconcile(), f.check(started.attemptId)]);
@@ -149,14 +149,14 @@ test('customer/admin concurrent checks and failed inquiries share a hard lifetim
 test('revocation stops new inquiries but retains the saved obligation and audit trail', async () => {
   const f = await fixture();
   try {
-    const authorization = await f.authorize(), started = await f.start();
+    const authorization = await f.authorize(), started = await f.seedExistingAttempt();
     await f.db.query('update tenh_bakong_private.pilot_authorizations set revoked_at=clock_timestamp() where id=$1', [authorization]);
     await f.check(started.attemptId);
     assert.equal(f.state.calls, 0);
     const view = (await (await f.read(started.attemptId)).json()).attempt;
     assert.equal(view.reconciliationRequired, true); assert.equal(view.qrImage, null); assert.equal(view.canCheck, false);
     assert.equal((await f.db.query('select count(*)::int n from tenh_bakong_private.pilot_audit')).rows[0].n, 3);
-    assert.equal((await f.start()).attemptId, started.attemptId, 'reopening saved evidence never creates another transfer');
+    assert.equal((await f.seedExistingAttempt()).attemptId, started.attemptId, 'reopening saved evidence never creates another transfer');
     await assert.rejects(f.db.exec('update tenh_bakong_private.pilot_authorizations set revoked_at=null'), /immutable/);
   } finally { await f.db.close(); }
 });
@@ -164,13 +164,13 @@ test('revocation stops new inquiries but retains the saved obligation and audit 
 test('expired pilot stops issuance and further inquiries without clearing the payment evidence', async () => {
   const f = await fixture();
   try {
-    await f.authorize(); const started = await f.start();
+    await f.authorize(); const started = await f.seedExistingAttempt();
     // Age only the isolated fixture; production approvals cannot change their deadlines.
     await f.db.exec("alter table tenh_bakong_private.pilot_authorizations disable trigger bakong_protect_pilot; update tenh_bakong_private.pilot_authorizations set authorized_at=authorized_at-interval '2 hours',issue_until=issue_until-interval '2 hours',inquiry_until=inquiry_until-interval '2 hours'; alter table tenh_bakong_private.pilot_authorizations enable trigger bakong_protect_pilot");
     await f.check(started.attemptId); assert.equal(f.state.calls,0);
     const view = (await (await f.read(started.attemptId)).json()).attempt;
     assert.equal(view.canCheck,false); assert.equal(view.qrImage,null); assert.equal(view.reconciliationRequired,true);
-    assert.equal((await f.start()).attemptId,started.attemptId);
+    assert.equal((await f.seedExistingAttempt()).attemptId,started.attemptId);
     assert.equal((await f.db.query('select count(*)::int n from billing_transactions where status=\'pending\'')).rows[0].n,1);
     assert.equal((await f.subscription()).channel_limit,12);
   } finally { await f.db.close(); }
@@ -179,7 +179,7 @@ test('expired pilot stops issuance and further inquiries without clearing the pa
 test('provider-verified evidence survives invoice failure and remains applicable after pilot switch-off', async () => {
   const f = await fixture();
   try {
-    await f.authorize(); const started = await f.start();
+    await f.authorize(); const started = await f.seedExistingAttempt();
     await f.db.exec("create function fixture_pilot_invoice_failure() returns trigger language plpgsql as $$begin raise exception 'fixture invoice unavailable'; end$$; create trigger fixture_pilot_invoice_failure before insert on tenh_billing_invoices for each row execute function fixture_pilot_invoice_failure()");
     const first = (await (await f.check(started.attemptId)).json()).attempt;
     assert.equal(first.state,'verified'); assert.equal(f.state.calls,1);
@@ -208,7 +208,7 @@ test('migration keeps existing normal preparation, verification and application 
 test('a verified pilot retains authoritative exactly-once activation, users, paid expiry and invoice', async () => {
   const f = await fixture();
   try {
-    await f.authorize(); const before = await f.subscription(), started = await f.start();
+    await f.authorize(); const before = await f.subscription(), started = await f.seedExistingAttempt();
     const first = (await (await f.check(started.attemptId)).json()).attempt;
     assert.equal(first.state, 'applied'); assert.equal(first.application, 'active'); assert.equal(f.state.calls, 1);
     const after = await f.subscription();

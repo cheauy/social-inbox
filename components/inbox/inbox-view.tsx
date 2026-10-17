@@ -44,6 +44,7 @@ import { useUrlConversationSelection } from "@/lib/inbox/use-url-conversation-se
 import { retainLocalImagePreview } from "@/lib/inbox/local-image-preview";
 import { readMessagePageResponse } from "@/lib/inbox/read-message-page-response";
 import { latestCustomerChannel } from "@/lib/inbox/latest-customer-channel";
+import { useArrivalNotifications } from "@/lib/inbox/use-arrival-notifications";
 import { CustomerProfile } from "@/components/inbox/customer-profile";
 import { CustomerTimelineModal } from "@/components/inbox/customer-timeline-modal";
 import type { InboxViewProps } from "@/components/inbox/inbox-view-types";
@@ -821,10 +822,10 @@ const previousActiveConversationIdRef =
     setRawLiveMessages,
   ] = useState(() => normalizeMessages(messages));
   const setLiveMessages = useCallback((update: InboxMessage[] | ((current: InboxMessage[]) => InboxMessage[])) => {
-    setRawLiveMessages((current) => normalizeMessages(
-      typeof update === "function" ? update(current) : update,
-      current,
-    ));
+    setRawLiveMessages((current) => {
+      const next = typeof update === "function" ? update(current) : update;
+      return next === current ? current : normalizeMessages(next, current);
+    });
   }, []);
 
   /*
@@ -1095,7 +1096,7 @@ const previousActiveConversationIdRef =
    * ConversationList, so browsers receive a real user gesture.
    */
   const {
-    notifyIncomingMessage,
+    notifyIncomingMessage: deliverIncomingNotification,
   } = useBrowserNotifications();
 
   const pendingSendsRef =
@@ -1185,17 +1186,6 @@ const previousActiveConversationIdRef =
   const handledIncomingMessageIdsRef =
     useRef<Set<string>>(
       new Set(),
-    );
-
-  /*
-   * Sound dedupe across the three live paths: message INSERT Realtime,
-   * conversation UPDATE fallback, and active-thread polling. A conversation
-   * UPDATE can arrive before its message INSERT, so message id alone cannot
-   * prevent a double alert. The platform-created/latest-message timestamp can.
-   */
-  const lastSoundedIncomingMessageTimeRef =
-    useRef<Map<string, number>>(
-      new Map(),
     );
 
   /*
@@ -1516,6 +1506,19 @@ const realtimeBusinessIds =
     [accessibleBusinessIds],
   );
 
+const { enqueue: notifyIncomingMessage, onListCommit: acknowledgeArrivalList } = useArrivalNotifications({
+  scopeKey: JSON.stringify([currentMemberId, currentBusinessId, [...realtimeBusinessIds].sort()]),
+  listKey: JSON.stringify([searchParams.get("status") || "all", searchParams.get("view") || "all",
+    searchParams.get("channel") || searchParams.get("page") || null, searchParams.get("workspace") || null]),
+  activeConversationId: resolvedActiveConversationId,
+  conversations: liveConversations,
+  unreadOnly: searchParams.get("view") === "unread",
+  waitForNewConversation: (!searchParams.get("status") || searchParams.get("status") === "all") &&
+    !searchParams.get("channel") && !searchParams.get("page") && !searchParams.get("workspace") &&
+    ["all", "unread"].includes(searchParams.get("view") ?? "all"),
+  messages: liveMessages,
+  notify: deliverIncomingNotification,
+});
 
 /*
  * V2.6 — agent presence + typing indicator.
@@ -2368,40 +2371,17 @@ useInboxRealtime({
 
         const incomingMessageTime =
           new Date(lastMessageAt).getTime();
-        const lastSoundedIncomingTime =
-          lastSoundedIncomingMessageTimeRef.current.get(
-            conversationId,
-          ) ?? 0;
-        const alreadySoundedThisIncoming =
-          Number.isFinite(incomingMessageTime) &&
-          incomingMessageTime > 0 &&
-          lastSoundedIncomingTime > 0 &&
-          Math.abs(
-            incomingMessageTime - lastSoundedIncomingTime,
-          ) <= 100;
-
-        if (!alreadySoundedThisIncoming) {
-          notifyIncomingMessage({
+        notifyIncomingMessage({
             messageId,
             conversationId,
+            messageTime: incomingMessageTime,
             customerName:
               getIncomingNotificationCustomerName(
                 conversationId,
                 notificationConversation,
               ),
             body: preview,
-          });
-
-          if (
-            Number.isFinite(incomingMessageTime) &&
-            incomingMessageTime > 0
-          ) {
-            lastSoundedIncomingMessageTimeRef.current.set(
-              conversationId,
-              incomingMessageTime,
-            );
-          }
-        }
+        });
         const existingReadBarrier =
           readBarrierMessageTimeRef.current.get(
             conversationId,
@@ -3033,21 +3013,11 @@ useInboxRealtime({
         !hasRecentIncomingSignal &&
         rowLastMessageValue
       ) {
-        const lastSoundedIncomingTime =
-          lastSoundedIncomingMessageTimeRef.current.get(
-            conversationId,
-          ) ?? 0;
-        const alreadySoundedThisIncoming =
-          rowLastMessageTime > 0 &&
-          lastSoundedIncomingTime > 0 &&
-          Math.abs(
-            rowLastMessageTime - lastSoundedIncomingTime,
-          ) <= 100;
-
-        if (!alreadySoundedThisIncoming) {
-          notifyIncomingMessage({
+        notifyIncomingMessage({
             messageId: `conversation-${conversationId}-${rowLastMessageValue}`,
             conversationId,
+            messageTime: rowLastMessageTime,
+            fallback: true,
             customerName:
               getIncomingNotificationCustomerName(
                 conversationId,
@@ -3058,15 +3028,7 @@ useInboxRealtime({
               row.last_message_text.trim()
                 ? row.last_message_text.trim()
                 : "New message",
-          });
-
-          if (rowLastMessageTime > 0) {
-            lastSoundedIncomingMessageTimeRef.current.set(
-              conversationId,
-              rowLastMessageTime,
-            );
-          }
-        }
+        });
       }
 
       if (unreadComesFromNewMessage && hasRecentIncomingSignal) {
@@ -3477,21 +3439,11 @@ useEffect(() => {
           continue;
         }
 
-        const lastSoundedIncomingTime =
-          lastSoundedIncomingMessageTimeRef.current.get(state.id) ?? 0;
-        const alreadySoundedThisIncoming =
-          lastSoundedIncomingTime > 0 &&
-          Math.abs(
-            serverLastMessageTime - lastSoundedIncomingTime,
-          ) <= 100;
-
-        if (alreadySoundedThisIncoming) {
-          continue;
-        }
-
         notifyIncomingMessage({
           messageId: `fallback-${state.id}-${state.last_message_at}`,
           conversationId: state.id,
+          messageTime: serverLastMessageTime,
+          fallback: true,
           customerName:
             currentConversation.contact?.full_name?.trim() ||
             "Facebook customer",
@@ -3500,10 +3452,6 @@ useEffect(() => {
             "New message",
         });
 
-        lastSoundedIncomingMessageTimeRef.current.set(
-          state.id,
-          serverLastMessageTime,
-        );
       }
 
       setLiveConversations((current) => {
@@ -4952,6 +4900,7 @@ useEffect(() => {
   let requestTimeout: number | null = null;
   let resyncTimer: number | null = null;
   let failures = 0;
+  let resyncPending = false;
 
   /*
    * Seed the fallback with messages already loaded for this thread. If the
@@ -5046,7 +4995,7 @@ useEffect(() => {
       needsSort = true;
     }
 
-    return needsSort ? merged.sort(
+    const ordered = needsSort ? merged.sort(
       (first, second) => {
         const timeDifference =
           messageOrderMs(first) -
@@ -5057,6 +5006,9 @@ useEffect(() => {
           : first.id.localeCompare(second.id);
       },
     ) : merged;
+    // Unchanged safety-net pages should not re-render the whole thread.
+    return ordered.length === current.length && ordered.every((message, index) =>
+      message === current[index] || JSON.stringify(message) === JSON.stringify(current[index])) ? current : ordered;
   };
 
   async function syncNewestMessages() {
@@ -5076,11 +5028,14 @@ useEffect(() => {
     requestTimeout = timeout;
 
     try {
+      // A cold selection/prefetch already owns the same newest-page read.
+      // Join that flight rather than competing with it at every chat switch.
+      const pendingPage = conversationMessageRequestRef.current[conversationId];
       const params = new URLSearchParams({
         limit: String(MESSAGE_PAGE_SIZE),
         live: String(Date.now()),
       });
-      const response = await fetch(
+      const result = await (pendingPage ?? fetch(
         `/api/conversations/${conversationId}/messages?${params.toString()}`,
         {
           method: "GET",
@@ -5090,8 +5045,8 @@ useEffect(() => {
             Accept: "application/json",
           },
         },
-      );
-      const result = await readMessagePageResponse(response);
+      ).then(readMessagePageResponse));
+      requestController.signal.throwIfAborted();
       failures = 0;
 
       const newestMessages = Array.isArray(result.messages)
@@ -5143,41 +5098,22 @@ useEffect(() => {
           incomingMessageAt
             ? new Date(incomingMessageAt).getTime()
             : 0;
-        const lastSoundedIncomingTime =
-          lastSoundedIncomingMessageTimeRef.current.get(
-            conversationId,
-          ) ?? 0;
-        const alreadySoundedThisIncoming =
-          incomingMessageTime > 0 &&
-          lastSoundedIncomingTime > 0 &&
-          Math.abs(
-            incomingMessageTime - lastSoundedIncomingTime,
-          ) <= 100;
-
-        if (!alreadySoundedThisIncoming) {
-          notifyIncomingMessage({
+        notifyIncomingMessage({
             messageId: message.id,
             conversationId,
+            messageTime: incomingMessageTime,
             customerName:
               notificationConversation?.contact?.full_name?.trim() ||
               "Facebook customer",
             body: getRealtimeMessagePreview(
               message as unknown as Record<string, unknown>,
             ),
-          });
-
-          if (incomingMessageTime > 0) {
-            lastSoundedIncomingMessageTimeRef.current.set(
-              conversationId,
-              incomingMessageTime,
-            );
-          }
-        }
+        });
       }
 
       setLiveMessages((current) => {
         const nextMessages = mergeNewestPage(
-          current.filter(
+          current.every(message => message.conversation_id === conversationId) ? current : current.filter(
             (message) =>
               message.conversation_id ===
               conversationId,
@@ -5227,6 +5163,7 @@ useEffect(() => {
                 return conversation;
               }
 
+              if (conversation.last_message_text === latestPreview && conversation.last_message_at === latestMessageAt) return conversation;
               return {
                 ...conversation,
                 last_message_text: latestPreview,
@@ -5249,6 +5186,12 @@ useEffect(() => {
       requestTimeout = null;
       controller = null;
       inFlight = false;
+      // A row advance during this read can describe a message outside its
+      // snapshot. Coalesce those signals into one trailing authoritative read.
+      if (resyncPending && !cancelled) {
+        resyncPending = false;
+        void syncNewestMessages();
+      }
     }
   }
 
@@ -5276,7 +5219,9 @@ useEffect(() => {
    */
   function requestMessageResync(event: Event) {
     const id = (event as CustomEvent<{ conversationId?: string }>).detail?.conversationId;
-    if (id && id !== conversationId || resyncTimer !== null) return;
+    if (id && id !== conversationId) return;
+    if (inFlight) { resyncPending = true; return; }
+    if (resyncTimer !== null) return;
     resyncTimer = window.setTimeout(() => { resyncTimer = null; void syncNewestMessages(); }, 150);
   }
   window.addEventListener(INBOX_SYNC_EVENT, requestMessageResync);
@@ -8931,6 +8876,7 @@ return (
      <ConversationList
   pagination={pagination}
   onPageRows={handlePageRows}
+  onArrivalListCommit={acknowledgeArrivalList}
   conversations={liveConversations}
   onMarkAllRead={handleMarkAllRead}
   markingAllRead={markingAllRead}

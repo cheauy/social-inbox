@@ -1,0 +1,186 @@
+{
+  "kind": "compiled CSS contract, no browser layout measurement",
+  "rules": [
+    {
+      "selectors": [
+        ".grid-cols-2"
+      ],
+      "media": [],
+      "value": "repeat(2, minmax(0, 1fr))"
+    },
+    {
+      "selectors": [
+        ".grid-cols-3"
+      ],
+      "media": [],
+      "value": "repeat(3, minmax(0, 1fr))"
+    },
+    {
+      "selectors": [
+        ".grid-cols-4"
+      ],
+      "media": [],
+      "value": "repeat(4, minmax(0, 1fr))"
+    },
+    {
+      "selectors": [
+        ".min-\\[390px\\]\\:grid-cols-3"
+      ],
+      "media": [
+        "(width >= 390px)"
+      ],
+      "value": "repeat(3, minmax(0, 1fr))"
+    },
+    {
+      "selectors": [
+        ".min-\\[480px\\]\\:grid-cols-2"
+      ],
+      "media": [
+        "(width >= 480px)"
+      ],
+      "value": "repeat(2, minmax(0, 1fr))"
+    },
+    {
+      "selectors": [
+        ".min-\\[900px\\]\\:grid-cols-2"
+      ],
+      "media": [
+        "(width >= 900px)"
+      ],
+      "value": "repeat(2, minmax(0, 1fr))"
+    },
+    {
+      "selectors": [
+        ".sm\\:grid-cols-2"
+      ],
+      "media": [
+        "(width >= 40rem)"
+      ],
+      "value": "repeat(2, minmax(0, 1fr))"
+    },
+    {
+      "selectors": [
+        ".sm\\:grid-cols-3"
+      ],
+      "media": [
+        "(width >= 40rem)"
+      ],
+      "value": "repeat(3, minmax(0, 1fr))"
+    },
+    {
+      "selectors": [
+        ".sm\\:grid-cols-4"
+      ],
+      "media": [
+        "(width >= 40rem)"
+      ],
+      "value": "repeat(4, minmax(0, 1fr))"
+    },
+    {
+      "selectors": [
+        ".md\\:grid-cols-2"
+      ],
+      "media": [
+        "(width >= 48rem)"
+      ],
+      "value": "repeat(2, minmax(0, 1fr))"
+    },
+    {
+      "selectors": [
+        ".md\\:grid-cols-3"
+      ],
+      "media": [
+        "(width >= 48rem)"
+      ],
+      "value": "repeat(3, minmax(0, 1fr))"
+    },
+    {
+      "selectors": [
+        ".md\\:grid-cols-5"
+      ],
+      "media": [
+        "(width >= 48rem)"
+      ],
+      "value": "repeat(5, minmax(0, 1fr))"
+    },
+    {
+      "selectors": [
+        ".lg\\:grid-cols-2"
+      ],
+      "media": [
+        "(width >= 64rem)"
+      ],
+      "value": "repeat(2, minmax(0, 1fr))"
+    },
+    {
+      "selectors": [
+        ".lg\\:grid-cols-3"
+      ],
+      "media": [
+        "(width >= 64rem)"
+      ],
+      "value": "repeat(3, minmax(0, 1fr))"
+    },
+    {
+      "selectors": [
+        ".lg\\:grid-cols-4"
+      ],
+      "media": [
+        "(width >= 64rem)"
+      ],
+      "value": "repeat(4, minmax(0, 1fr))"
+    },
+    {
+      "selectors": [
+        ".lg\\:grid-cols-8"
+      ],
+      "media": [
+        "(width >= 64rem)"
+      ],
+      "value": "repeat(8, minmax(0, 1fr))"
+    },
+    {
+      "selectors": [
+        ".xl\\:grid-cols-2"
+      ],
+      "media": [
+        "(width >= 80rem)"
+      ],
+      "value": "repeat(2, minmax(0, 1fr))"
+    },
+    {
+      "selectors": [
+        ".xl\\:grid-cols-3"
+      ],
+      "media": [
+        "(width >= 80rem)"
+      ],
+      "value": "repeat(3, minmax(0, 1fr))"
+    },
+    {
+      "selectors": [
+        ".xl\\:grid-cols-4"
+      ],
+      "media": [
+        "(width >= 80rem)"
+      ],
+      "value": "repeat(4, minmax(0, 1fr))"
+    },
+    {
+      "selectors": [
+        ".xl\\:grid-cols-5"
+      ],
+      "media": [
+        "(width >= 80rem)"
+      ],
+      "value": "repeat(5, minmax(0, 1fr))"
+    },
+    {
+      "selectors": [
+        ".\\@min-\\[640px\\]\\:grid-cols-2"
+      ],
+      "media": [],
+      "value": "repeat(2, minmax(0, 1fr))"
+    }
+  ]
+}

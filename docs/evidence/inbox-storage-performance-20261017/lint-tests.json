@@ -1,0 +1,48 @@
+[
+  {
+    "filePath": "C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-inbox-perf-20261017\\tests\\fixtures\\workspace-storage-browser.entry.cjs",
+    "errorCount": 0,
+    "warningCount": 1,
+    "messages": [
+      {
+        "ruleId": null,
+        "severity": 1,
+        "line": 1,
+        "column": 1,
+        "message": "Unused eslint-disable directive (no problems were reported from '@typescript-eslint/no-require-imports')."
+      }
+    ]
+  },
+  {
+    "filePath": "C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-inbox-perf-20261017\\tests\\inbox-arrival-notifications.test.cjs",
+    "errorCount": 0,
+    "warningCount": 0,
+    "messages": []
+  },
+  {
+    "filePath": "C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-inbox-perf-20261017\\tests\\inbox-performance-measure.cjs",
+    "errorCount": 0,
+    "warningCount": 0,
+    "messages": []
+  },
+  {
+    "filePath": "C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-inbox-perf-20261017\\tests\\inbox-server-paging.test.cjs",
+    "errorCount": 0,
+    "warningCount": 1,
+    "messages": [
+      {
+        "ruleId": "@typescript-eslint/no-unused-vars",
+        "severity": 1,
+        "line": 117,
+        "column": 44,
+        "message": "'body' is defined but never used."
+      }
+    ]
+  },
+  {
+    "filePath": "C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-inbox-perf-20261017\\tests\\live-message-fallback\\polling.test.cjs",
+    "errorCount": 0,
+    "warningCount": 0,
+    "messages": []
+  }
+]

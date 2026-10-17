@@ -67,17 +67,39 @@ async function fixture(environment = 'sandbox', accountType = 'merchant', lifecy
   const post = (url, payload, headers = {}) => new Request('https://app.tenhchat.com' + url, { method: 'POST', headers: { Origin: 'https://app.tenhchat.com', 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(payload) });
   return { ...ctx, seeded, userId, memberId, state, config, env, pg, load, body, post, checkout, status,
     async capacity() { await ctx.db.query("insert into tenh_bakong_private.capacity_reviews values($1,$2,'production',true,100,100,20,'synthetic fixture review',$3,now())", [config.fingerprint, config.accountId,userId]); },
-    async start() { const response = await checkout.POST(post('/api/bakong/checkout', body)); assert.equal(response.status,200,JSON.stringify({response:await response.clone().json(),rpcError:state.lastRpcError})); return response.json(); },
+    // Arrange a previously issued payment in isolated PostgreSQL, never through the retired HTTP checkout.
+    async seedExistingAttempt() {
+      const existing = (await pg.from('bakong_payment_attempts').select('*').eq('business_id', body.businessId).eq('user_id', state.userId).eq('intent_id', body.purchaseIntent).maybeSingle()).data;
+      if (existing) return { attemptId: existing.id };
+      const pending = await load('lib/bakong/payments.ts').pendingBakong(body.businessId);
+      if (pending) return { attemptId: pending };
+      const subscription = (await pg.from('business_subscriptions').select('*').eq('business_id', body.businessId).maybeSingle()).data;
+      const pricing = load('lib/billing/subscription-purchase.ts');
+      const trusted = pricing.getTrustedPlan(body.planCode, body.billingCycle, body.connections, body.users, body.renewSame, body.customUpgrade, body.extensionBillingCycle, subscription);
+      assert.ok(trusted);
+      const id = randomUUID(), qr = provider.generateBakongQr(config, id, trusted.quote.totalCents);
+      const selection = Object.fromEntries(Object.entries(body).filter(([key]) => !['businessId','purchaseIntent'].includes(key)));
+      const result = await pg.rpc('tenh_prepare_bakong_payment', { p_record: pricing.buildPurchaseRecord(id, body.businessId, memberId, trusted, subscription),
+        p_actor: state.userId, p_member: memberId, p_intent: body.purchaseIntent, p_selection: selection, p_environment: config.environment,
+        p_fingerprint: config.fingerprint, p_recipient: config.accountId, p_qr: qr.qr, p_md5: qr.md5,
+        p_reference: qr.reference, p_expires_at: qr.expiresAt, p_budget: config.dailyBudget });
+      if (result.error) {
+        const recovered = await load('lib/bakong/payments.ts').pendingBakong(body.businessId);
+        if (recovered) return { attemptId: recovered };
+        throw new Error(result.error.message ?? result.error.code);
+      }
+      return { attemptId: result.data.id };
+    },
     async check(id) { return status.POST(post('/api/bakong/payments/' + id, { businessId: seeded.businessId, action: 'check' }), { params: Promise.resolve({attemptId:id}) }); },
     async read(id, businessId = seeded.businessId) { return status.GET(new Request(`https://app.tenhchat.com/api/bakong/payments/${id}?purchase_business=${businessId}`), { params: Promise.resolve({attemptId:id}) }); }
   };
 }
 
-test('server quote, lost response, concurrent clicks and cross-tab checks retain one exact attempt', async () => {
+test('server quote and existing saved evidence survive retirement and cross-tab checks', async () => {
   const f = await fixture();
   try {
     f.state.losePrepare = true;
-    const [one,two] = await Promise.all([f.start(),f.start()]);
+    const [one,two] = await Promise.all([f.seedExistingAttempt(),f.seedExistingAttempt()]);
     assert.equal(one.attemptId,two.attemptId);
     assert.equal((await f.db.query('select count(*)::int n from billing_transactions')).rows[0].n,1);
     const view = await (await f.read(one.attemptId)).json();
@@ -91,7 +113,7 @@ test('server quote, lost response, concurrent clicks and cross-tab checks retain
     await Promise.all([f.check(one.attemptId), f.check(one.attemptId)]);
     assert.equal(f.state.calls,1);
     assert.equal((await (await f.read(one.attemptId)).json()).attempt.state,'test_paid');
-    assert.equal((await f.start()).attemptId,one.attemptId,'reopening the same intent cannot mint another obligation');
+    assert.equal((await f.seedExistingAttempt()).attemptId,one.attemptId,'reopening the same intent cannot mint another obligation');
     const resumed = await (await f.checkout.GET(new Request('https://app.tenhchat.com/api/bakong/checkout?purchase_business='+f.body.businessId+'&purchase_intent='+f.body.purchaseIntent))).json();
     assert.equal(resumed.resumeAttemptId,one.attemptId,'a lost response after settlement restores the original intent');
     const history = await (await f.load('app/api/subscription/billing-history/route.ts').GET()).json();
@@ -103,7 +125,7 @@ test('server quote, lost response, concurrent clicks and cross-tab checks retain
 test('provider errors preserve the attempt, shared cooldowns and private evidence; admin reconciliation remains role-gated', async () => {
   const f = await fixture();
   try {
-    const started = await f.start(); f.state.observation = 'unresolved';
+    const started = await f.seedExistingAttempt(); f.state.observation = 'unresolved';
     const result = await (await f.check(started.attemptId)).json();
     assert.equal(result.attempt.state,'pending'); assert.equal(result.attempt.qrImage,null);
     assert.ok(Date.parse(result.attempt.nextCheckAt) - Date.parse(result.attempt.serverTime) > 7000000);
@@ -121,7 +143,7 @@ test('provider errors preserve the attempt, shared cooldowns and private evidenc
 test('verified payment with a temporary invoice failure retries application without another provider request or charge', async () => {
   const f = await fixture('production');
   try {
-    await f.capacity(); const started = await f.start();
+    await f.capacity(); const started = await f.seedExistingAttempt();
     await f.db.exec("create function fixture_api_invoice_failure() returns trigger language plpgsql as $$begin raise exception 'temporary fixture error'; end$$; create trigger fixture_api_invoice_failure before insert on tenh_billing_invoices for each row execute function fixture_api_invoice_failure();");
     const first = await (await f.check(started.attemptId)).json();
     assert.equal(first.attempt.state,'verified'); assert.equal(first.attempt.application,'none'); assert.equal(first.attempt.qrImage,null);
@@ -134,7 +156,7 @@ test('verified payment with a temporary invoice failure retries application with
 test('workspace ownership, removed users, missing sessions, forged state and strict CSRF fail before provider calls', async () => {
   const f = await fixture();
   try {
-    const started = await f.start();
+    const started = await f.seedExistingAttempt();
     for (const headers of [{Origin:'https://evil.tenhchat.com'}, {Origin:'null'}, {'Content-Type':'text/plain'}]) {
       const response = await f.checkout.POST(f.post('/api/bakong/checkout',f.body,headers)); assert.ok([403,415].includes(response.status));
     }
@@ -147,15 +169,15 @@ test('workspace ownership, removed users, missing sessions, forged state and str
   } finally { await f.db.close(); }
 });
 
-test('production remains unavailable without reviewed credential capacity; approved fixture activates once and issues a TENH receipt', async () => {
+test('production checkout remains retired even with approved capacity; saved payment activates once and issues a TENH receipt', async () => {
   const f = await fixture('production');
   try {
     const readiness = () => f.checkout.GET(new Request('https://app.tenhchat.com/api/bakong/checkout?purchase_business='+f.body.businessId));
     assert.equal((await (await readiness()).json()).enabled,false);
-    assert.equal((await f.checkout.POST(f.post('/api/bakong/checkout',f.body))).status,503);
+    assert.equal((await f.checkout.POST(f.post('/api/bakong/checkout',f.body))).status,410);
     assert.equal((await f.db.query('select count(*)::int n from billing_transactions')).rows[0].n,0);
-    await f.capacity(); assert.equal((await (await readiness()).json()).enabled,true);
-    const started = await f.start(), result = await (await f.check(started.attemptId)).json();
+    await f.capacity(); assert.equal((await (await readiness()).json()).enabled,false);
+    const started = await f.seedExistingAttempt(), result = await (await f.check(started.attemptId)).json();
     assert.equal(result.attempt.state,'applied'); assert.equal(result.attempt.application,'active'); assert.ok(result.attempt.invoiceId);
     await f.check(started.attemptId); assert.equal(f.state.calls,1);
     const history = await f.load('app/api/subscription/billing-history/route.ts').GET();
@@ -164,14 +186,14 @@ test('production remains unavailable without reviewed credential capacity; appro
 });
 
 
-test('invalid selection types and mutated intent cannot alter an issued quote or call the provider', async () => {
+test('retired selection and mutated intent cannot alter an issued quote or call the provider', async () => {
   const f=await fixture();
   try {
     for(const extra of [{renewSame:'true'},{customUpgrade:1},{connections:'5'},{users:1.5},{users:-1}]) {
-      assert.equal((await f.checkout.POST(f.post('/api/bakong/checkout',{...f.body,...extra}))).status,400);
+      assert.equal((await f.checkout.POST(f.post('/api/bakong/checkout',{...f.body,...extra}))).status,410);
     }
-    const started=await f.start();
-    assert.equal((await f.checkout.POST(f.post('/api/bakong/checkout',{...f.body,planCode:'pro'}))).status,400);
+    const started=await f.seedExistingAttempt();
+    assert.equal((await f.checkout.POST(f.post('/api/bakong/checkout',{...f.body,planCode:'pro'}))).status,410);
     assert.equal((await f.read(started.attemptId)).status,200);assert.equal(f.state.calls,0);
   }finally{await f.db.close();}
 });
@@ -189,7 +211,7 @@ test('Bakong reuses CHAT renewal, custom upgrade and trial-conversion quotes and
       const baseline=(await f.pg.from('business_subscriptions').select('*').eq('business_id',f.body.businessId).maybeSingle()).data;
       const trusted=f.load('lib/billing/subscription-purchase.ts').getTrustedPlan(f.body.planCode,f.body.billingCycle,f.body.connections,f.body.users,f.body.renewSame,f.body.customUpgrade,f.body.extensionBillingCycle,baseline);
       assert.ok(trusted,scenario);
-      const started=await f.start(), saved=(await f.db.query('select * from billing_transactions where id=$1',[started.attemptId])).rows[0];
+      const started=await f.seedExistingAttempt(), saved=(await f.db.query('select * from billing_transactions where id=$1',[started.attemptId])).rows[0];
       assert.equal(saved.amount,trusted.amount);assert.equal(saved.currency,'USD');assert.equal(saved.pricing_snapshot.purchase_type,trusted.purchaseType);
       const result=await(await f.check(started.attemptId)).json();assert.equal(result.attempt.state,'applied',JSON.stringify(result));
       const current=(await f.db.query('select * from business_subscriptions where business_id=$1',[f.body.businessId])).rows[0];
@@ -206,8 +228,8 @@ test('Bakong reuses CHAT renewal, custom upgrade and trial-conversion quotes and
 test('pre-existing active same-plan SQL purchase guard remains authoritative',async()=>{
   const f=await fixture('production');try{
     await f.capacity();await f.db.query("update business_subscriptions set status='active',current_period_start=date_trunc('second',now()),current_period_end=date_trunc('second',now())+interval '1 month' where business_id=$1",[f.body.businessId]);
-    const response=await f.checkout.POST(f.post('/api/bakong/checkout',f.body));assert.equal(response.status,503);
-    assert.match(f.state.lastRpcError.message,/already active for the current paid period/);
+    const response=await f.checkout.POST(f.post('/api/bakong/checkout',f.body));assert.equal(response.status,410);
+    assert.equal(f.state.lastRpcError,undefined,'retired checkout cannot reach a financial RPC');
     assert.equal((await f.db.query('select count(*)::int n from billing_transactions')).rows[0].n,0);assert.equal(f.state.calls,0);
   }finally{await f.db.close();}
 });
@@ -219,16 +241,16 @@ test('individual-account checkout retains production gating, saved QR identity a
       assert.equal(f.config.accountType,'individual');assert.equal(f.config.merchantId,'');
       if(environment==='production'){
         const request=()=>f.checkout.POST(f.post('/api/bakong/checkout',f.body));
-        assert.equal((await request()).status,503,'an individual account is not automatically production eligible');
+        assert.equal((await request()).status,410,'an individual account is not automatically production eligible');
         const merchantFingerprint=require('node:crypto').createHash('sha256').update(f.env.BAKONG_API_TOKEN).digest('hex');
         await f.db.query("insert into tenh_bakong_private.capacity_reviews values($1,$2,'production',true,100,100,20,'synthetic merchant-only review',$3,now())",[merchantFingerprint,f.config.accountId,f.userId]);
-        assert.equal((await request()).status,503,'a merchant configuration review cannot approve an individual configuration');
+        assert.equal((await request()).status,410,'a merchant configuration review cannot approve an individual configuration');
         assert.equal(f.state.calls,0);await f.capacity();
       }
-      const started=await f.start();
+      const started=await f.seedExistingAttempt();
       const before=(await f.db.query('select qr,md5 from bakong_payment_attempts where id=$1',[started.attemptId])).rows[0];
       assert.equal(require('bakong-khqr').BakongKHQR.decode(before.qr).data.merchantType,'29');
-      assert.equal((await f.start()).attemptId,started.attemptId);
+      assert.equal((await f.seedExistingAttempt()).attemptId,started.attemptId);
       assert.deepEqual((await f.db.query('select qr,md5 from bakong_payment_attempts where id=$1',[started.attemptId])).rows[0],before);
       const forged=await f.checkout.POST(f.post('/api/bakong/checkout',{...f.body,accountType:'merchant'}));assert.equal(forged.status,400);
       await Promise.all([f.check(started.attemptId),f.check(started.attemptId)]);
@@ -239,13 +261,13 @@ test('individual-account checkout retains production gating, saved QR identity a
   });
 });
 
-test('an expired or cancelled checkout is never resumed; selecting again issues a new attempt, reference and QR', async () => {
+test('historical cancelled and expired checkouts stay saved; HTTP creation never resumes them', async () => {
   const f = await fixture();
   try {
     const subscription = async () => (await f.db.query('select * from business_subscriptions where business_id=$1', [f.seeded.businessId])).rows[0];
     const before = await subscription();
     const reopen = async () => (await f.checkout.GET(new Request(`https://app.tenhchat.com/api/bakong/checkout?purchase_business=${f.body.businessId}&purchase_intent=${f.body.purchaseIntent}`))).json();
-    const first = await f.start();
+    const first = await f.seedExistingAttempt();
     assert.equal((await reopen()).resumeAttemptId, first.attemptId, 'a still-open checkout is resumed');
     await f.db.query("select tenh_request_payment_cancellation('bakong',$1,$2,$3,$4,false)", [first.attemptId, f.seeded.businessId, f.userId, f.memberId]);
     const cancelled = (await (await f.read(first.attemptId)).json()).attempt;
@@ -254,21 +276,43 @@ test('an expired or cancelled checkout is never resumed; selecting again issues 
     const reopened = await reopen();
     assert.equal(reopened.resumeAttemptId, null); assert.equal(reopened.pendingAttemptId, null); assert.equal(reopened.intentClosed, true);
     const replay = await f.checkout.POST(f.post('/api/bakong/checkout', f.body));
-    assert.equal(replay.status, 409); assert.equal((await replay.json()).code, 'CHECKOUT_CLOSED');
+    assert.equal(replay.status, 410); assert.equal((await replay.json()).code, 'BAKONG_CHECKOUT_RETIRED');
     f.body.purchaseIntent = randomUUID();
-    const second = await f.start();
+    const second = await f.seedExistingAttempt();
     assert.notEqual(second.attemptId, first.attemptId);
     await f.db.exec(`alter table bakong_payment_attempts disable trigger bakong_immutable_attempt_identity;
       update bakong_payment_attempts set expires_at=now()-interval '1 second' where id='${second.attemptId}';
       alter table bakong_payment_attempts enable trigger bakong_immutable_attempt_identity;`);
     assert.equal((await (await f.read(second.attemptId)).json()).attempt.checkout, 'expired');
-    assert.equal((await f.checkout.POST(f.post('/api/bakong/checkout', f.body))).status, 409);
+    assert.equal((await f.checkout.POST(f.post('/api/bakong/checkout', f.body))).status, 410);
     f.body.purchaseIntent = randomUUID();
-    const third = await f.start();
+    const third = await f.seedExistingAttempt();
     const rows = (await f.db.query('select id,reference,md5 from bakong_payment_attempts')).rows;
     assert.equal(rows.length, 3); assert.equal(new Set(rows.map(r => r.reference)).size, 3); assert.equal(new Set(rows.map(r => r.md5)).size, 3);
     assert.ok(rows.some(r => r.id === third.attemptId));
     assert.equal((await f.db.query("select count(*)::int n from billing_transactions where status='pending'")).rows[0].n, 3, 'closed checkouts keep their unresolved payment record');
     assert.deepEqual(await subscription(), before, 'the current subscription is unchanged until a verified payment is applied');
+  } finally { await f.db.close(); }
+});
+
+
+test('retirement rejects stale and fresh HTTP creation regardless of general or pilot flags without financial writes', async () => {
+  const f = await fixture('production');
+  try {
+    await f.capacity();
+    for (const checkout of ['false','true']) for (const pilot of ['false','true']) {
+      f.env.BAKONG_CHECKOUT_ENABLED = checkout; f.env.BAKONG_PILOT_ENABLED = pilot;
+      const readiness = await (await f.checkout.GET(new Request('https://app.tenhchat.com/api/bakong/checkout?purchase_business='+f.body.businessId))).json();
+      assert.equal(readiness.enabled, false); assert.equal(readiness.retired, true);
+      for (let retry=0; retry<2; retry++) {
+        const response = await f.checkout.POST(f.post('/api/bakong/checkout', f.body));
+        assert.equal(response.status, 410); assert.equal((await response.json()).code, 'BAKONG_CHECKOUT_RETIRED');
+        assert.match(response.headers.get('Cache-Control'), /no-store/);
+      }
+    }
+    for (const table of ['bakong_payment_attempts','billing_transactions','tenh_billing_invoices','tenh_bakong_private.provider_calls']) {
+      assert.equal((await f.db.query('select count(*)::int n from '+table)).rows[0].n, 0, table);
+    }
+    assert.equal(f.state.calls,0);
   } finally { await f.db.close(); }
 });

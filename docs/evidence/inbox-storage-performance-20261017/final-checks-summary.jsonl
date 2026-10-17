@@ -1,0 +1,40 @@
+{"type":"test:fail","name":"lib\\inbox\\normalize-messages.test.mjs","file":"C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-inbox-perf-20261017\\lib\\inbox\\normalize-messages.test.mjs","error":"test failed"}
+{"type":"test:summary","counts":{"tests":6,"failed":0,"passed":6,"cancelled":0,"skipped":0,"todo":0,"topLevel":6,"suites":0},"durationMs":46.6342,"success":true}
+{"type":"test:summary","counts":{"tests":15,"failed":0,"passed":15,"cancelled":0,"skipped":0,"todo":0,"topLevel":15,"suites":0},"durationMs":2928.0127,"success":true}
+{"type":"test:fail","name":"Storage is workspace-shared, uploads multiple files, and offers explicit Draft or Send Now actions","file":"C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-inbox-perf-20261017\\tests\\inbox-attachment-picker.test.cjs","error":"The input did not match the regular expression /\\/api\\/workspace-storage\\/files/. Input:"}
+{"type":"test:summary","counts":{"tests":7,"failed":1,"passed":6,"cancelled":0,"skipped":0,"todo":0,"topLevel":7,"suites":0},"durationMs":82.6187,"success":false}
+{"type":"test:fail","name":"Unread action passes every filtered row, not the first visible page","file":"C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-inbox-perf-20261017\\tests\\inbox-bulk-read.test.cjs","error":"The input did not match the regular expression /await onMarkAllRead\\(filteredConversations\\)/. Input:"}
+{"type":"test:summary","counts":{"tests":24,"failed":1,"passed":23,"cancelled":0,"skipped":0,"todo":0,"topLevel":24,"suites":0},"durationMs":5867.2344,"success":false}
+{"type":"test:summary","counts":{"tests":3,"failed":0,"passed":3,"cancelled":0,"skipped":0,"todo":0,"topLevel":3,"suites":0},"durationMs":193.169,"success":true}
+{"type":"test:summary","counts":{"tests":2,"failed":0,"passed":2,"cancelled":0,"skipped":0,"todo":0,"topLevel":2,"suites":0},"durationMs":1003.1016,"success":true}
+{"type":"test:fail","name":"tests\\inbox-compact-web.test.cjs","file":"C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-inbox-perf-20261017\\tests\\inbox-compact-web.test.cjs","error":"test failed"}
+{"type":"test:fail","name":"tests\\inbox-composer-lifecycle.test.cjs","file":"C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-inbox-perf-20261017\\tests\\inbox-composer-lifecycle.test.cjs","error":"test failed"}
+{"type":"test:fail","name":"tests\\inbox-composer-media-ownership.test.cjs","file":"C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-inbox-perf-20261017\\tests\\inbox-composer-media-ownership.test.cjs","error":"test failed"}
+{"type":"test:fail","name":"tests\\inbox-composer-microphone-ownership.test.cjs","file":"C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-inbox-perf-20261017\\tests\\inbox-composer-microphone-ownership.test.cjs","error":"test failed"}
+{"type":"test:summary","counts":{"tests":12,"failed":0,"passed":12,"cancelled":0,"skipped":0,"todo":0,"topLevel":12,"suites":0},"durationMs":3105.3066,"success":true}
+{"type":"test:fail","name":"tests\\inbox-conversation-url-selection.test.cjs","file":"C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-inbox-perf-20261017\\tests\\inbox-conversation-url-selection.test.cjs","error":"test failed"}
+{"type":"test:summary","counts":{"tests":23,"failed":0,"passed":23,"cancelled":0,"skipped":0,"todo":0,"topLevel":23,"suites":0},"durationMs":919.7019,"success":true}
+{"type":"test:summary","counts":{"tests":6,"failed":0,"passed":6,"cancelled":0,"skipped":0,"todo":0,"topLevel":6,"suites":0},"durationMs":948.7575,"success":true}
+{"type":"test:summary","counts":{"tests":33,"failed":0,"passed":33,"cancelled":0,"skipped":0,"todo":0,"topLevel":33,"suites":0},"durationMs":4365.9401,"success":true}
+{"type":"test:summary","counts":{"tests":5,"failed":0,"passed":5,"cancelled":0,"skipped":0,"todo":0,"topLevel":5,"suites":0},"durationMs":1077.3209,"success":true}
+{"type":"test:summary","counts":{"tests":9,"failed":0,"passed":9,"cancelled":0,"skipped":0,"todo":0,"topLevel":9,"suites":0},"durationMs":2198.4937,"success":true}
+{"type":"test:summary","counts":{"tests":1,"failed":0,"passed":1,"cancelled":0,"skipped":0,"todo":0,"topLevel":1,"suites":0},"durationMs":348.9884,"success":true}
+{"type":"test:summary","counts":{"tests":12,"failed":0,"passed":12,"cancelled":0,"skipped":0,"todo":0,"topLevel":12,"suites":0},"durationMs":2170.9884,"success":true}
+{"type":"test:fail","name":"tests\\inbox-photo-loading.test.cjs","file":"C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-inbox-perf-20261017\\tests\\inbox-photo-loading.test.cjs","error":"test failed"}
+{"type":"test:summary","counts":{"tests":41,"failed":0,"passed":41,"cancelled":0,"skipped":0,"todo":0,"topLevel":41,"suites":0},"durationMs":5859.7802,"success":true}
+{"type":"test:summary","counts":{"tests":15,"failed":0,"passed":15,"cancelled":0,"skipped":0,"todo":0,"topLevel":15,"suites":0},"durationMs":838.7036,"success":true}
+{"type":"test:summary","counts":{"tests":4,"failed":0,"passed":4,"cancelled":0,"skipped":0,"todo":0,"topLevel":4,"suites":0},"durationMs":300.9604,"success":true}
+{"type":"test:summary","counts":{"tests":3,"failed":0,"passed":3,"cancelled":0,"skipped":0,"todo":0,"topLevel":3,"suites":0},"durationMs":336.6398,"success":true}
+{"type":"test:summary","counts":{"tests":8,"failed":0,"passed":8,"cancelled":0,"skipped":0,"todo":0,"topLevel":8,"suites":0},"durationMs":129.0101,"success":true}
+{"type":"test:summary","counts":{"tests":5,"failed":0,"passed":5,"cancelled":0,"skipped":0,"todo":0,"topLevel":5,"suites":0},"durationMs":54.9037,"success":true}
+{"type":"test:summary","counts":{"tests":9,"failed":0,"passed":9,"cancelled":0,"skipped":0,"todo":0,"topLevel":9,"suites":0},"durationMs":1142.591,"success":true}
+{"type":"test:summary","counts":{"tests":24,"failed":0,"passed":24,"cancelled":0,"skipped":0,"todo":0,"topLevel":24,"suites":0},"durationMs":2792.3749,"success":true}
+{"type":"test:summary","counts":{"tests":12,"failed":0,"passed":12,"cancelled":0,"skipped":0,"todo":0,"topLevel":12,"suites":0},"durationMs":58.5604,"success":true}
+{"type":"test:summary","counts":{"tests":7,"failed":0,"passed":7,"cancelled":0,"skipped":0,"todo":0,"topLevel":7,"suites":0},"durationMs":1811.7279,"success":true}
+{"type":"test:summary","counts":{"tests":12,"failed":0,"passed":12,"cancelled":0,"skipped":0,"todo":0,"topLevel":12,"suites":0},"durationMs":73.778,"success":true}
+{"type":"test:summary","counts":{"tests":9,"failed":0,"passed":9,"cancelled":0,"skipped":0,"todo":0,"topLevel":9,"suites":0},"durationMs":977.8323,"success":true}
+{"type":"test:summary","counts":{"tests":8,"failed":0,"passed":8,"cancelled":0,"skipped":0,"todo":0,"topLevel":8,"suites":0},"durationMs":3566.9379,"success":true}
+{"type":"test:summary","counts":{"tests":6,"failed":0,"passed":6,"cancelled":0,"skipped":0,"todo":0,"topLevel":6,"suites":0},"durationMs":721.0883,"success":true}
+{"type":"test:summary","counts":{"tests":9,"failed":0,"passed":9,"cancelled":0,"skipped":0,"todo":0,"topLevel":9,"suites":0},"durationMs":2155.1299,"success":true}
+{"type":"test:summary","counts":{"tests":17,"failed":0,"passed":17,"cancelled":0,"skipped":0,"todo":0,"topLevel":17,"suites":0},"durationMs":2169.9943,"success":true}
+{"type":"test:summary","counts":{"tests":354,"failed":9,"passed":345,"cancelled":0,"skipped":0,"todo":0,"topLevel":354,"suites":0},"durationMs":8893.513,"success":false}

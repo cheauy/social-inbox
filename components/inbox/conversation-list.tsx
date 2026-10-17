@@ -94,6 +94,7 @@ type ConversationListProps = {
   onMarkAllRead?: (conversations: InboxConversation[], targets?: ReadTarget[]) => Promise<BulkReadResult>;
   pagination?: ConversationPagingInitial;
   onPageRows?: (rows: InboxConversation[]) => void;
+  onArrivalListCommit?: (rows: InboxConversation[], key: string, searchFiltered: boolean) => void;
   markingAllRead?: boolean;
   conversations:
     InboxConversation[];
@@ -1628,6 +1629,7 @@ const ConversationRow = memo(function ConversationRow({
 function ConversationListView({
   pagination,
   onPageRows,
+  onArrivalListCommit,
   onMarkAllRead,
   markingAllRead = false,
   conversations,
@@ -2994,6 +2996,10 @@ function ConversationListView({
             ),
       [filteredConversations, visibleRowCount, pager.enabled],
     );
+  const arrivalListKey = JSON.stringify([pageStatus, selectedViewKey, requestChannelId, requestWorkspaceId]);
+  useEffect(() => {
+    onArrivalListCommit?.(visibleConversations, arrivalListKey, Boolean(search.trim()));
+  }, [onArrivalListCommit, visibleConversations, arrivalListKey, search]);
   useConversationListAnchor(listContainerRef, JSON.stringify(pageRequest),
     JSON.stringify(visibleConversations.map(row => [row.id, row.last_message_at, row.last_message_text, row.unread_count])));
 

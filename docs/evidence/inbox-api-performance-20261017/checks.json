@@ -1,0 +1,327 @@
+{
+  "baseline": "35b5fdd8a4b0cef942fda658506a0daa10b44e98",
+  "remote": "https://github.com/cheauy/social-inbox.git",
+  "localOriginMainMatchesBaseline": true,
+  "summary": {
+    "type": "test:summary",
+    "counts": {
+      "tests": 588,
+      "failed": 53,
+      "passed": 533,
+      "cancelled": 0,
+      "skipped": 2,
+      "todo": 0,
+      "topLevel": 588,
+      "suites": 0
+    },
+    "durationMs": 15406.4383,
+    "success": false
+  },
+  "all53FailuresExactlyMatchV2Baseline": true,
+  "failures": [
+    {
+      "name": "30-item queue does not open another picker",
+      "error": "focusedRef is not defined"
+    },
+    {
+      "name": "a sent image reply renders a thumbnail and jumps to that exact photo inside the album",
+      "error": "Expected values to be strictly equal:"
+    },
+    {
+      "name": "account switch after first batch stops remaining media dispatches",
+      "error": "quotedSelection is not defined"
+    },
+    {
+      "name": "account switch during preparation stops dispatch",
+      "error": "quotedSelection is not defined"
+    },
+    {
+      "name": "actual API checks thread transport account other-user before HTTP",
+      "error": "client_1.supabase.auth.onAuthStateChange is not a function"
+    },
+    {
+      "name": "actual API checks thread transport account u1 before HTTP",
+      "error": "client_1.supabase.auth.onAuthStateChange is not a function"
+    },
+    {
+      "name": "actual composer exposes Image/Videos, keeps Documents, and disables an uncertain send visibly",
+      "error": "(0 , react_1.useEffect) is not a function"
+    },
+    {
+      "name": "actual send hands confirmed and unknown Storage file keys back to cleanup even after ownership loss",
+      "error": "quotedSelection is not defined"
+    },
+    {
+      "name": "authoritative removed conversation and revoked workspace purge cached previews",
+      "error": "(0 , client_1.authSessionGeneration) is not a function"
+    },
+    {
+      "name": "composer quote uses the exact selected album thumbnail and can cancel that selection",
+      "error": "Expected values to be strictly equal:"
+    },
+    {
+      "name": "Conversation assigned successfully. only after confirmed success",
+      "error": "finish is not a function"
+    },
+    {
+      "name": "Conversation assigned to you successfully. only after confirmed success",
+      "error": "finish is not a function"
+    },
+    {
+      "name": "Conversation marked as unread successfully. only after confirmed success",
+      "error": "finish is not a function"
+    },
+    {
+      "name": "Conversation pinned successfully. only after confirmed success",
+      "error": "finish is not a function"
+    },
+    {
+      "name": "conversation status filter is beside search and no longer in the left rail",
+      "error": "The expression evaluated to a falsy value:"
+    },
+    {
+      "name": "Conversation unassigned successfully. only after confirmed success",
+      "error": "finish is not a function"
+    },
+    {
+      "name": "Conversation unpinned successfully. only after confirmed success",
+      "error": "finish is not a function"
+    },
+    {
+      "name": "denied or rejected picker permission releases duplicate-tap lock without sending",
+      "error": "focusedRef is not defined"
+    },
+    {
+      "name": "document picks use unique identities, respect queue capacity, and preserve a cancelled draft",
+      "error": "focusedRef is not defined"
+    },
+    {
+      "name": "Documents and image launches share a synchronous lock, including rapid same-frame duplicate taps",
+      "error": "focusedRef is not defined"
+    },
+    {
+      "name": "Facebook album renders enabled Reply and Copy for every photo; reactions retain the real row ID",
+      "error": "Expected values to be strictly equal:"
+    },
+    {
+      "name": "failed first caption remains preserved and blocked against blind duplicate text retry",
+      "error": "quotedSelection is not defined"
+    },
+    {
+      "name": "file documents retain their individual upload path",
+      "error": "quotedSelection is not defined"
+    },
+    {
+      "name": "full mixed-media send delivers one caption and preserves quoted reply",
+      "error": "quotedSelection is not defined"
+    },
+    {
+      "name": "late picker results cannot attach files to a different workspace",
+      "error": "focusedRef is not defined"
+    },
+    {
+      "name": "later batch failure retains unsent files and never restores confirmed first caption",
+      "error": "quotedSelection is not defined"
+    },
+    {
+      "name": "lib\\inbox\\normalize-messages.test.mjs",
+      "error": "test failed"
+    },
+    {
+      "name": "limited photo access can select only the assets the OS returns",
+      "error": "focusedRef is not defined"
+    },
+    {
+      "name": "mixed multi-select uses installed Expo library picker with remaining queue capacity",
+      "error": "focusedRef is not defined"
+    },
+    {
+      "name": "photo permission flight also blocks Documents; cancellation, throw and late ownership changes release picker lock",
+      "error": "focusedRef is not defined"
+    },
+    {
+      "name": "photo replies render a thumbnail and suppress literal [image] placeholder",
+      "error": "The input did not match the regular expression /`Reply to \\$\\{replyImageReference \\? \"Photo\" : telegramReplyPreview\\.kind\\}`/. Input:"
+    },
+    {
+      "name": "picker cancellation preserves draft and staged attachments",
+      "error": "focusedRef is not defined"
+    },
+    {
+      "name": "preflight size error preserves all queued inputs and never dispatches",
+      "error": "quotedSelection is not defined"
+    },
+    {
+      "name": "refresh failure after confirmed media delivery cannot restore draft or attachments",
+      "error": "quotedSelection is not defined"
+    },
+    {
+      "name": "resume cannot downgrade a queued membership invalidation into an ordinary refresh",
+      "error": "(0 , client_1.authSessionGeneration) is not a function"
+    },
+    {
+      "name": "resume signals coalesce with the current read; membership events invalidate previews",
+      "error": "(0 , client_1.authSessionGeneration) is not a function"
+    },
+    {
+      "name": "same-frame repeated picker taps open only one photo library",
+      "error": "focusedRef is not defined"
+    },
+    {
+      "name": "same-frame repeated send taps invoke one transport even during preparation",
+      "error": "quotedSelection is not defined"
+    },
+    {
+      "name": "single photos have Copy and opening the viewer preserves the message reference",
+      "error": "Expected values to be strictly equal:"
+    },
+    {
+      "name": "Storage is workspace-shared, uploads multiple files, and offers explicit Draft or Send Now actions",
+      "error": "The input did not match the regular expression /\\/api\\/workspace-storage\\/files/. Input:"
+    },
+    {
+      "name": "Telegram grouped photos each reply to the correct actual message ID",
+      "error": "Expected values to be strictly equal:"
+    },
+    {
+      "name": "Telegram text-only send is dispatched rather than swallowed as an empty album caption",
+      "error": "quotedSelection is not defined"
+    },
+    {
+      "name": "tests\\inbox-compact-web.test.cjs",
+      "error": "test failed"
+    },
+    {
+      "name": "tests\\inbox-composer-lifecycle.test.cjs",
+      "error": "test failed"
+    },
+    {
+      "name": "tests\\inbox-composer-media-ownership.test.cjs",
+      "error": "test failed"
+    },
+    {
+      "name": "tests\\inbox-composer-microphone-ownership.test.cjs",
+      "error": "test failed"
+    },
+    {
+      "name": "tests\\inbox-conversation-url-selection.test.cjs",
+      "error": "test failed"
+    },
+    {
+      "name": "tests\\inbox-navigation-loading.test.cjs",
+      "error": "test failed"
+    },
+    {
+      "name": "tests\\inbox-photo-loading.test.cjs",
+      "error": "test failed"
+    },
+    {
+      "name": "tests\\inbox-return-context.test.cjs",
+      "error": "test failed"
+    },
+    {
+      "name": "tests\\live-message-fallback\\presence.test.cjs",
+      "error": "test failed"
+    },
+    {
+      "name": "Unread action passes every filtered row, not the first visible page",
+      "error": "The input did not match the regular expression /await onMarkAllRead\\(filteredConversations\\)/. Input:"
+    },
+    {
+      "name": "unrelated realtime messages refresh their Inbox row without fetching the open thread",
+      "error": "(0 , client_1.authSessionGeneration) is not a function"
+    }
+  ],
+  "baselineReproductionEvidence": "../inbox-interaction-performance-20261017/checks.json",
+  "targeted": {
+    "passed": 111,
+    "failed": 0,
+    "skipped": 0
+  },
+  "apiAcceptance": {
+    "passed": 12,
+    "failed": 0,
+    "skipped": 0,
+    "rerunAfterWhitespaceOnlyFormatting": true
+  },
+  "actualReactFlightCache": {
+    "passed": 6,
+    "failed": 0,
+    "skipped": 3,
+    "skipReason": "Optional external historical baseline artifacts are unavailable."
+  },
+  "typescript": {
+    "command": "node node_modules/typescript/bin/tsc --noEmit --pretty false",
+    "exitCode": 0
+  },
+  "apiLint": {
+    "exitCode": 0,
+    "errors": 0,
+    "warnings": 2,
+    "newApplicationOrToolingFindings": 0,
+    "warningsPreExistingInOldTestFiles": true,
+    "application": {
+      "files": 6,
+      "errors": 0,
+      "warnings": 0,
+      "ruleOverrides": []
+    },
+    "commonJsTooling": {
+      "files": 4,
+      "errors": 0,
+      "warnings": 0,
+      "ruleOverride": "@typescript-eslint/no-require-imports: off",
+      "reason": "These Node fixture/measurement files use the existing CommonJS harness, matching the prior pass lint convention."
+    },
+    "unadjustedCommonJsInvocation": {
+      "errors": 11,
+      "rule": "@typescript-eslint/no-require-imports",
+      "applicationErrors": 0
+    }
+  },
+  "cumulativeApplicationLint": {
+    "source": "../inbox-interaction-performance-20261017/checks.json",
+    "newFindings": 0,
+    "existingErrors": 9,
+    "existingWarnings": 18,
+    "pinBaselineErrors": 2,
+    "pinCurrentErrors": 2
+  },
+  "build": {
+    "command": "npm run build",
+    "exitCode": 1,
+    "reasons": [
+      "ENOTFOUND fonts.googleapis.com",
+      "EPERM mkdir .next/server/app/api/contacts/[contactId]/telegram-avatar"
+    ],
+    "bypassed": false
+  },
+  "independentReview": {
+    "noRemainingConcreteFindings": true,
+    "apiPassed": 12,
+    "actualReactFlightPassed": 6,
+    "actualReactFlightSkipped": 3,
+    "diffCheckPassed": true,
+    "separateFacebookPayWayFileOverlap": 0
+  },
+  "controlledMeasurements": {
+    "artificialDelayMs": 20,
+    "alternatingPairs": 5,
+    "responseBytesIdenticalAcrossAll10SamplesPerRoute": true,
+    "actualAuthSdkAndSessionPolicyExcluded": true,
+    "productionSavingsMeasured": false
+  },
+  "actualBrowserMeasured": false,
+  "productionBeforeAfterMeasured": false,
+  "fullPerFunctionAuditComplete": false,
+  "browserBlocker": {
+    "action": "Connect supported browser automation to the user-opened local Chrome/Edge tab",
+    "target": "TENH CHAT production tab",
+    "status": "unavailable; no page actions executed",
+    "reason": "Supported browser inventories were empty and createBrowserTab providers explicitly unavailable. Native/CDP/helper bypasses were not attempted.",
+    "attachmentRequest": "pending",
+    "additionalScreenshotRequired": false
+  },
+  "prohibitedOperationsPerformed": false,
+  "publication": false
+}

@@ -1,0 +1,41 @@
+{
+  "kind": "synthetic Node VM + hook doubles; no browser paints, database or production timings",
+  "baseline": "35b5fdd8a4b0cef942fda658506a0daa10b44e98",
+  "stablePagerRenders": {
+    "rows": 1000,
+    "renders": 200,
+    "samples": 5,
+    "before": {
+      "medianMs": 551.8209,
+      "contactSerializations": 200000
+    },
+    "after": {
+      "medianMs": 1.6984999999995125,
+      "contactSerializations": 0
+    }
+  },
+  "coldSelection": {
+    "before": {
+      "readsIncludingExistingSelection": 2,
+      "messageStateChanges": 1,
+      "previewObjectChanges": 1
+    },
+    "after": {
+      "readsIncludingExistingSelection": 1,
+      "messageStateChanges": 0,
+      "previewObjectChanges": 0
+    }
+  },
+  "fourUnchangedSafetyReads": {
+    "before": {
+      "readsIncludingExistingSelection": 4,
+      "messageStateChanges": 4,
+      "previewObjectChanges": 4
+    },
+    "after": {
+      "readsIncludingExistingSelection": 4,
+      "messageStateChanges": 0,
+      "previewObjectChanges": 0
+    }
+  }
+}

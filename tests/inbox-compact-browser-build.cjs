@@ -1,8 +1,8 @@
 /* Isolated full Inbox fixture. All auth/data/provider traffic is mocked locally. */
-const fs=require('node:fs'),path=require('node:path'),cp=require('node:child_process');
+const fs=require('node:fs'),path=require('node:path');
 const root=process.cwd(),out=fs.mkdtempSync(path.join(process.env.TEMP,'tenh-inbox-compact-'));
 const navigation=process.argv.includes('--navigation');
-const evidence=navigation?'docs/evidence/compact-navigation-20261012':'docs/evidence/inbox-compact-web';
+const evidence=process.env.TENH_INBOX_EVIDENCE || (navigation?'docs/evidence/compact-navigation-20261012':'docs/evidence/inbox-compact-web');
 const baseline=process.argv.includes('--baseline'),sourceRoot=baseline?fs.readFileSync(evidence+'/baseline-path.txt','utf8').trim():root;
 const write=(name,source)=>fs.writeFileSync(path.join(out,name),source);
 const webpack=require('next/dist/compiled/webpack/webpack').webpack;
@@ -16,9 +16,9 @@ write('font.cjs',`module.exports=new Proxy({}, {get:()=>()=>({className:'fixture
 write('language.cjs',`exports.useWorkspaceLanguageId=()=>new URLSearchParams(location.search).get('language')==='km'?'km':'en';exports.WorkspaceLanguageText=({en,km})=>exports.useWorkspaceLanguageId()==='km'?km:en;`);
 write('supabase.cjs',`const user={id:'00000000-0000-4000-8000-000000000902',email:'fixture@example.invalid'};const client={auth:{getUser:async()=>({data:{user}}),getSession:async()=>({data:{session:{user,access_token:'isolated-fixture'}}}),onAuthStateChange:()=>({data:{subscription:{unsubscribe(){}}}})},realtime:{setAuth:async()=>{}},from(table){let single=false;const query=new Proxy({}, {get(_,key){if(key==='then')return resolve=>resolve({data:single?null:[],error:null});return(...args)=>{window.fixtureQueries.push({table,method:key});if(key==='single'||key==='maybeSingle')single=true;return query}}});return query},channel(name){const c={name,on(){return c},subscribe(fn){window.fixtureSubscriptions.push(name);queueMicrotask(()=>fn?.('SUBSCRIBED'));return c},presenceState(){return{}},track:async()=>{},untrack:async()=>{},send:async()=>({status:'ok'}),unsubscribe:async()=>{}};return c},removeChannel:async()=>{}};exports.createClient=()=>client;`);
 async function main(){
-  let entry=path.join(root,'tests/fixtures/inbox-compact-browser.entry.cjs');
+  let entry=path.join(root,process.env.TENH_INBOX_ENTRY || 'tests/fixtures/inbox-compact-browser.entry.cjs');
   if(navigation){
-    let source=fs.readFileSync(entry,'utf8');const start=source.indexOf('async function run(){'),end=source.indexOf('\nrun().catch',start);
+    let source=fs.readFileSync(entry,'utf8');const start=source.indexOf('async function run(){'),end=source.indexOf('\nif (!process.env.TENH_INBOX_PERF_FIXTURE)',start);
     if(start<0||end<0)throw Error('Inbox fixture entry missing');
     source=source.slice(0,start)+`async function run(){const header=await DashboardHeader();await require(${JSON.stringify(path.join(root,'tests/fixtures/compact-navigation-app.cjs'))})({React,createRoot,InboxView,header,DashboardUtilityNavigationProvider,InboxReturnContextProvider,h,uuid,rows,messages});}`+source.slice(end);
     write('navigation-entry.cjs',source);entry=path.join(out,'navigation-entry.cjs');
@@ -34,7 +34,7 @@ async function main(){
     '@/components/display/workspace-language-text$':path.join(out,'language.cjs'),
     '@':sourceRoot,
   };
-  await new Promise((resolve,reject)=>webpack({mode:'development',devtool:false,entry,output:{path:out,filename:'bundle.js'},plugins:[new webpack.DefinePlugin({'process.env':JSON.stringify({NODE_ENV:'development',NEXT_PUBLIC_TIKTOK_ADVERTISER_ENABLED:'false',NEXT_PUBLIC_TIKTOK_ACCOUNT_HOLDER_ENABLED:'false'})})],resolve:{extensions:['.ts','.tsx','.js','.cjs'],alias,modules:[path.join(root,'node_modules'),'node_modules']},module:{rules:[{test:/\.tsx?$/,use:path.join(out,'loader.cjs')}]},optimization:{minimize:false}},(error,stats)=>error||stats.hasErrors()?reject(error||Error(stats.toString({all:false,errors:true}))):resolve()));
+  await new Promise((resolve,reject)=>webpack({mode:'development',devtool:false,entry,output:{path:out,filename:'bundle.js'},plugins:[new webpack.DefinePlugin({'process.env':JSON.stringify({NODE_ENV:'development',TENH_INBOX_PERF_FIXTURE:process.env.TENH_INBOX_PERF_FIXTURE || '',NEXT_PUBLIC_TIKTOK_ADVERTISER_ENABLED:'false',NEXT_PUBLIC_TIKTOK_ACCOUNT_HOLDER_ENABLED:'false'})})],resolve:{extensions:['.ts','.tsx','.js','.cjs'],alias,modules:[path.join(root,'node_modules'),'node_modules']},module:{rules:[{test:/\.tsx?$/,use:path.join(out,'loader.cjs')}]},optimization:{minimize:false}},(error,stats)=>error||stats.hasErrors()?reject(error||Error(stats.toString({all:false,errors:true}))):resolve()));
   write('index.html','<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content"><link rel="stylesheet" href="/style.css"><title>Isolated TENH Inbox</title></head><body><div id="root"></div><script src="/bundle.js"></script></body></html>');
   console.log(out);fs.mkdirSync(evidence,{recursive:true});fs.writeFileSync(evidence+'/'+(baseline?'baseline-fixture-path.txt':'fixture-path.txt'),out);
 }

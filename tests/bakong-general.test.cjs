@@ -57,9 +57,9 @@ test('ordinary checkout can pass an unused expired pilot without consuming or ch
     await f.authorize({ageSeconds:7200}); f.env.BAKONG_CHECKOUT_ENABLED='true';
     const pilotBefore=(await f.db.query('select row_to_json(p)::text p from tenh_bakong_private.pilot_authorizations p')).rows[0].p;
     const auditBefore=(await f.db.query('select count(*)::int n from tenh_bakong_private.pilot_audit')).rows[0].n;
-    assert.equal((await f.postCheckout()).status,503);
+    assert.equal((await f.postCheckout()).status,410);
     await authorize(f); f.env.BAKONG_PILOT_ENABLED='false';
-    const before=await f.subscription(), started=await f.start();
+    const before=await f.subscription(), started=await f.seedExistingAttempt();
     const attempt=(await f.db.query('select pilot_authorization_id from bakong_payment_attempts where id=$1',[started.attemptId])).rows[0];
     assert.equal(attempt.pilot_authorization_id,null);
     assert.equal((await f.db.query('select request_time ~ $2 utc from billing_transactions where id=$1',[started.attemptId,'^[0-9]{14}$'])).rows[0].utc,true);
@@ -77,19 +77,19 @@ test('ordinary checkout can pass an unused expired pilot without consuming or ch
 test('issued pilot keeps its expiry/revocation restrictions after general authorization',async()=>{
   const f=await pilotFixture();
   try {
-    await f.authorize(); const started=await f.start(); await authorize(f); f.env.BAKONG_CHECKOUT_ENABLED='true';
+    await f.authorize(); const started=await f.seedExistingAttempt(); await authorize(f); f.env.BAKONG_CHECKOUT_ENABLED='true';
     await f.db.exec("alter table tenh_bakong_private.pilot_authorizations disable trigger bakong_protect_pilot; update tenh_bakong_private.pilot_authorizations set authorized_at=authorized_at-interval '2 hours',issue_until=issue_until-interval '2 hours',inquiry_until=inquiry_until-interval '2 hours'; alter table tenh_bakong_private.pilot_authorizations enable trigger bakong_protect_pilot");
     await f.check(started.attemptId); assert.equal(f.state.calls,0);
     const view=(await(await f.read(started.attemptId)).json()).attempt;
     assert.equal(view.canCheck,false); assert.equal(view.reconciliationRequired,true); assert.equal(view.qrImage,null);
-    assert.equal((await f.start()).attemptId,started.attemptId); assert.equal((await f.subscription()).channel_limit,12);
+    assert.equal((await f.seedExistingAttempt()).attemptId,started.attemptId); assert.equal((await f.subscription()).channel_limit,12);
   }finally{await f.db.close();}
 });
 
 test('customer, admin, failures and crashed claims share three lifetime inquiries and preserve pending evidence',async()=>{
   const f=await fixture('production','individual');
   try {
-    await authorize(f); const started=await f.start(); f.state.admin=true; f.state.observation='unresolved';
+    await authorize(f); const started=await f.seedExistingAttempt(); f.state.admin=true; f.state.observation='unresolved';
     const admin=f.load('app/api/bakong/admin/route.ts');
     const reconcile=()=>admin.POST(f.post('/api/bakong/admin',{attemptId:started.attemptId,action:'reconcile'}));
     const crash=await f.pg.rpc('tenh_claim_bakong_check',{p_attempt:started.attemptId,p_fingerprint:f.config.fingerprint,p_budget:90});
@@ -104,7 +104,7 @@ test('customer, admin, failures and crashed claims share three lifetime inquirie
     assert.equal(view.automaticChecksRemaining,0); assert.equal(view.reconciliationRequired,true); assert.equal(view.reconciliationReason,'INQUIRY_LIMIT_REVIEW');
     const list=await(await admin.GET(new Request('https://app.tenhchat.com/api/bakong/admin'))).json();
     assert.equal(list.items[0].canCheck,false); assert.equal(list.items[0].reason,'INQUIRY_LIMIT_REVIEW');
-    f.body.purchaseIntent=require('node:crypto').randomUUID(); assert.equal((await f.start()).attemptId,started.attemptId);
+    f.body.purchaseIntent=require('node:crypto').randomUUID(); assert.equal((await f.seedExistingAttempt()).attemptId,started.attemptId);
     assert.deepEqual(await counts(f.db),{billing:1,attempts:1,calls:3,invoices:0});
     assert.equal((await f.db.query('select count(*)::int n from tenh_bakong_private.provider_calls where completed_at is null')).rows[0].n,1);
   }finally{await f.db.close();}
@@ -138,14 +138,14 @@ test('90 rolling requests reserve three calls per new attempt atomically across 
 test('new checkout stop and authorization revocation preserve the existing saved payment',async()=>{
   const f=await fixture('production','individual');
   try {
-    const id=await authorize(f), started=await f.start(); f.env.BAKONG_CHECKOUT_ENABLED='false';
+    const id=await authorize(f), started=await f.seedExistingAttempt(); f.env.BAKONG_CHECKOUT_ENABLED='false';
     assert.equal((await(await f.checkout.GET(new Request('https://app.tenhchat.com/api/bakong/checkout?purchase_business='+f.body.businessId))).json()).enabled,false);
     f.state.observation='pending'; await f.check(started.attemptId); assert.equal(f.state.calls,1);
     await f.db.query('update tenh_bakong_private.general_authorizations set revoked_at=clock_timestamp() where id=$1',[id]);
     await clear(f); await f.check(started.attemptId); assert.equal(f.state.calls,1);
     const view=(await(await f.read(started.attemptId)).json()).attempt;
     assert.equal(view.canCheck,false); assert.equal(view.reconciliationRequired,true); assert.equal(view.state,'pending');
-    assert.equal((await f.start()).attemptId,started.attemptId);
+    assert.equal((await f.seedExistingAttempt()).attemptId,started.attemptId);
     assert.deepEqual(await counts(f.db),{billing:1,attempts:1,calls:1,invoices:0});
   }finally{await f.db.close();}
 });

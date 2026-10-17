@@ -1,0 +1,31 @@
+Γ£ö foreground arrival alerts after the matching message state commits, with no timer delay (123.9824ms)
+Γ£ö conversation fallback then INSERT waits for the bubble and alerts exactly once (22.4572ms)
+Γ£ö two real IDs sharing one provider timestamp get separate alerts in either fallback order (33.1682ms)
+Γ£ö outside-selected-filter/thread and hidden tab alerts do not wait for a selected bubble or animation frame (14.63ms)
+Γ£ö a pending foreground alert can deliver on tab blur without waiting for unavailable thread data (14.3464ms)
+Γ£ö scope retirement discards pending alerts and rejects stale callbacks after workspace/user changes and unmount (16.7932ms)
+Γ£ö matching already-visible fallback and late INSERT use one alert; a distinct same-time ID still alerts (13.6046ms)
+Γ£ö a brand-new foreground All/Unread arrival waits for the committed displayed row, then alerts once (11.9576ms)
+Γ£ö a new conversation filtered out by channel/box or Smart View still alerts, and background never waits for hydration (13.8259ms)
+Γ£ö queued delivery retains the existing No sound setting in the real browser notification hook (49.1761ms)
+Γ£ö old list acknowledgements cannot release a new view and search-filtered arrivals stay audible (10.404ms)
+Γ£ö a selected off-page thread uses its committed bubble even when the paged list has no row (10.1222ms)
+Γ£ö global hydration waits for real pager qualification; teammate read=false (89.8983ms)
+Γ£ö global hydration waits for real pager qualification; teammate read=true (51.5154ms)
+Γ£ö an old read snapshot cannot release a newer Unread arrival before its displayed update (9.8969ms)
+Γ£ö HTML failure preserves history; the next successful poll merges and sounds once (20.1659ms)
+Γ£ö switching chats aborts the request and ignores even a late successful response (3.3374ms)
+Γ£ö an aborted request after cleanup produces no warning (2.3458ms)
+Γ£ö cold selection joins its unresolved newest-page read instead of starting a duplicate fetch (1.9128ms)
+Γ£ö batched recovery during a read runs one trailing read and never starts parallel requests (4.3688ms)
+Γ£ö retiring a request discards queued recovery and even an ignored abort cannot update the old thread (2.7482ms)
+Γ£ö an unchanged newest page preserves message and preview references; a renewed media URL still updates (3.4524ms)
+Γ£ö own outgoing messages merge without an incoming alert (2.8559ms)
+Γä╣ tests 23
+Γä╣ suites 0
+Γä╣ pass 23
+Γä╣ fail 0
+Γä╣ cancelled 0
+Γä╣ skipped 0
+Γä╣ todo 0
+Γä╣ duration_ms 809.5315

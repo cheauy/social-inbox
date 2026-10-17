@@ -16,13 +16,13 @@ test('KHQR release is independent while other cancellation remains disabled',()=
  assert.equal(loader()('lib/billing/payment-cancellation-feature.ts').PAYMENT_CANCELLATION_ENABLED,false);
 });
 
-test('enabled KHQR creation refuses missing or incomplete schema before saving an obligation',async()=>{
+test('retired KHQR creation refuses missing or incomplete schema without saving an obligation',async()=>{
  for(const mode of ['missing','incomplete']){
   const f=await api.fixture('sandbox','merchant',mode!=='missing',true);
   try{
    if(mode==='incomplete')await f.db.exec("create or replace function public.tenh_khqr_checkout_capabilities() returns jsonb language sql as $$ select '{\"version\":1}'::jsonb $$");
    const response=await f.checkout.POST(f.post('/api/bakong/checkout',f.body));
-   assert.equal(response.status,503,mode);assert.equal(f.state.calls,0);
+   assert.equal(response.status,410,mode);assert.equal((await response.json()).code,'BAKONG_CHECKOUT_RETIRED');assert.equal(f.state.calls,0);
    assert.equal((await f.db.query('select count(*)::int n from billing_transactions')).rows[0].n,0);
    assert.equal((await f.db.query('select count(*)::int n from bakong_payment_attempts')).rows[0].n,0);
   }finally{await f.db.close();}
@@ -32,7 +32,7 @@ test('KHQR returns its saved QR and server deadlines on the installed schema wit
  const f=await api.fixture('sandbox','merchant',false);
  try{
   assert.equal((await f.db.query("select to_regclass('public.payment_cancellations') t")).rows[0].t,null);
-  const started=await f.start(),response=await f.read(started.attemptId),body=await response.json();
+  const started=await f.seedExistingAttempt(),response=await f.read(started.attemptId),body=await response.json();
   assert.equal(response.status,200);assert.equal(body.success,true);assert.match(body.attempt.qrImage,/^data:image\/png;base64,/);
   assert.ok(Number.isFinite(Date.parse(body.attempt.createdAt)));assert.equal(f.state.calls,0);
   const saved=(await f.db.query('select expires_at from bakong_payment_attempts where id=$1',[started.attemptId])).rows[0];
@@ -45,10 +45,13 @@ test('KHQR returns its saved QR and server deadlines on the installed schema wit
 test('expired unresolved KHQR keeps the installed purchase guard and cannot mint another obligation',async()=>{
  const f=await api.fixture('sandbox','merchant',false);
  try{
-  const started=await f.start();
+  const started=await f.seedExistingAttempt();
   await f.db.exec(`alter table bakong_payment_attempts disable trigger bakong_immutable_attempt_identity;update bakong_payment_attempts set expires_at=now()-interval '1 minute' where id='${started.attemptId}';alter table bakong_payment_attempts enable trigger bakong_immutable_attempt_identity;`);
   const before=(await f.read(started.attemptId));assert.equal(before.status,200);assert.equal((await before.json()).attempt.qrImage,null);
-  f.body.purchaseIntent=randomUUID();assert.equal((await f.start()).attemptId,started.attemptId);
+  f.body.purchaseIntent=randomUUID();
+  const retired=await f.checkout.POST(f.post('/api/bakong/checkout',f.body));
+  assert.equal(retired.status,410);assert.equal((await retired.json()).code,'BAKONG_CHECKOUT_RETIRED');
+  assert.equal(await f.load('lib/bakong/payments.ts').pendingBakong(f.body.businessId),started.attemptId);
   assert.equal((await f.db.query('select count(*)::int n from bakong_payment_attempts')).rows[0].n,1);
   assert.equal(f.state.calls,0);
  }finally{await f.db.close();}

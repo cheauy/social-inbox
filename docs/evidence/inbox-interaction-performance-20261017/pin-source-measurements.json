@@ -1,0 +1,16 @@
+{
+  "kind": "source measurement with Node hook/transport doubles; no browser renders or production timing",
+  "baseline": "35b5fdd8a4b0cef942fda658506a0daa10b44e98",
+  "before": {
+    "simultaneousPinReads": 5,
+    "totalPinReadsIncludingTrailingCatchUp": 5,
+    "ordinaryUnpinnedEvents": 100,
+    "pinStateReferenceChanges": 100
+  },
+  "after": {
+    "simultaneousPinReads": 1,
+    "totalPinReadsIncludingTrailingCatchUp": 2,
+    "ordinaryUnpinnedEvents": 100,
+    "pinStateReferenceChanges": 0
+  }
+}

@@ -4,6 +4,7 @@ const fs = require("node:fs"), os = require("node:os"), path = require("node:pat
 const { spawn } = require("node:child_process");
 const root = path.resolve(__dirname, "..");
 const bakongMode = process.env.TENH_PAYMENT_BROWSER_MODE === "bakong";
+const retirementMode = process.env.TENH_PAYMENT_BROWSER_MODE === "retirement";
 const serveDemo = bakongMode && process.argv.includes("--serve");
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), "tenh-payment-attempt-"));
 const evidence = path.resolve(process.env.TENH_PAYMENT_ATTEMPT_EVIDENCE || path.join(root, "docs/evidence/payment-attempt-20261015/browser"));
@@ -32,7 +33,7 @@ async function build() {
     qrImage = await require("qrcode").toDataURL(serveDemo ? "TENH-LOCAL-DEMO-NOT-FOR-PAYMENT" : generated.data.qr, { width: 280, margin: 2 });
   }
   await new Promise((resolve, reject) => webpack({
-    mode: "development", devtool: false, optimization: { minimize: false }, entry: path.join(root, `tests/fixtures/${bakongMode ? "bakong-browser" : "payment-attempt-browser"}.entry.cjs`), output: { path: temp, filename: "bundle.js" },
+    mode: "development", devtool: false, optimization: { minimize: false }, entry: path.join(root, `tests/fixtures/${retirementMode ? "bakong-retirement-browser" : bakongMode ? "bakong-browser" : "payment-attempt-browser"}.entry.cjs`), output: { path: temp, filename: "bundle.js" },
     resolve: { extensions: [".ts", ".tsx", ".js", ".cjs"], alias: { "next/image$": image, "next/link$": link, "next/navigation$": navigation, "next/script$": script, "@/lib/supabase/client$": supabase, "@/components/display/workspace-language-text$": language, "@": root }, modules: [path.join(root, "node_modules"), "node_modules"] },
     plugins: [new webpack.DefinePlugin({ "process.env.TENH_TEST_BAKONG_QR_IMAGE": JSON.stringify(qrImage), "process.env.TENH_TEST_BAKONG_DEMO": JSON.stringify(serveDemo ? "true" : "false") })],
     module: { rules: [{ test: /\.tsx?$/, exclude: /node_modules/, use: loader }] },
@@ -64,6 +65,7 @@ async function run() {
   const assets = {
     "/fixture.html": [path.join(temp, "fixture.html"), "text/html; charset=utf-8"],
     "/bundle.js": [path.join(temp, "bundle.js"), "application/javascript; charset=utf-8"],
+    "/images/tenh_logo.png": [path.join(root, "public/images/tenh_logo.png"), "image/png"],
     "/images/channels/telegram.png": [path.join(root, "public/images/channels/telegram.png"), "image/png"],
     "/images/channels/messenger.png": [path.join(root, "public/images/channels/messenger.png"), "image/png"],
   };
@@ -104,6 +106,17 @@ async function run() {
   for (const language of ["en", "km"]) for (const width of [390, 768, 1024, 1440]) {
     await send("Emulation.setDeviceMetricsOverride", { width, height: 1000, deviceScaleFactor: 1, mobile: false });
     await send("Page.navigate", { url: `${origin}/fixture.html?lang=${language}&width=${width}` });
+    if (retirementMode) {
+      for (let attempt = 0; attempt < 100; attempt++) { if (await evaluate("Boolean(window.retirementFixture)")) break; await pause(30); }
+      await evaluate("window.retirementFixture.check()");
+      const methodsScreenshot = await screenshot(`${language}-${width}-methods`);
+      await evaluate("window.retirementFixture.manual()");
+      const manualScreenshot = await screenshot(`${language}-${width}-manual`);
+      const result = await evaluate("window.retirementFixture.result()");
+      reports.push({ language, width, methodsScreenshot, manualScreenshot, ...result });
+      console.log(`${language}/${width}px: ${result.checks.length} retirement assertions passed`);
+      continue;
+    }
     if (bakongMode) {
       for (let attempt = 0; attempt < 100; attempt++) { if (await evaluate("Boolean(window.bakongFixture)")) break; await pause(30); }
       assert.equal(await evaluate("Boolean(window.bakongFixture)"), true, "Bakong fixture mounted");
@@ -141,14 +154,20 @@ async function run() {
     await evaluate("window.paymentAttemptFixture.reloadChecks()");
     await evaluate("window.paymentAttemptFixture.statusChecks()");
     const terminalScreenshot = await screenshot(`${language}-${width}-historical-stale-isolation`);
+    await evaluate("window.paymentAttemptFixture.successChecks()");
+    const successScreenshot = await screenshot(`${language}-${width}-success`);
+    await evaluate("window.paymentAttemptFixture.navigationChecks()");
     await evaluate("window.paymentAttemptFixture.preparedChecks()");
     const validationScreenshot = await screenshot(`${language}-${width}-proof-validation`);
     await evaluate("window.paymentAttemptFixture.paywayChecks()");
     const paywayScreenshot = await screenshot(`${language}-${width}-payway-pending`);
+    await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
+    await evaluate("window.paymentAttemptFixture.motionChecks()");
+    await send("Emulation.setEmulatedMedia", { features: [] });
     const result = await evaluate("window.paymentAttemptFixture.result()");
     result.checks = [...beforeReload.checks, ...result.checks];
     assert.ok(result.checks.every(check => check.passed));
-    reports.push({ language, width, submission, submittedScreenshot, terminalScreenshot, validationScreenshot, paywayScreenshot, ...result });
+    reports.push({ language, width, submission, submittedScreenshot, successScreenshot, terminalScreenshot, validationScreenshot, paywayScreenshot, ...result });
     fs.writeFileSync(path.join(evidence, "browser-results.json"), JSON.stringify({ passed: false, complete: false, reports, browserErrors, network, temp }, null, 2));
     console.log(`${language}/${width}px: ${result.checks.length} assertions passed`);
   }

@@ -1,0 +1,21 @@
+[
+  {
+    "file": "lib\\inbox\\use-pinned-messages.ts",
+    "errorCount": 2,
+    "warningCount": 0,
+    "messages": [
+      {
+        "ruleId": "react-hooks/refs",
+        "severity": 2,
+        "line": 13,
+        "message": "Error: Cannot access refs during render"
+      },
+      {
+        "ruleId": "react-hooks/set-state-in-effect",
+        "severity": 2,
+        "line": 72,
+        "message": "Error: Calling setState synchronously within an effect can trigger cascading renders"
+      }
+    ]
+  }
+]

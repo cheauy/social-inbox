@@ -10,6 +10,8 @@ import {
 } from "@/lib/supabase/admin";
 import { chunkIds } from "@/lib/supabase/chunk-ids";
 import { hiddenPersonalAccountIds } from "@/lib/telegram-personal/visibility";
+import { getActiveInboxChannels } from "@/lib/inbox/get-active-inbox-channels";
+import { getActiveInboxMemberships } from "@/lib/inbox/get-active-inbox-memberships";
 
 import type {
   CustomerTag,
@@ -22,10 +24,6 @@ type ContactTagRow = {
     | CustomerTag
     | CustomerTag[]
     | null;
-};
-
-type ActiveMembershipRow = {
-  business_id: string;
 };
 
 type SubscriptionStateRow = {
@@ -71,17 +69,6 @@ function loadLatestSubscriptions(businessIds: string[]) {
 // Canonical keys keep different tenant sets separate. Nothing survives a request.
 const subscriptionsForScope = cache((scopeKey: string) => requestMemo(`inbox-subscriptions:${scopeKey}`,
   () => readLatestSubscriptions(JSON.parse(scopeKey) as string[])));
-
-const activeChannelsForScope = cache((scopeKey: string) => requestMemo(`inbox-active-channels:${scopeKey}`, async () => {
-  const { data, error } = await supabaseAdmin.from("social_accounts")
-    .select("id,platform,facebook_token_status,telegram_token_status")
-    .in("business_id", JSON.parse(scopeKey) as string[]).eq("is_active", true);
-  if (error) {
-    console.error("Unable to load active Inbox channels:", error);
-    throw new Error("Unable to load active TENH channels.");
-  }
-  return data ?? [];
-}));
 
 async function readLatestSubscriptions(businessIds: string[]) {
   if (businessIds.length === 0) {
@@ -189,22 +176,7 @@ async function readInboxConversationScope(): Promise<
     );
   }
 
-  const {
-    data,
-    error,
-  } = await supabaseAdmin
-    .from("team_members")
-    .select("business_id")
-    .eq(
-      "user_id",
-      authResult.user.id,
-    )
-    .eq("is_active", true)
-    .order("created_at", {
-      ascending: true,
-    });
-
-  if (error) {
+  const memberships = await getActiveInboxMemberships(authResult.user.id).catch((error) => {
     console.error(
       "Unable to load Inbox subscription scope:",
       error,
@@ -213,12 +185,12 @@ async function readInboxConversationScope(): Promise<
     throw new Error(
       "Unable to load your accessible TENH subscriptions.",
     );
-  }
+  });
 
   const memberBusinessIds =
     Array.from(
       new Set(
-        ((data ?? []) as ActiveMembershipRow[])
+        memberships
           .map((membership) => membership.business_id)
           .filter(Boolean),
       ),
@@ -248,7 +220,7 @@ export const getInboxConversationScope = cache(() => requestMemo("inbox-conversa
 export async function preloadInboxConversationChannels() {
   const scope = await getInboxConversationScope();
   if (!scope.accessibleBusinessIds.length) return;
-  await activeChannelsForScope(JSON.stringify([...scope.accessibleBusinessIds].sort()));
+  await getActiveInboxChannels(scope.accessibleBusinessIds);
 }
 
 /*
@@ -320,20 +292,19 @@ export async function getConversations(
     ];
   }
 
-  const subscriptionByBusiness =
-    await loadLatestSubscriptions(scopedBusinessIds);
-
   /*
    * Disabled channels keep their TENH history but must not appear in Inbox
    * or All Channels. Resolve the currently enabled social_account ids first
    * and scope the conversation query to those ids only.
    */
-  const activeChannelData = await activeChannelsForScope(JSON.stringify([...scopedBusinessIds].sort()));
-
   // Telegram Personal accounts this member may not see are not channels for them.
   const viewer = await getCurrentMember();
   if (!viewer.success) return [];
-  const hiddenPersonal = await hiddenPersonalAccountIds(scopedBusinessIds, viewer.user.id);
+  const [subscriptionByBusiness, activeChannelData, hiddenPersonal] = await Promise.all([
+    loadLatestSubscriptions(scopedBusinessIds),
+    getActiveInboxChannels(scopedBusinessIds),
+    hiddenPersonalAccountIds(scopedBusinessIds, viewer.user.id),
+  ]);
 
   const activeChannelIds =
     (activeChannelData ?? [])

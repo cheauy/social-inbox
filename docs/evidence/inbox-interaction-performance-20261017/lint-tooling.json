@@ -1,0 +1,56 @@
+[
+  {
+    "file": "tests\\fixtures\\inbox-compact-browser.entry.cjs",
+    "errorCount": 0,
+    "warningCount": 0,
+    "messages": []
+  },
+  {
+    "file": "tests\\fixtures\\inbox-interaction-page.cjs",
+    "errorCount": 0,
+    "warningCount": 0,
+    "messages": []
+  },
+  {
+    "file": "tests\\fixtures\\inbox-interaction-performance.entry.cjs",
+    "errorCount": 0,
+    "warningCount": 0,
+    "messages": []
+  },
+  {
+    "file": "tests\\fixtures\\inbox-interaction-recorder.cjs",
+    "errorCount": 0,
+    "warningCount": 0,
+    "messages": []
+  },
+  {
+    "file": "tests\\inbox-compact-browser-build.cjs",
+    "errorCount": 0,
+    "warningCount": 0,
+    "messages": []
+  },
+  {
+    "file": "tests\\inbox-interaction-fixture-contract.test.cjs",
+    "errorCount": 0,
+    "warningCount": 0,
+    "messages": []
+  },
+  {
+    "file": "tests\\inbox-interaction-recorder.test.cjs",
+    "errorCount": 0,
+    "warningCount": 0,
+    "messages": []
+  },
+  {
+    "file": "tests\\inbox-pin-performance-measure.cjs",
+    "errorCount": 0,
+    "warningCount": 0,
+    "messages": []
+  },
+  {
+    "file": "tests\\inbox-pin-read-performance.test.cjs",
+    "errorCount": 0,
+    "warningCount": 0,
+    "messages": []
+  }
+]

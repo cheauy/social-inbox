@@ -14,7 +14,7 @@ function fixture({baseline=false,delay=0,teamDelay=delay,offPage=false,sdkTransp
  async function read(label,fn,wait=delay){const entry={label,start:performance.now()-started};calls.push(entry);if(wait)await new Promise(r=>setTimeout(r,wait));const result=fn();entry.end=performance.now()-started;return result}
  class Query{
   constructor(table){this.table=table;this.columns='';this.filters=[];this.max=Infinity}select(c){this.columns=c;return this}eq(k,v){this.filters.push(r=>r[k]===v);return this}in(k,v){this.filters.push(r=>v.includes(r[k]));return this}order(){return this}limit(n){this.max=n;return this}
-  then(a,b){const label=this.table==='team_members'?(this.columns==='business_id'?'scope-members':this.columns==='id,business_id'?'page-members':'team'):this.table;
+  then(a,b){const label=this.table==='team_members'?(['business_id','id,business_id'].includes(this.columns)?'active-members':'team'):this.table==='social_accounts'&&this.columns==='id,business_id'?'personal-visibility':this.table;
    return read(label,()=>{if(this.table==='business_subscriptions'&&controls.failSubscriptions)return{data:null,error:{message:'subscription unavailable'}};let rows=data[this.table].filter(r=>this.filters.every(f=>f(r))).slice(0,this.max);if(this.table==='team_members'&&controls.scopeDenied)rows=[];if(this.table==='social_accounts'&&controls.channelDisabled)rows=[];return{data:rows,error:null}},label==='team'?teamDelay:delay).then(a,b)}
  }
  const currentMember=React.cache(async()=>{const identity=authContext.getStore()??{userId:user,businessId:business,memberId:member};return{success:true,user:{id:identity.userId},member:{id:identity.memberId,business_id:identity.businessId}}});
@@ -43,7 +43,7 @@ test('authenticated entry starts independent team loading before paging finishes
 
 test('same server render shares fresh scope, subscription and active-channel reads, including off-page selection',async()=>{
  for(const offPage of [false,true]){const f=fixture({offPage});const props=await f.run();assert.equal(props.activeConversationId,offPage?uuid(2):uuid(1));
- for(const label of ['scope-members','business_subscriptions','social_accounts'])assert.equal(f.calls.filter(c=>c.label===label).length,1,label+' must execute once per identical scope');
+ for(const label of ['active-members','business_subscriptions','social_accounts'])assert.equal(f.calls.filter(c=>c.label===label).length,1,label+' must execute once per identical scope');
  assert.equal(props.pagination.page.ids.length,1,'selected off-page row does not expand page cursor');
  }
 });
@@ -64,15 +64,15 @@ test('next server render rechecks changed membership/channel state and fails clo
 test('overlapping server renders do not share another user or business scope',async()=>{
  const f=fixture({delay:5}),read=identity=>authContext.run(identity,()=>render(()=>f.helpers.getInboxConversationScope()));
  const [a,b]=await Promise.all([read({userId:user,businessId:business,memberId:member}),read({userId:uuid(999),businessId:uuid(998),memberId:uuid(997)})]);
- assert.deepEqual(Array.from(a.accessibleBusinessIds),[business]);assert.equal(b.accessibleBusinessIds.length,0);assert.equal(a.currentBusinessId,business);assert.equal(b.currentBusinessId,uuid(998));assert.equal(f.calls.filter(c=>c.label==='scope-members').length,2);
+ assert.deepEqual(Array.from(a.accessibleBusinessIds),[business]);assert.equal(b.accessibleBusinessIds.length,0);assert.equal(a.currentBusinessId,business);assert.equal(b.currentBusinessId,uuid(998));assert.equal(f.calls.filter(c=>c.label==='active-members').length,2);
 });
 
 test('wrapped API requests share canonical tenant sets but recheck the next request and retry a rejected read',async()=>{
  const f=fixture(),other=uuid(901),{withRequestScope}=f.load('lib/server/request-scope.ts');
  f.data.team_members.push({id:uuid(801),business_id:other,user_id:user,is_active:true});f.data.business_subscriptions.push({...f.data.business_subscriptions[0],business_id:other,id:uuid(401)});
  const request=withRequestScope(async()=>{const scope=await f.helpers.getInboxConversationScope();await f.helpers.getInboxConversationScope();await f.helpers.getConversations(scope.accessibleBusinessIds,{conversationIds:[uuid(1)]});await f.helpers.getConversations([...scope.accessibleBusinessIds].reverse(),{conversationIds:[uuid(1)]});return scope});
- await request();for(const label of ['scope-members','business_subscriptions','social_accounts'])assert.equal(f.calls.filter(c=>c.label===label).length,1,label+' uses one request-local key');
- await request();assert.equal(f.calls.filter(c=>c.label==='scope-members').length,2);assert.equal(f.calls.filter(c=>c.label==='business_subscriptions').length,2);
+ await request();for(const label of ['active-members','business_subscriptions','social_accounts'])assert.equal(f.calls.filter(c=>c.label===label).length,1,label+' uses one request-local key');
+ await request();assert.equal(f.calls.filter(c=>c.label==='active-members').length,2);assert.equal(f.calls.filter(c=>c.label==='business_subscriptions').length,2);
  await withRequestScope(async()=>{f.controls.failSubscriptions=true;await assert.rejects(f.helpers.getInboxConversationScope());f.controls.failSubscriptions=false;assert.equal((await f.helpers.getInboxConversationScope()).accessibleBusinessIds.length,2)})();
 });
 

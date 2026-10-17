@@ -1,0 +1,17 @@
+Γ£ö authenticated entry starts independent team loading before paging finishes, and selected messages need not wait for team (1575.9493ms)
+Γ£ö same server render shares fresh scope, subscription and active-channel reads, including off-page selection (1681.1888ms)
+∩╣ú controlled entry comparison records actual loaded source counts and fixture timing (2.0662ms) # SKIP
+Γ£ö next server render rechecks changed membership/channel state and fails closed on subscription failure (832.7426ms)
+Γ£ö overlapping server renders do not share another user or business scope (979.3539ms)
+Γ£ö wrapped API requests share canonical tenant sets but recheck the next request and retry a rejected read (834.1757ms)
+∩╣ú installed Supabase plus Next GET dedupe separates helper invocation savings from transport savings (0.3922ms) # SKIP
+∩╣ú server page payload is unchanged for matching, off-page and canonical Inbox entry (0.5625ms) # SKIP
+Γ£ö only missing paging migration permits legacy fallback; query failure reads no selected messages (1525.448ms)
+Γä╣ tests 9
+Γä╣ suites 0
+Γä╣ pass 6
+Γä╣ fail 0
+Γä╣ cancelled 0
+Γä╣ skipped 3
+Γä╣ todo 0
+Γä╣ duration_ms 8430.0353

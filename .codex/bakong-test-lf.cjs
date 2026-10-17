@@ -1,0 +1,1 @@
+const fs=require('node:fs');const read=fs.readFileSync;fs.readFileSync=function(file,options){const value=read.call(this,file,options);return typeof value==='string' && String(file).endsWith('.sql') ? value.replaceAll('\r\n','\n') : value;};

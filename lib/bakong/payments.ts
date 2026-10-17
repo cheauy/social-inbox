@@ -1,19 +1,15 @@
 import "server-only";
 import QRCode from "qrcode";
-import { randomUUID } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { memberHasPermission } from "@/lib/auth/require-permission";
-import { getTrustedPlan, buildPurchaseRecord, type SubscriptionForQuote } from "@/lib/billing/subscription-purchase";
 import { describePaymentAttempt } from "@/lib/billing/payment-attempt";
-import { syncBusinessSubscriptionLifecycle } from "@/lib/subscription/sync-subscription-lifecycle";
 import { getBakongConfig } from "./config";
-import { generateBakongQr, checkBakongTransaction } from "./provider";
+import { checkBakongTransaction } from "./provider";
 import type { BakongPaymentView } from "./types";
 import { decimalMinorUnits } from "./money";
 import { getPendingBakongPayment } from "@/lib/billing/pending-bakong-payment";
 import { KHQR_CHECKOUT_ENABLED } from "@/lib/billing/payment-cancellation-feature";
-import { requireKhqrCheckoutSchema } from "@/lib/billing/require-khqr-checkout-schema";
 
 export const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 export const BAKONG_HEADERS = { "Cache-Control": "private, no-store, max-age=0", Vary: "Cookie, Origin" };
@@ -58,16 +54,9 @@ async function pilotStatus(config: NonNullable<ReturnType<typeof getBakongConfig
   return result.error ? null : result.data as { eligible: boolean; canIssue: boolean; canVerify: boolean; inquiriesRemaining: number; pilot: boolean } | null;
 }
 
-export async function bakongReadiness(actor?: BakongActor) {
-  const config = getBakongConfig();
-  if (!config) return { enabled: false, environment: null };
-  if (!config.checkoutRequested) {
-    const pilot = config.pilotRequested && config.environment === "production" && actor ? await pilotStatus(config, actor) : null;
-    return { enabled: pilot?.eligible === true && pilot.canIssue === true, environment: config.environment };
-  }
-  const capacity = await supabaseAdmin.rpc("tenh_bakong_capacity", { p_fingerprint: config.fingerprint,
-    p_environment: config.environment, p_recipient: config.accountId, p_budget: config.dailyBudget });
-  return { enabled: !capacity.error && capacity.data?.eligible === true && capacity.data?.canIssue === true, environment: config.environment };
+/** Direct Bakong checkout is retired; configuration remains available for saved-payment reconciliation. */
+export async function bakongReadiness() {
+  return { enabled: false, retired: true, environment: getBakongConfig()?.environment ?? null };
 }
 
 export async function pendingBakong(businessId: string) {
@@ -95,54 +84,6 @@ export async function resumeBakongIntent(actor: BakongActor, intent: string | nu
   if (!saved.data) return { attemptId: null, closed: false };
   const closed = KHQR_CHECKOUT_ENABLED && unpaid(saved.data) && await bakongCheckout(saved.data) !== "open";
   return { attemptId: closed ? null : saved.data.id as string, closed };
-}
-
-export async function prepareBakongPayment(actor: BakongActor, body: Record<string, unknown>) {
-  const intent = typeof body.purchaseIntent === "string" ? body.purchaseIntent : "";
-  if (!UUID.test(intent)) throw new BakongError(400, "PURCHASE_INTENT_REQUIRED");
-  const text = (v: unknown) => typeof v === "string" ? v.trim() : "";
-  if ([body.renewSame, body.customUpgrade].some(v => v !== undefined && typeof v !== "boolean") ||
-      [body.connections, body.users].some(v => v !== undefined && v !== null && (typeof v !== "number" || !Number.isSafeInteger(v) || v < 1))) throw new BakongError(400, "INVALID_SELECTION");
-  const selection = { planCode: text(body.planCode), billingCycle: text(body.billingCycle), connections: body.connections ?? null,
-    users: body.users ?? null, renewSame: body.renewSame === true, customUpgrade: body.customUpgrade === true,
-    extensionBillingCycle: text(body.extensionBillingCycle) || "none" };
-  if (KHQR_CHECKOUT_ENABLED) await requireKhqrCheckoutSchema();
-  const saved = await supabaseAdmin.from("bakong_payment_attempts").select("*").eq("business_id", actor.businessId)
-    .eq("user_id", actor.userId).eq("intent_id", intent).maybeSingle();
-  if (saved.error) throw new BakongError(503, "PAYMENT_UNAVAILABLE");
-  if (saved.data) {
-    if (Object.keys(selection).some(key => JSON.stringify(saved.data.selection?.[key]) !== JSON.stringify(selection[key as keyof typeof selection]))) throw new BakongError(400, "PURCHASE_INTENT_CHANGED");
-    if (KHQR_CHECKOUT_ENABLED && unpaid(saved.data) && await bakongCheckout(saved.data) !== "open") throw new BakongError(409, "CHECKOUT_CLOSED");
-    return saved.data as BakongAttempt;
-  }
-  const pending = await pendingBakong(actor.businessId);
-  if (pending) return loadBakongAttempt(pending, actor.businessId);
-  const config = getBakongConfig();
-  if (!config || !(await bakongReadiness(actor)).enabled) throw new BakongError(503, "BAKONG_NOT_ENABLED");
-  if (selection.renewSame && !actor.owner) throw new BakongError(403, "OWNER_REQUIRED");
-  if (selection.renewSame && selection.customUpgrade) throw new BakongError(400, "INVALID_SELECTION");
-  await syncBusinessSubscriptionLifecycle(actor.businessId);
-  const current = await supabaseAdmin.from("business_subscriptions").select("*").eq("business_id", actor.businessId).maybeSingle();
-  if (current.error || !current.data) throw new BakongError(503, "SUBSCRIPTION_UNAVAILABLE");
-  const subscription = current.data as SubscriptionForQuote;
-  if (subscription.status === "suspended") throw new BakongError(403, "SUBSCRIPTION_SUSPENDED");
-  const trusted = getTrustedPlan(selection.planCode, selection.billingCycle, selection.connections, selection.users,
-    selection.renewSame, selection.customUpgrade, selection.extensionBillingCycle, subscription);
-  if (!trusted) throw new BakongError(400, "INVALID_QUOTE");
-  const id = randomUUID(), qr = generateBakongQr(config, id, trusted.quote.totalCents);
-  const record = buildPurchaseRecord(id, actor.businessId, actor.memberId, trusted, subscription);
-  const result = await supabaseAdmin.rpc("tenh_prepare_bakong_payment", { p_record: record, p_actor: actor.userId,
-    p_member: actor.memberId, p_intent: intent, p_selection: selection, p_environment: config.environment,
-    p_fingerprint: config.fingerprint, p_recipient: config.accountId, p_qr: qr.qr, p_md5: qr.md5,
-    p_reference: qr.reference, p_expires_at: qr.expiresAt, p_budget: config.dailyBudget });
-  if (result.error || !result.data) {
-    if (result.error?.details === "TENH_BAKONG_CHECKOUT_CLOSED") throw new BakongError(409, "CHECKOUT_CLOSED");
-    // A committed/lost preparation or another tab is reconciled before another QR can be displayed.
-    const recovered = await pendingBakong(actor.businessId);
-    if (recovered) return loadBakongAttempt(recovered, actor.businessId);
-    throw new BakongError(result.error?.code === "23505" ? 409 : 503, result.error?.code === "23505" ? "TENH_BILLING_PURCHASE_PENDING" : "PREPARATION_UNCERTAIN");
-  }
-  return result.data as BakongAttempt;
 }
 
 export async function checkBakongPayment(attempt: BakongAttempt, actorUserId: string): Promise<BakongAttempt> {

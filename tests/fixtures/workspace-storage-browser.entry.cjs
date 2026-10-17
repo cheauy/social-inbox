@@ -128,7 +128,7 @@ createRoot(document.getElementById("root")).render(h(App));
     check("Storage files load", Boolean(firstSelect));
     const grid = firstSelect.closest("article").parentElement;
     const columns = getComputedStyle(grid).gridTemplateColumns.split(" ").filter(Boolean).length;
-    const expectedColumns = innerWidth >= 768 ? 5 : innerWidth >= 640 ? 4 : innerWidth >= 390 ? 3 : 2;
+    const expectedColumns = innerWidth >= 1024 ? 8 : innerWidth >= 768 ? 5 : innerWidth >= 640 ? 4 : innerWidth >= 390 ? 3 : 2;
     check("responsive Storage column count", columns === expectedColumns, `${columns}/${expectedColumns}`);
     check("manager categories render without Trash", Boolean(buttonText("Add category") && buttonText("Campaigns") && !buttonText("Trash")));
     const addCategory = buttonText("Add category").getBoundingClientRect();

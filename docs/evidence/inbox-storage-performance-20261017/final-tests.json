@@ -1,0 +1,73 @@
+{
+  "summary": {
+    "type": "test:summary",
+    "counts": {
+      "tests": 354,
+      "failed": 9,
+      "passed": 345,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0,
+      "topLevel": 354,
+      "suites": 0
+    },
+    "durationMs": 8893.513,
+    "success": false
+  },
+  "failures": [
+    {
+      "type": "test:fail",
+      "name": "lib\\inbox\\normalize-messages.test.mjs",
+      "file": "C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-inbox-perf-20261017\\lib\\inbox\\normalize-messages.test.mjs",
+      "error": "test failed"
+    },
+    {
+      "type": "test:fail",
+      "name": "Storage is workspace-shared, uploads multiple files, and offers explicit Draft or Send Now actions",
+      "file": "C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-inbox-perf-20261017\\tests\\inbox-attachment-picker.test.cjs",
+      "error": "The input did not match the regular expression /\\/api\\/workspace-storage\\/files/. Input:"
+    },
+    {
+      "type": "test:fail",
+      "name": "Unread action passes every filtered row, not the first visible page",
+      "file": "C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-inbox-perf-20261017\\tests\\inbox-bulk-read.test.cjs",
+      "error": "The input did not match the regular expression /await onMarkAllRead\\(filteredConversations\\)/. Input:"
+    },
+    {
+      "type": "test:fail",
+      "name": "tests\\inbox-compact-web.test.cjs",
+      "file": "C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-inbox-perf-20261017\\tests\\inbox-compact-web.test.cjs",
+      "error": "test failed"
+    },
+    {
+      "type": "test:fail",
+      "name": "tests\\inbox-composer-lifecycle.test.cjs",
+      "file": "C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-inbox-perf-20261017\\tests\\inbox-composer-lifecycle.test.cjs",
+      "error": "test failed"
+    },
+    {
+      "type": "test:fail",
+      "name": "tests\\inbox-composer-media-ownership.test.cjs",
+      "file": "C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-inbox-perf-20261017\\tests\\inbox-composer-media-ownership.test.cjs",
+      "error": "test failed"
+    },
+    {
+      "type": "test:fail",
+      "name": "tests\\inbox-composer-microphone-ownership.test.cjs",
+      "file": "C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-inbox-perf-20261017\\tests\\inbox-composer-microphone-ownership.test.cjs",
+      "error": "test failed"
+    },
+    {
+      "type": "test:fail",
+      "name": "tests\\inbox-conversation-url-selection.test.cjs",
+      "file": "C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-inbox-perf-20261017\\tests\\inbox-conversation-url-selection.test.cjs",
+      "error": "test failed"
+    },
+    {
+      "type": "test:fail",
+      "name": "tests\\inbox-photo-loading.test.cjs",
+      "file": "C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-inbox-perf-20261017\\tests\\inbox-photo-loading.test.cjs",
+      "error": "test failed"
+    }
+  ]
+}

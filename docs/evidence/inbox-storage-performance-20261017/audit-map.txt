@@ -1,0 +1,11 @@
+Baseline: released remote main 35b5fdd8a4b0cef942fda658506a0daa10b44e98, verified git ls-remote. Original local main 1b04afc is clean and left unchanged. Isolated detached worktree; no publication.
+Inbox entry: app/dashboard/inbox/page.tsx -> tenant scope -> getConversationPage + team members in parallel; selected messages start only after authorization. Paging fallback only for missing RPC.
+Filters/channel/box: conversation-list.tsx + inbox-channel-selector.tsx History API -> use-conversation-pages.ts -> POST conversation-page. Existing 6-view/30s bounded mount-local cache requalifies each switch; 30-row keyset paging.
+Conversation: inbox-view.tsx loadConversationMessagePage shared flight/cache + independent active-thread syncNewestMessages. Both call same messages endpoint.
+Realtime: use-inbox-realtime.ts 2 channels per accessible business, token/reconnect handling -> message/conversation reducers -> page qualification (300ms), active recovery (150ms), collaborative fallback (healthy60s/unhealthy5s), active thread fallback (healthy60s/unhealthy3s).
+Sound: four InboxView sources call useBrowserNotifications before state renders; conversation UPDATE fallback can notify while latest message is still absent.
+Rendering: memoized ConversationRow, offscreen item deferral >100 rows, memoized message photo groups. Pager ref initializer serializes all contacts on every render.
+Storage: modal identity key business:member, query-owned abort/generation, server 30-row filters/cursor, upload lifecycle merges clientFile without full-list reload, signed previews preserve valid unchanged URLs. 5 columns at >=768 currently. Each visible preview currently renews one file per request; retain existing conservative expiry safety this pass.
+Prioritized proven mechanisms to fix: P1 notification-before-commit plus dropped active recovery during requests; P2 duplicate initial conversation newest-page GET; P2 pager redundant render work; P3 desktop8 grid.
+Already present behavior to retain: upload merge/no full reload, muted settings, realtime unread/order/dedup, pagination, auth/RLS, per-scope cache ownership.
+Baseline focused:94 passed0failed0skipped. Unit/hook mocks only; no production latency measurement yet.

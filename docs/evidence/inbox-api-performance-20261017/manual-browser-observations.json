@@ -1,0 +1,46 @@
+{
+  "source": "Parent directly inspected user-supplied screenshot pixels; delegated summary only, not an automated browser measurement.",
+  "network": {
+    "preservedLogSecondsApprox": 170,
+    "displayedRequests": 65,
+    "totalRequests": 182,
+    "cacheEnabled": true,
+    "throttling": false,
+    "observedMilliseconds": {
+      "workspaces": [
+        2440,
+        3160
+      ],
+      "notifications": [
+        2620,
+        3380
+      ],
+      "liveState": [
+        3140,
+        4520
+      ],
+      "messagesLimit25": [
+        3540,
+        4410
+      ],
+      "conversationPage": [
+        3730,
+        5640
+      ]
+    },
+    "duplicateOverlapProven": false
+  },
+  "selectedTiming": {
+    "endpointNameVisible": false,
+    "contextualEndpoint": "conversation-page",
+    "queueMs": 1.32,
+    "stalledMs": 0.59,
+    "requestSentMs": 0.37,
+    "waitingMs": 5390,
+    "downloadMs": 456.61,
+    "totalMs": 5840,
+    "serverTimingVisible": false
+  },
+  "productionStageAttributionAvailable": false,
+  "productionBeforeAfterMeasured": false
+}

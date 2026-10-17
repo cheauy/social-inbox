@@ -1,0 +1,29 @@
+{
+  "baseline": "35b5fdd8a4b0cef942fda658506a0daa10b44e98",
+  "summary": [
+    "tests 38",
+    "pass 29",
+    "fail 9",
+    "skipped 0"
+  ],
+  "failures": [
+    "test at lib\\inbox\\normalize-messages.test.mjs:1:1",
+    "test at tests\\inbox-attachment-picker.test.cjs:82:1",
+    "test at tests\\inbox-bulk-read.test.cjs:60:1",
+    "test at tests\\inbox-compact-web.test.cjs:1:1",
+    "test at tests\\inbox-composer-lifecycle.test.cjs:1:1",
+    "test at tests\\inbox-composer-media-ownership.test.cjs:1:1",
+    "test at tests\\inbox-composer-microphone-ownership.test.cjs:1:1",
+    "test at tests\\inbox-conversation-url-selection.test.cjs:1:1",
+    "test at tests\\inbox-photo-loading.test.cjs:1:1"
+  ],
+  "errors": [
+    "Error [ERR_MODULE_NOT_FOUND]: Cannot find module 'C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-login-release-20261017\\lib\\inbox\\local-image-preview' imported from C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-login-release-20261017\\lib\\inbox\\normalize-messages.ts",
+    "Error: Cannot find module 'jsdom'",
+    "Error: Cannot find module 'jsdom'",
+    "Error: Cannot find module 'jsdom'",
+    "Error: Cannot find module 'jsdom'",
+    "Error: Cannot find module 'jsdom'",
+    "Error: Cannot find module 'jsdom'"
+  ]
+}

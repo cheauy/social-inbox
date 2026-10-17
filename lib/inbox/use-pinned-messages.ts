@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { InboxMessage } from "@/types/inbox";
 import { getMessagePin, isMessagePinned, MESSAGE_ROW_CHANGED_EVENT } from "@/lib/inbox/message-actions";
+import { SYNC_TIMEOUT_MS } from "@/lib/inbox/live-sync";
 
 /** Reuses Inbox's existing Realtime stream. No second Supabase connection/poll. */
 export function usePinnedMessages(conversationId: string | null, messages: InboxMessage[]) {
@@ -18,27 +19,36 @@ export function usePinnedMessages(conversationId: string | null, messages: Inbox
   const changes = useRef(new Map<string, { row: InboxMessage; removed: boolean; revision: number }>());
   const inFlight = useRef(new Set<string>());
   const previous = useRef(new Map<string, string>());
+  const readFlight = useRef<{ controller: AbortController; again: boolean } | null>(null);
 
   const apply = useCallback((message: InboxMessage, removed = false) => {
     if (!alive.current || message.conversation_id !== scope.current) return;
     revision.current += 1;
     changes.current.set(message.id, { row: message, removed, revision: revision.current });
     setPins((current) => {
+      if ((removed || !isMessagePinned(message)) && !current.some(item => item.id === message.id)) return current;
       const next = current.filter((item) => item.id !== message.id);
       if (!removed && isMessagePinned(message)) next.push(message);
       return next.sort((a, b) => String(getMessagePin(b).updated_at ?? "").localeCompare(String(getMessagePin(a).updated_at ?? "")));
     });
   }, []);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async function readPins() {
     const id = scope.current;
     if (!id) return;
+    if (readFlight.current) { readFlight.current.again = true; return; }
+    const flight = { controller: new AbortController(), again: false };
+    readFlight.current = flight;
     const started = revision.current;
     const generation = epoch.current;
     const requestId = ++requestNumber.current;
     try {
-      const response = await fetch(`/api/conversations/${encodeURIComponent(id)}/message-pins`, { cache: "no-store" });
+      const signal = AbortSignal.any([flight.controller.signal, AbortSignal.timeout(SYNC_TIMEOUT_MS)]);
+      const response = await fetch(`/api/conversations/${encodeURIComponent(id)}/message-pins`, {
+        cache: "no-store", signal,
+      });
       const result = await response.json();
+      signal.throwIfAborted();
       if (!response.ok || !result.success) throw new Error(result.error || "Unable to load pinned messages.");
       if (!alive.current || scope.current !== id || epoch.current !== generation || requestId !== requestNumber.current) return;
       // A realtime event arriving during this GET must override only its own row,
@@ -58,9 +68,12 @@ export function usePinnedMessages(conversationId: string | null, messages: Inbox
       setPins([...merged.values()].sort((a, b) => String(getMessagePin(b).updated_at ?? "").localeCompare(String(getMessagePin(a).updated_at ?? ""))));
       setError(result.truncated ? "Only the first 100 pinned messages are shown." : null);
     } catch (cause) {
-      if (alive.current && scope.current === id && epoch.current === generation && requestId === requestNumber.current) {
+      if (!flight.controller.signal.aborted && alive.current && scope.current === id && epoch.current === generation && requestId === requestNumber.current) {
         setError(cause instanceof Error ? cause.message : "Unable to load pinned messages.");
       }
+    } finally {
+      if (readFlight.current === flight) readFlight.current = null;
+      if (flight.again && alive.current && scope.current === id && epoch.current === generation) void readPins();
     }
   }, []);
 
@@ -86,6 +99,8 @@ export function usePinnedMessages(conversationId: string | null, messages: Inbox
     document.addEventListener("visibilitychange", restored);
     return () => {
       alive.current = false;
+      readFlight.current?.controller.abort();
+      readFlight.current = null;
       epoch.current += 1;
       revision.current += 1;
       window.removeEventListener(MESSAGE_ROW_CHANGED_EVENT, changed);

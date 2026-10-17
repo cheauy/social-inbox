@@ -1,0 +1,547 @@
+{
+  "baseline": "35b5fdd8a4b0cef942fda658506a0daa10b44e98",
+  "complete": false,
+  "timingTier": "unmeasured",
+  "interactions": [
+    {
+      "id": 1,
+      "function": "Inbox first entry, no selected thread",
+      "controlledCoverage": "Server authorization/paging preserved; actual Inbox component fixture compiles",
+      "browserCheck": "Cold/warm entry, completed rows/counts, request waterfall, hydration/commits",
+      "cold": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "warm": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "status": "blocked_browser_not_attached",
+      "actualBrowserMeasured": false
+    },
+    {
+      "id": 2,
+      "function": "Deep link to selected conversation",
+      "controlledCoverage": "Message ownership and fallback fixtures; pending selection read now shared",
+      "browserCheck": "Selected header and newest messages, draft, unread/read effects",
+      "cold": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "warm": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "status": "blocked_browser_not_attached",
+      "actualBrowserMeasured": false
+    },
+    {
+      "id": 3,
+      "function": "All",
+      "controlledCoverage": "Existing scoped pager and view cache; real-pager fixture contract passes",
+      "browserCheck": "Exact visible IDs/counts on cold/warm switches",
+      "cold": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "warm": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "status": "blocked_browser_not_attached",
+      "actualBrowserMeasured": false
+    },
+    {
+      "id": 4,
+      "function": "Unread",
+      "controlledCoverage": "Pager qualification/read barriers and arrival tests; teammate-read exclusions",
+      "browserCheck": "Read transitions, bulk-read snapshot, zero-row view during incoming event",
+      "cold": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "warm": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "status": "blocked_browser_not_attached",
+      "actualBrowserMeasured": false
+    },
+    {
+      "id": 5,
+      "function": "Pinned conversations",
+      "controlledCoverage": "Existing server qualification and pager fixture",
+      "browserCheck": "Correct pinned list, count and conversation selection",
+      "cold": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "warm": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "status": "blocked_browser_not_attached",
+      "actualBrowserMeasured": false
+    },
+    {
+      "id": 6,
+      "function": "Smart Views",
+      "controlledCoverage": "Server paging/view navigation tests; no cache relaxation",
+      "browserCheck": "Each configured view; permission/error/empty state and saved-view changes",
+      "cold": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "warm": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "status": "blocked_browser_not_attached",
+      "actualBrowserMeasured": false
+    },
+    {
+      "id": 7,
+      "function": "Facebook Messenger channel",
+      "controlledCoverage": "Channel directory sharing/navigation tests",
+      "browserCheck": "Every actual Messenger channel, cold/warm and rapid repeated switches",
+      "cold": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "warm": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "status": "blocked_browser_not_attached",
+      "actualBrowserMeasured": false
+    },
+    {
+      "id": 8,
+      "function": "Facebook comments",
+      "controlledCoverage": "Built-in comment qualification and navigation tests",
+      "browserCheck": "Correct comment-only content and switching between comment/Messenger threads",
+      "cold": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "warm": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "status": "blocked_browser_not_attached",
+      "actualBrowserMeasured": false
+    },
+    {
+      "id": 9,
+      "function": "Telegram channel",
+      "controlledCoverage": "Shared channel/pager ownership; local channel fixture contract",
+      "browserCheck": "Every Telegram channel, cold/warm and rapid repeated switches",
+      "cold": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "warm": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "status": "blocked_browser_not_attached",
+      "actualBrowserMeasured": false
+    },
+    {
+      "id": 10,
+      "function": "Box/subscription switching",
+      "controlledCoverage": "Existing selector access checks and History API preserved",
+      "browserCheck": "Each accessible box, selection, stale requests, workspace isolation",
+      "cold": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "warm": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "status": "blocked_browser_not_attached",
+      "actualBrowserMeasured": false
+    },
+    {
+      "id": 11,
+      "function": "Workspace switching",
+      "controlledCoverage": "Existing cache/authorization identity guards; no new persistent cache",
+      "browserCheck": "A→B→A with different permissions, drafts, old pending responses and realtime events",
+      "cold": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "warm": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "status": "blocked_browser_not_attached",
+      "actualBrowserMeasured": false
+    },
+    {
+      "id": 12,
+      "function": "Conversation switching",
+      "controlledCoverage": "First-pass cold newest-page request sharing; new pin cancellation tests",
+      "browserCheck": "Cold/warm A→B→A, every channel, correct header/messages/draft and render count",
+      "cold": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "warm": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "status": "blocked_browser_not_attached",
+      "actualBrowserMeasured": false
+    },
+    {
+      "id": 13,
+      "function": "Search and clearing search",
+      "controlledCoverage": "Existing 150 ms settlement plus deferred rendering retained; pager/search tests",
+      "browserCheck": "Correct matches through rapid typing, channel/view switches, empty/error/retry",
+      "cold": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "warm": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "status": "blocked_browser_not_attached",
+      "actualBrowserMeasured": false
+    },
+    {
+      "id": 14,
+      "function": "Status filter",
+      "controlledCoverage": "Existing optimistic destination and authoritative pager",
+      "browserCheck": "All implemented statuses, correct counts and selected conversation",
+      "cold": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "warm": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "status": "blocked_browser_not_attached",
+      "actualBrowserMeasured": false
+    },
+    {
+      "id": 15,
+      "function": "More conversation history",
+      "controlledCoverage": "Existing keyset cursors, visited-window refresh and ownership tests",
+      "browserCheck": "Cursor continuity, bottom anchoring, navigation during pending history",
+      "cold": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "warm": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "status": "blocked_browser_not_attached",
+      "actualBrowserMeasured": false
+    },
+    {
+      "id": 16,
+      "function": "Older message history / jump to newest",
+      "controlledCoverage": "Existing message ordering/read ownership/anchor fixtures",
+      "browserCheck": "Scroll position, no duplicate/reordered messages or extra image requests",
+      "cold": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "warm": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "status": "blocked_browser_not_attached",
+      "actualBrowserMeasured": false
+    },
+    {
+      "id": 17,
+      "function": "Incoming selected-thread message",
+      "controlledCoverage": "Arrival/fallback/optimistic reconciliation fixtures; pin no-op fix",
+      "browserCheck": "Correct bubble/count/commit/audio order, duplicate IDs, same provider timestamp",
+      "cold": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "warm": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "status": "blocked_browser_not_attached",
+      "actualBrowserMeasured": false
+    },
+    {
+      "id": 18,
+      "function": "Incoming other-thread message",
+      "controlledCoverage": "Existing scoped row updates; arrival list-commit qualification",
+      "browserCheck": "Current list/filter accuracy without refetching unrelated active messages",
+      "cold": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "warm": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "status": "blocked_browser_not_attached",
+      "actualBrowserMeasured": false
+    },
+    {
+      "id": 19,
+      "function": "Incoming during navigation",
+      "controlledCoverage": "Paging generation and arrival-scope retirement fixtures",
+      "browserCheck": "Old/new channel/box/workspace events and delayed/ignored-abort responses",
+      "cold": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "warm": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "status": "blocked_browser_not_attached",
+      "actualBrowserMeasured": false
+    },
+    {
+      "id": 20,
+      "function": "Reconnect / focus / online / visibility",
+      "controlledCoverage": "One trailing authoritative message read; coalesced/cancellable pins",
+      "browserCheck": "Real subscription lifecycle, hidden/resume, two tabs, no missed event or alert",
+      "cold": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "warm": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "status": "blocked_browser_not_attached",
+      "actualBrowserMeasured": false
+    },
+    {
+      "id": 21,
+      "function": "Pinned messages / pin/unpin / Retry",
+      "controlledCoverage": "Seven saved hook lifecycle regressions plus policy tests",
+      "browserCheck": "Correct historical pins, failure/timeout retry and no stale panel on fast switching",
+      "cold": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "warm": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "status": "blocked_browser_not_attached",
+      "actualBrowserMeasured": false
+    },
+    {
+      "id": 22,
+      "function": "Composer text/draft/reply and optimistic sends",
+      "controlledCoverage": "Existing ownership/reconciliation fixtures; DOM suites blocked by missing jsdom",
+      "browserCheck": "Fixture-only send failure/rollback, per-thread drafts, preserved media/quotes",
+      "cold": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "warm": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "status": "blocked_browser_not_attached",
+      "actualBrowserMeasured": false
+    },
+    {
+      "id": 23,
+      "function": "Assignment/claim, unread, conversation pin and status actions",
+      "controlledCoverage": "Existing handlers retained; older success/source tests also fail on released source",
+      "browserCheck": "Fixture-only success/error/rollback and correct selected thread after navigation",
+      "cold": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "warm": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "status": "blocked_browser_not_attached",
+      "actualBrowserMeasured": false
+    },
+    {
+      "id": 24,
+      "function": "Customer details, notes, tags, reminders and activity",
+      "controlledCoverage": "Mapped existing read owners; no speculative cache or router-refresh removal",
+      "browserCheck": "Open/close/reopen and fixture-only edits, request duplication, stale response/error",
+      "cold": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "warm": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "status": "blocked_browser_not_attached",
+      "actualBrowserMeasured": false
+    },
+    {
+      "id": 25,
+      "function": "Media, albums, voice and previews",
+      "controlledCoverage": "Existing media recovery/expiry/order tests; some older UI doubles fail on baseline",
+      "browserCheck": "Real decode/paint/scroll behavior and unchanged-image network counts",
+      "cold": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "warm": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "status": "blocked_browser_not_attached",
+      "actualBrowserMeasured": false
+    },
+    {
+      "id": 26,
+      "function": "Storage opening/reopening, gallery/list",
+      "controlledCoverage": "Identity-scoped request/cache tests; actual modal fixture compiles",
+      "browserCheck": "Cold/warm open, right-workspace rows and real render/request counts",
+      "cold": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "warm": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "status": "blocked_browser_not_attached",
+      "actualBrowserMeasured": false
+    },
+    {
+      "id": 27,
+      "function": "Storage search/category/favorite filters and pagination",
+      "controlledCoverage": "Existing query ownership/cursor/rollback fixtures",
+      "browserCheck": "Exact filtered rows, rapid switches, error/retry and retained selection/actions",
+      "cold": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "warm": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "status": "blocked_browser_not_attached",
+      "actualBrowserMeasured": false
+    },
+    {
+      "id": 28,
+      "function": "Storage upload refresh",
+      "controlledCoverage": "Existing normalized merge avoids full list reload; upload safety tests",
+      "browserCheck": "Fixture-only upload, unchanged image identity/network requests, ambiguous retry",
+      "cold": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "warm": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "status": "blocked_browser_not_attached",
+      "actualBrowserMeasured": false
+    },
+    {
+      "id": 29,
+      "function": "Storage signed media",
+      "controlledCoverage": "Existing signed-URL expiry/recovery tests retained",
+      "browserCheck": "Expiry/renewal/revoked access, no reload of unchanged valid media",
+      "cold": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "warm": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "status": "blocked_browser_not_attached",
+      "actualBrowserMeasured": false
+    },
+    {
+      "id": 30,
+      "function": "Storage eight photos per row",
+      "controlledCoverage": "First pass changed gallery and skeleton to `lg:grid-cols-8`; compiled CSS at 64rem",
+      "browserCheck": "Desktop eight columns plus tablet/mobile visual and action checks",
+      "cold": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "warm": {
+        "clickToCorrectVisibleDataMs": null,
+        "requestCount": null,
+        "reactCommits": null
+      },
+      "status": "blocked_browser_not_attached",
+      "actualBrowserMeasured": false
+    }
+  ]
+}

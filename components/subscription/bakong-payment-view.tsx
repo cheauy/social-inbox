@@ -7,6 +7,7 @@ import { useWorkspaceLanguageId } from "@/components/display/workspace-language-
 import { createClient } from "@/lib/supabase/client";
 import type { BakongPaymentView as Payment } from "@/lib/bakong/types";
 import { CancelPaymentButton } from "./cancel-payment-button";
+import { PaymentSuccessCard } from "./payment-success-card";
 
 const button = "inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-50";
 export function BakongPaymentView({ attemptId, businessId, qrClosed = false }: { attemptId: string; businessId?: string | null; qrClosed?: boolean }) {
@@ -15,6 +16,7 @@ export function BakongPaymentView({ attemptId, businessId, qrClosed = false }: {
   const t = (en: string, km: string) => language === "km" ? km : en;
   const [payment, setPayment] = useState<Payment | null>(null);
   const [error, setError] = useState(false), [busy, setBusy] = useState(false);
+  const [navigationError, setNavigationError] = useState(false);
   const [revision, setRevision] = useState(0), [serverNow, setServerNow] = useState(0);
   const active = useRef<AbortController | null>(null);
   const identity = useRef<{ userId: string; memberId: string; createdAt: string; expiresAt: string } | null>(null);
@@ -25,6 +27,9 @@ export function BakongPaymentView({ attemptId, businessId, qrClosed = false }: {
   const dialog = useRef<HTMLDialogElement>(null), closeButton = useRef<HTMLButtonElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null), dismissed = useRef(false);
   const titleId = useId(), descriptionId = useId();
+  const showSuccess = Boolean(!error && payment && !payment.reconciliationRequired &&
+    ((payment.state === "applied" && payment.application === "active" && payment.environment === "production") ||
+      (payment.state === "test_paid" && payment.environment === "sandbox")));
   const closeWindow = useCallback(() => {
     if (dismissed.current) return;
     dismissed.current = true; closing.current = true; refreshRequested.current = false;
@@ -43,7 +48,7 @@ export function BakongPaymentView({ attemptId, businessId, qrClosed = false }: {
       current.close();
       if (previousFocus.current?.isConnected) previousFocus.current.focus({ preventScroll: true });
     };
-  }, []);
+  }, [showSuccess]);
   const endpoint = `/api/bakong/payments/${encodeURIComponent(attemptId)}?purchase_business=${encodeURIComponent(businessId ?? "")}`;
   const accept = useCallback((saved: Payment, requestedAt: number) => {
     if (saved.id !== attemptId || saved.businessId !== businessId || !saved.userId || !saved.memberId ||
@@ -159,16 +164,16 @@ export function BakongPaymentView({ attemptId, businessId, qrClosed = false }: {
     return () => clearTimeout(timer);
   }, [payment, check, qrClosed]);
 
-  async function continueToSubscription() {
+  async function continueToSubscription(destination: "/dashboard/inbox" | "/dashboard/subscription" = "/dashboard/subscription") {
     if (!payment || active.current) return;
-    const controller = new AbortController(); active.current = controller; setBusy(true);
+    const controller = new AbortController(); active.current = controller; setBusy(true); setNavigationError(false);
     try {
       const response = await fetch("/api/workspaces/switch", { method: "POST", signal: controller.signal,
         headers: { "Content-Type": "application/json" }, body: JSON.stringify({ businessId: payment.businessId }) });
       const result = await response.json();
       if (!response.ok || !result.success || result.businessId !== payment.businessId) throw new Error();
-      if (!controller.signal.aborted) window.location.assign("/dashboard/subscription");
-    } catch { if (!controller.signal.aborted) setError(true); }
+      if (!controller.signal.aborted) window.location.assign(destination);
+    } catch { if (!controller.signal.aborted) setNavigationError(true); }
     finally { if (active.current === controller) { active.current = null; setBusy(false); } }
   }
 
@@ -185,8 +190,16 @@ export function BakongPaymentView({ attemptId, businessId, qrClosed = false }: {
   const canRecover = payment?.canCheck && (payment.state !== "pending" || checkoutClosed || qrClosed || expires <= 600);
   const title = error ? t("Unable to confirm payment", "មិនអាចបញ្ជាក់ការទូទាត់") : checking ? t("Checking payment…", "កំពុងពិនិត្យការទូទាត់…") :
     closed && payment?.checkout === "cancelled" ? t("Payment cancelled", "បានបោះបង់ការទូទាត់") : closed ? t("QR expired", "QR ផុតកំណត់") : !payment ? t("Payment status", "ស្ថានភាពទូទាត់") : payment.state === "test_paid" ? t("Test payment confirmed", "បានបញ្ជាក់ការទូទាត់សាកល្បង") :
-    payment.application === "active" ? t("Subscription active", "ការជាវសកម្ម") : (payment.state === "review" || payment.reconciliationRequired) ? t("Payment needs review", "ការទូទាត់ត្រូវការពិនិត្យ") :
+    (payment.state === "review" || payment.reconciliationRequired) ? t("Payment needs review", "ការទូទាត់ត្រូវការពិនិត្យ") :
     payment.state === "verified" || payment.state === "applied" ? t("Payment received", "បានទទួលការទូទាត់") : t("Waiting for payment", "កំពុងរង់ចាំការទូទាត់");
+  if (showSuccess && payment) {
+    const returnTo = `/dashboard/subscription/payment?${new URLSearchParams({ bakong_attempt: attemptId, purchase_business: payment.businessId })}`;
+    return <PaymentSuccessCard workspace={payment.workspaceName} planCode={payment.planCode} billingCycle={payment.billingCycle}
+      amount={Number(payment.amount)} currency={payment.currency} provider="bakong" environment={payment.environment}
+      reference={payment.transactionReference ?? payment.reference} busy={busy} error={navigationError}
+      receiptHref={payment.invoiceId ? `/dashboard/subscription/invoices/${encodeURIComponent(payment.invoiceId)}?return_to=${encodeURIComponent(returnTo)}` : null}
+      onNavigate={destination => void continueToSubscription(destination)} />;
+  }
   return <dialog ref={dialog} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descriptionId}
     tabIndex={-1}
     onCancel={event => { if (event.target === event.currentTarget) { event.preventDefault(); closeWindow(); } }}
@@ -260,7 +273,6 @@ export function BakongPaymentView({ attemptId, businessId, qrClosed = false }: {
             <summary className="min-h-11 cursor-pointer py-3 font-medium focus-visible:outline-2 focus-visible:outline-blue-600">{t("Payment status not updated?", "ស្ថានភាពទូទាត់មិនទាន់អាប់ដេត?")}</summary>
             <button type="button" className={button} disabled={busy || cooldown > 0} onClick={() => void check()}>{t("Refresh status", "ផ្ទុកស្ថានភាពឡើងវិញ")}</button>
           </details> : null}
-          {payment.application === "active" ? <button type="button" className={button} disabled={busy} onClick={() => void continueToSubscription()}>{t("Continue", "បន្ត")}</button> : null}
           {payment.invoiceId ? <Link className={button} href={`/dashboard/subscription/invoices/${encodeURIComponent(payment.invoiceId)}`}>{t("TENH Receipt", "បង្កាន់ដៃ TENH")}</Link> : null}
         </div>
         <details className="mt-3 text-xs text-slate-500">

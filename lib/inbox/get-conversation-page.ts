@@ -7,6 +7,7 @@ import { sanitizeFilters, restrictFiltersToBusinesses } from "@/lib/inbox/page-f
 import { CONVERSATION_PAGE_SIZE, type ConversationPage, type ConversationPageRequest } from "@/lib/inbox/conversation-page-contract";
 import { uuidPattern } from "@/lib/inbox/live-sync";
 import type { InboxConversation } from "@/types/inbox";
+import { getActiveInboxMemberships } from "@/lib/inbox/get-active-inbox-memberships";
 
 export class ConversationPagingUnavailable extends Error {}
 
@@ -18,9 +19,9 @@ export async function getConversationPage(request: ConversationPageRequest, snap
   for (const id of [request.workspaceId,request.workspaceContextId]) {
     if (id && !scope.accessibleBusinessIds.includes(id)) throw new Error("Workspace is outside your active Inbox access.");
   }
-  const { data: members, error: memberError } = await supabaseAdmin.from("team_members").select("id,business_id")
-    .eq("user_id",auth.user.id).eq("is_active",true).in("business_id",scope.accessibleBusinessIds);
-  if (memberError) throw new Error("Unable to verify page memberships.");
+  const members = (await getActiveInboxMemberships(auth.user.id).catch(() => {
+    throw new Error("Unable to verify page memberships.");
+  })).filter(row => scope.accessibleBusinessIds.includes(row.business_id));
   const { data: views, error: viewError } = await supabaseAdmin.from("inbox_saved_views").select("id,filters")
     .in("business_id",scope.accessibleBusinessIds).in("member_id",(members ?? []).map(row => row.id));
   if (viewError) {

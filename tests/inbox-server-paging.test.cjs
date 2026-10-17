@@ -20,6 +20,13 @@ function harness(initialRows=Array.from({length:30},(_,i)=>row(i+1))){
  return {h,props,render,flush,events,jobs,calls,doc,advance:ms=>clock.now+=ms,answer:fn=>answer=fn};
 }
 
+test('stable pager rerenders do not serialize every loaded contact again',()=>{
+ let serializations=0;
+ const d=harness(Array.from({length:1000},(_,i)=>row(i+1,{contact:{toJSON(){serializations++;return {name:'Fixture'};}}})));
+ try{d.render();serializations=0;for(let i=0;i<20;i++)d.render();assert.equal(serializations,0);assert.equal(d.calls.length,0);}
+ finally{d.h.cleanup()}
+});
+
 test('targeted activity in B retains warm A, while B still requalifies once after navigation',async()=>{
  const a=uuid(700),b=uuid(701),rowsA=[row(1,{social_account:{id:a}})],rowsB=[row(101,{social_account:{id:b}})],d=harness(rowsA);
  try{d.props.initial.request={...request(),channelId:a};d.props.request={...request(),channelId:a};d.props.onRows=rows=>d.props.live=contract.mergeConversationPage(d.props.live,rows);d.render();
@@ -165,7 +172,7 @@ test('wrong-workspace row cannot replace a same-ID live row',async()=>{
 function adapter(options={}){
  const fixtures=Array.from({length:1000},(_,i)=>row(i+1,{contact:{full_name:'Customer '+i,phone:'12345',tags:[]},last_message_text:'Customer message '.repeat(30)}));
  const calls=[],hydrates=[];
- const db={from:table=>{const chain={select:()=>chain,eq:()=>chain,in:()=>chain,then:(a,b)=>Promise.resolve({data:table==='team_members'?[{id:uuid(901),business_id:uuid(900)}]:[],error:null}).then(a,b)};return chain},
+ const db={from:table=>{const chain={select:()=>chain,eq:()=>chain,in:()=>chain,order:()=>chain,then:(a,b)=>Promise.resolve({data:table==='team_members'?[{id:uuid(901),business_id:uuid(900)}]:[],error:null}).then(a,b)};return chain},
   rpc:async(name,args)=>{calls.push({name,args});return options.error?{data:null,error:options.error}:{data:{...page([]),ids:options.ids??fixtures.slice(0,30).map(r=>r.id),matchedKnownIds:args.p_request.knownIds??[]},error:null}}};
  const load=loader({'@/lib/supabase/admin':{supabaseAdmin:db},'@/lib/auth/get-current-member':{getCurrentMember:async()=>({success:true,user:{id:uuid(902)}})},
   '@/lib/inbox/get-conversations':{getInboxConversationScope:async()=>({accessibleBusinessIds:[uuid(900)],currentBusinessId:uuid(900)}),getConversations:async(businesses,filter)=>{hydrates.push(filter);return fixtures.filter(r=>filter.conversationIds.includes(r.id))}}});

@@ -1,0 +1,14 @@
+{
+  "afterUserOpenedBrowser": true,
+  "inventory": {
+    "apps": [],
+    "browsers": []
+  },
+  "chromeAttempt": "createBrowserTab(chrome,about:blank)",
+  "chromeResult": "Browser is not available: chrome",
+  "iabResult": "Browser is not available: iab",
+  "nativeToolExposed": false,
+  "productionTabRead": false,
+  "nextStep": "Attach TENH CHAT browser tab through a browser-tab @-mention; no host setup UI exposed",
+  "status": "attachment_request_pending"
+}

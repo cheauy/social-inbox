@@ -110,7 +110,7 @@ window.fetch = async (url, options = {}) => {
     if (body.action === 'abort-upload') { attempt.status = 'cancelled'; attempt.application = 'historical'; persist(); return Response.json({ success: true }); }
     if (body.action === 'prepare-upload' || body.action === 'resume-upload') return Response.json({ success: true, requestId: body.requestId, proofUploaded: Boolean(scenario.proofUploaded), upload: { bucket: 'fixture-private', path: `${attempt.businessId}/${body.requestId}/fixture-proof.png`, token: scenario.proofUploaded ? null : 'synthetic-upload-token' } });
   }
-  if (target.pathname === '/api/workspaces/switch') return Response.json({ success: true, businessId: body.businessId });
+  if (target.pathname === '/api/workspaces/switch') return scenario.workspaceSwitchFailure ? Response.json({success:false},{status:503}) : Response.json({ success: true, businessId: body.businessId });
   throw new Error(`Unexpected fixture request: ${method} ${target.pathname}`);
 };
 function setFile() {
@@ -139,13 +139,19 @@ async function paywayButton() {
 async function submissionChecks() {
   await checkout({ failNavigation: true, finalizeLost: true });
   const before = requests.length, submit = await chooseManual(); check('selected proof enables explicit submission', submit && !submit.disabled); submit.click();
-  await until(() => heading() === t('Payment submitted', 'បានដាក់ស្នើការទូទាត់'), 'committed manual response reconciles');
+  await until(() => heading() === t('Under review', 'កំពុងពិនិត្យ'), 'committed manual response reconciles');
   const mutations = requests.slice(before).filter(request => request.method === 'POST');
   const prepares = mutations.filter(request => request.body?.action === 'prepare-upload'), finalizes = mutations.filter(request => request.body?.action === 'finalize-upload');
   check('one manual prepare and finalize despite lost response and failed navigation', prepares.length === 1 && finalizes.length === 1);
   check('manual same ID survives prepare, finalize and exact status', prepares[0].body.requestId === finalizes[0].body.requestId && [...attempts.values()][0].id === prepares[0].body.requestId);
   check('navigation failure leaves the saved status mounted', navigations.at(-1)?.failed === true);
   noPayControls('submitted manual'); layout('submitted manual');
+  check('manual submission shows the approved amber review clock and receipt copy without automatic approval', Boolean(document.querySelector('[class*="text-amber-500"]')) && !document.querySelector('[class*="animate-spin"]') && document.body.textContent.includes(t('Receipt submitted','បានផ្ញើបង្កាន់ដៃ')));
+  const close=document.querySelector('a[aria-label]'), beforeClose=requests.length;
+  check('status close is a compact keyboard accessible link to Subscription', close?.getAttribute('href')==='/dashboard/subscription' && close.classList.contains('h-11') && close.classList.contains('w-11'));
+  close.focus(); check('close accepts keyboard focus',document.activeElement===close);
+  close.addEventListener('click',event=>event.preventDefault(),{once:true}); close.click();
+  check('closing the status has no payment mutation',requests.length===beforeClose);
   const id = prepares[0].body.requestId; sessionStorage.setItem('payment-reload-id', id); persist(); return { id };
 }
 function prepareReload() {
@@ -154,39 +160,39 @@ function prepareReload() {
   persist(); return id;
 }
 async function reloadChecks() {
-  await until(() => heading() === t('Payment submitted', 'បានដាក់ស្នើការទូទាត់'), 'real document reload restores exact submitted request');
+  await until(() => heading() === t('Under review', 'កំពុងពិនិត្យ'), 'real document reload restores exact submitted request');
   check('reload retains exact request identity', params.get('manual_request') === sessionStorage.getItem('payment-reload-id'));
   noPayControls('reloaded submitted manual'); layout('reloaded status');
 }
 async function statusChecks() {
-  for (const [status, application, en, km] of [['approved', 'active', 'Subscription active', 'ការជាវសកម្ម'], ['rejected', 'historical', 'Payment rejected', 'ការទូទាត់ត្រូវបានបដិសេធ']]) {
+  for (const [status, application, en, km] of [['approved', 'active', 'Payment successful', 'ការទូទាត់ជោគជ័យ'], ['rejected', 'historical', 'Payment rejected', 'ការទូទាត់ត្រូវបានបដិសេធ']]) {
     reset(); put(saved('manual', manualA, status, application)); render('status', { kind: 'manual', attemptId: manualA });
     await until(() => heading() === t(en, km), `initial ${status}`); const initial = heading(); noPayControls(`initial ${status}`);
-    reset(); put(saved()); render('status', { kind: 'manual', attemptId: manualA }); await until(() => heading() === t('Payment submitted', 'បានដាក់ស្នើការទូទាត់'), 'pending before actual poll');
+    reset(); put(saved()); render('status', { kind: 'manual', attemptId: manualA }); await until(() => heading() === t('Under review', 'កំពុងពិនិត្យ'), 'pending before actual poll');
     put(saved('manual', manualA, status, application)); await until(() => heading() === initial, `poll reaches ${status}`);
     check(`initial and automatically polled ${status} use the same state`, heading() === initial); noPayControls(`polled ${status}`);
   }
   reset(); put(saved('manual', manualA, 'approved', 'historical')); render('status', { kind: 'manual', attemptId: manualA });
   await until(() => document.body.textContent.includes(t('Saved payment. This does not confirm current access.', 'ការទូទាត់ចាស់។ មិនបញ្ជាក់សិទ្ធិប្រើបច្ចុប្បន្នទេ។')), 'historical approval');
-  check('historical approval cannot claim current access or offer Continue', heading() !== t('Subscription active', 'ការជាវសកម្ម') && !button('Continue', 'បន្ត'));
+  check('historical approval cannot claim current access or offer Continue', heading() !== t('Payment successful', 'ការទូទាត់ជោគជ័យ') && !button('Go to inbox', 'ទៅប្រអប់សារ'));
   put(saved('manual', manualA, 'approved', 'active')); render('status', { kind: 'manual', attemptId: manualA });
-  await until(() => heading() === t('Subscription active', 'ការជាវសកម្ម'), 'terminal view before online recheck');
+  await until(() => heading() === t('Payment successful', 'ការទូទាត់ជោគជ័យ'), 'terminal view before online recheck');
   put(saved('manual', manualA, 'approved', 'historical')); window.dispatchEvent(new Event('online'));
-  await until(() => !button('Continue', 'បន្ត') && heading() !== t('Subscription active', 'ការជាវសកម្ម'), 'online revalidates stopped terminal view');
-  check('online event revalidates current access after polling stopped', !button('Continue', 'បន្ត'));
+  await until(() => !button('Go to inbox', 'ទៅប្រអប់សារ') && heading() !== t('Payment successful', 'ការទូទាត់ជោគជ័យ'), 'online revalidates stopped terminal view');
+  check('online event revalidates current access after polling stopped', !button('Go to inbox', 'ទៅប្រអប់សារ'));
   signedOut = true; for (const callback of authListeners) callback('SIGNED_OUT', null);
   await until(() => document.querySelector('[role=alert]'), 'signout revokes visible payment data');
-  check('signout clears stale authorized payment data and Continue', !document.body.textContent.includes('Fixture Workspace A') && !button('Continue', 'បន្ត'));
+  check('signout clears stale authorized payment data and Continue', !document.body.textContent.includes('Fixture Workspace A') && !button('Go to inbox', 'ទៅប្រអប់សារ'));
   for (const status of ['failed', 'cancelled', 'recovery_required', 'unrecognized']) {
     reset(); put(saved('manual', manualA, status, status === 'recovery_required' ? 'review' : 'historical')); render('status', { kind: 'manual', attemptId: manualA });
     await until(() => document.body.textContent.includes('Fixture Workspace A'), status);
-    check(`${status} cannot claim payment received or active access`, ![t('Payment received', 'បានទទួលការទូទាត់'), t('Subscription active', 'ការជាវសកម្ម')].includes(heading())); noPayControls(status);
+    check(`${status} cannot claim payment received or active access`, ![t('Payment received', 'បានទទួលការទូទាត់'), t('Payment successful', 'ការទូទាត់ជោគជ័យ')].includes(heading())); noPayControls(status);
   }
   reset(); put(saved('manual', manualA, 'approved', 'active')); put(saved('manual', manualB, 'approved', 'historical', businessB));
   let release; const promise = new Promise(resolve => { release = resolve; }); gate = { id: manualA, promise }; const begin = requests.length;
   render('status', { kind: 'manual', attemptId: manualA }); await until(() => requests.slice(begin).some(request => request.query.includes(manualA)), 'deferred A request');
   render('status', { kind: 'manual', attemptId: manualB }); await until(() => document.body.textContent.includes('Fixture Workspace B'), 'destination B'); release(); await pause(70);
-  check('late aborted A cannot overwrite B or claim active access', document.body.textContent.includes('Fixture Workspace B') && !document.body.textContent.includes('Fixture Workspace A') && heading() !== t('Subscription active', 'ការជាវសកម្ម'));
+  check('late aborted A cannot overwrite B or claim active access', document.body.textContent.includes('Fixture Workspace B') && !document.body.textContent.includes('Fixture Workspace A') && heading() !== t('Payment successful', 'ការទូទាត់ជោគជ័យ'));
   check('retired A request was aborted', requests.slice(begin).some(request => request.query.includes(manualA) && request.aborted)); layout('terminal states');
   reset(); put(saved('payway', 'fixture-signout-deferred', 'pending'));
   let releaseSignedOut; gate = { id: 'fixture-signout-deferred', promise: new Promise(resolve => { releaseSignedOut = resolve; }) };
@@ -198,12 +204,12 @@ async function statusChecks() {
   observer.observe(document.getElementById('root'), { childList: true, subtree: true, characterData: true });
   signedOut = true; for (const callback of authListeners) callback('SIGNED_OUT', null); releaseSignedOut();
   await until(() => document.querySelector('[role=alert]'), 'same-tick signout rejects deferred response'); await pause(70); observer.disconnect();
-  check('same-tick signout prevents stale payment rendering and provider verification before effect cleanup', !leakedSignedOutData && !document.body.textContent.includes('Fixture Workspace A') && !button('Continue', 'បន្ត') && !requests.slice(signoutStart).some(request => request.path === '/api/payway/status'));
+  check('same-tick signout prevents stale payment rendering and provider verification before effect cleanup', !leakedSignedOutData && !document.body.textContent.includes('Fixture Workspace A') && !button('Go to inbox', 'ទៅប្រអប់សារ') && !requests.slice(signoutStart).some(request => request.path === '/api/payway/status'));
 }
 async function preparedChecks() {
   reset(); put(saved('manual', manualA, 'prepared')); render('status', { kind: 'manual', attemptId: manualA });
   await until(() => document.querySelector('input[type=file]'), 'prepared recovery'); setFile(); await pause(40); const before = requests.length;
-  button('Resume upload', 'បន្តផ្ទុក').click(); await until(() => heading() === t('Payment submitted', 'បានដាក់ស្នើការទូទាត់'), 'resume same proof');
+  button('Resume upload', 'បន្តផ្ទុក').click(); await until(() => heading() === t('Under review', 'កំពុងពិនិត្យ'), 'resume same proof');
   const recovery = requests.slice(before).filter(request => request.method === 'POST');
   check('prepared recovery resumes and finalizes the exact saved ID without prepare', recovery.some(request => request.body?.action === 'resume-upload' && request.body.requestId === manualA) && recovery.some(request => request.body?.action === 'finalize-upload' && request.body.requestId === manualA) && !recovery.some(request => request.body?.action === 'prepare-upload'));
   noPayControls('resumed proof');
@@ -211,7 +217,7 @@ async function preparedChecks() {
   await until(() => document.querySelector('input[type=file]'), 'prepared recovery with existing proof'); setFile(); await pause(40);
   const existingProofStart = requests.length, existingUploadCount = uploads.length;
   button('Resume upload', 'បន្តផ្ទុក').click();
-  await until(() => heading() === t('Payment submitted', 'បានដាក់ស្នើការទូទាត់'), 'existing proof finalizes without another upload');
+  await until(() => heading() === t('Under review', 'កំពុងពិនិត្យ'), 'existing proof finalizes without another upload');
   const existingProofRecovery = requests.slice(existingProofStart).filter(request => request.method === 'POST');
   check('verified existing proof with null upload token skips SDK upload and finalizes same saved ID', uploads.length === existingUploadCount && existingProofRecovery.some(request => request.body?.action === 'resume-upload' && request.body.requestId === manualA) && existingProofRecovery.some(request => request.body?.action === 'finalize-upload' && request.body.requestId === manualA) && attempts.get(key('manual', manualA)).status === 'submitted' && !existingProofRecovery.some(request => request.body?.action === 'prepare-upload'));
   reset(); put(saved('manual', manualA, 'prepared')); denied.add(manualA); render('status', { kind: 'manual', attemptId: manualA });
@@ -228,9 +234,9 @@ async function paywayChecks() {
   reset(); put(saved('payway', 'fixture-pending', 'pending')); const before = requests.length;
   render('checkout', { planCode: 'mini', billingCycle: 'monthly', purchaseBusinessId: businessA, initialTransactionId: 'fixture-pending', initialPayWayReturn: 'approved' });
   await until(() => requests.slice(before).some(request => request.path === '/api/payway/status'), 'saved pending verification');
-  check('approved browser return hint cannot fabricate saved approval', heading() !== t('Subscription active', 'ការជាវសកម្ម')); noPayControls('PayWay pending');
+  check('approved browser return hint cannot fabricate saved approval', heading() !== t('Payment successful', 'ការទូទាត់ជោគជ័យ')); noPayControls('PayWay pending');
   reset(); put(saved('payway', 'fixture-approved', 'approved', 'active')); const approvedStart = requests.length; render('status', { kind: 'payway', attemptId: 'fixture-approved' });
-  await until(() => heading() === t('Subscription active', 'ការជាវសកម្ម'), 'saved PayWay approval');
+  await until(() => heading() === t('Payment successful', 'ការទូទាត់ជោគជ័យ'), 'saved PayWay approval');
   check('already approved attempt performs no provider verification or new checkout', !requests.slice(approvedStart).some(request => request.path === '/api/payway/status' || request.path === '/api/payway/checkout'));
   reset(); put(saved('payway', 'fixture-cancelled', 'cancelled', 'historical'));
   const cancelledStart = requests.length;
@@ -239,7 +245,7 @@ async function paywayChecks() {
   check('cancelled PayWay stays stopped without automatic provider verification', !requests.slice(cancelledStart).some(request => request.path === '/api/payway/status'));
   scenario.explicitPaywayReview = true; button('Check status', 'ពិនិត្យស្ថានភាព').click();
   await until(() => heading() === t('Payment needs review', 'ការទូទាត់ត្រូវការពិនិត្យ'), 'explicit cancelled verification resolves saved recovery');
-  check('explicit cancelled PayWay verification uses saved recovery state without claiming active access or creating another attempt', requests.slice(cancelledStart).some(request => request.path === '/api/payway/status' && request.method === 'POST') && attempts.get(key('payway', 'fixture-cancelled')).status === 'recovery_required' && !button('Continue', 'បន្ត') && !requests.slice(cancelledStart).some(request => request.path === '/api/payway/checkout'));
+  check('explicit cancelled PayWay verification uses saved recovery state without claiming active access or creating another attempt', requests.slice(cancelledStart).some(request => request.path === '/api/payway/status' && request.method === 'POST') && attempts.get(key('payway', 'fixture-cancelled')).status === 'recovery_required' && !button('Go to inbox', 'ទៅប្រអប់សារ') && !requests.slice(cancelledStart).some(request => request.path === '/api/payway/checkout'));
   noPayControls('cancelled PayWay recovery review');
   await checkout(); const checkoutButton = await paywayButton(); const transferStart = secureTransfers; checkoutButton.click();
   await until(() => document.body.textContent.includes('fixture-txn-'), 'PayWay enters exact status');
@@ -252,7 +258,25 @@ async function paywayChecks() {
   (await paywayButton()).click(); await until(() => document.body.textContent.includes('fixture-existing'), '409 resumes existing exact transaction');
   check('409 restores the saved PayWay identity without creating a new transaction or provider transfer', attempts.size === 1 && secureTransfers === secureStart && requests.slice(existingStart).filter(request => request.path === '/api/payway/checkout').length === 1);
   noPayControls('existing PayWay restored');
+  await until(()=>heading()===t('Checking payment','កំពុងពិនិត្យការទូទាត់'),'approved checking card');
+  check('saved PayWay pending uses the teal spinner and no copied sample amount',Boolean(document.querySelector('[class*="border-t-teal-600"]')) && document.body.textContent.includes('$12.00') && !document.body.textContent.includes('$25.00'));
+  check('production pending has no test-payment label or direct Bakong option',!document.body.textContent.includes('Test payment')&&!document.body.textContent.includes('Bakong'));
+  layout('approved checking card');
 }
-window.paymentAttemptFixture = { submissionChecks, prepareReload, reloadChecks, statusChecks, preparedChecks, paywayChecks,
+async function successChecks() {
+  reset({workspaceSwitchFailure:true}); put({...saved('payway','fixture-confirmed','approved','active'),invoiceId:'fixture-invoice'});
+  render('status',{kind:'payway',attemptId:'fixture-confirmed'});
+  await until(()=>heading()===t('Payment successful','ការទូទាត់ជោគជ័យ'),'confirmed success card');
+  check('success uses saved workspace, amount and provider without copied test/sample claims', document.body.textContent.includes('Fixture Workspace A') && document.body.textContent.includes('$12.00') && document.body.textContent.includes('ABA PayWay') && !document.body.textContent.includes('Test payment'));
+  check('success has exact saved receipt and inbox navigation', Boolean(button('Go to inbox','ទៅប្រអប់សារ')) && document.querySelector('a[href*="fixture-invoice"]'));
+  noPayControls('confirmed success'); layout('confirmed success');
+}
+async function navigationChecks() {
+  const before=requests.length,title=heading(),go=button('Go to inbox','ទៅប្រអប់សារ');go.click();go.click();
+  await until(()=>document.querySelector('[role=alert]'),'workspace navigation error');
+  check('workspace navigation failure preserves confirmed success and never verifies payment again',heading()===title && requests.slice(before).filter(r=>r.path==='/api/workspaces/switch').length===1 && !requests.slice(before).some(r=>r.path==='/api/payway/status'||r.path==='/api/payway/checkout'));
+}
+function motionChecks(){check('reduced motion stops the decorative checking animation',matchMedia('(prefers-reduced-motion: reduce)').matches && getComputedStyle(document.querySelector('[class*="border-t-teal-600"]')).animationName==='none');}
+window.paymentAttemptFixture = { successChecks, navigationChecks, motionChecks, submissionChecks, prepareReload, reloadChecks, statusChecks, preparedChecks, paywayChecks,
   result: () => ({ checks: [...checks], requests: [...requests], uploads: [...uploads], navigations: [...navigations], secureTransfers, mockedOnly: true, paymentBytesTransferred: 0, language: window.fixtureLanguage }) };
 if (restored && params.get('manual_request')) render('status', { kind: 'manual', attemptId: params.get('manual_request') });

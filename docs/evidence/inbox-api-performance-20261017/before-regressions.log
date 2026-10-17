@@ -1,0 +1,79 @@
+Γ£û page scope and personal views share one active-membership read within a request (270.6541ms)
+Γ£û live-state discovery and hydration share active channel metadata within a request (107.6067ms)
+Γ£û hydration overlaps independent subscription/channel/privacy reads after authentication (53.3922ms)
+Γ£û notification privacy read overlaps the authorized reminder/read pipeline and still gates the response (53.0251ms)
+Γ£ö two concurrent users stay isolated and a later request sees revoked membership (97.2789ms)
+Γ£ö signed-out and forbidden workspace requests never reach page RPC or customer reads (94.0768ms)
+Γ£ö expired subscriptions and failed channel/visibility reads remain fail-closed (202.0451ms)
+Γä╣ tests 7
+Γä╣ suites 0
+Γä╣ pass 3
+Γä╣ fail 4
+Γä╣ cancelled 0
+Γä╣ skipped 0
+Γä╣ todo 0
+Γä╣ duration_ms 1166.7899
+
+Γ£û failing tests:
+
+test at tests\inbox-api-read-performance.test.cjs:5:1
+Γ£û page scope and personal views share one active-membership read within a request (270.6541ms)
+  AssertionError [ERR_ASSERTION]: selected membership plus one all-active membership read
+
+  3 !== 2
+
+      at TestContext.<anonymous> (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-perf-20261017\tests\inbox-api-read-performance.test.cjs:8:10)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 3,
+    expected: 2,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests\inbox-api-read-performance.test.cjs:10:1
+Γ£û live-state discovery and hydration share active channel metadata within a request (107.6067ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  2 !== 1
+
+      at TestContext.<anonymous> (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-perf-20261017\tests\inbox-api-read-performance.test.cjs:13:10)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 2,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests\inbox-api-read-performance.test.cjs:16:1
+Γ£û hydration overlaps independent subscription/channel/privacy reads after authentication (53.3922ms)
+  AssertionError [ERR_ASSERTION]: privacy metadata begins without waiting for channel metadata
+      at TestContext.<anonymous> (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-perf-20261017\tests\inbox-api-read-performance.test.cjs:21:27)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at tests\inbox-api-read-performance.test.cjs:27:1
+Γ£û notification privacy read overlaps the authorized reminder/read pipeline and still gates the response (53.0251ms)
+  AssertionError [ERR_ASSERTION]: privacy metadata begins while reminders are pending
+      at TestContext.<anonymous> (C:\Users\TUF\AppData\Local\Temp\tenh-inbox-perf-20261017\tests\inbox-api-read-performance.test.cjs:31:27)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }

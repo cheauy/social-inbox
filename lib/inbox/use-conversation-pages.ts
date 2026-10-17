@@ -20,13 +20,12 @@ const rowVersion = (row: InboxConversation) => JSON.stringify([rowScope(row),row
 export function useConversationPages(initial: ConversationPagingInitial | undefined, request: ConversationPageRequest,
   liveRows: InboxConversation[], onRows?: (rows: InboxConversation[]) => void) {
   const key = requestKey(request);
-  const [state, setState] = useState<State | null>(() => initial ? {
-    key: requestKey(initial.request), countRows: initial.page.ids.flatMap(id => {
-      const row = liveRows.find(row => row.id === id); return row ? [row] : [];
-    }), rows: initial.page.ids.flatMap(id => {
-      const row = liveRows.find(row => row.id === id); return row ? [row] : [];
-    }), page: initial.page, loading: false, error: null,
-  } : null);
+  const [state, setState] = useState<State | null>(() => {
+    if (!initial) return null;
+    const byId = new Map(liveRows.map(row => [row.id, row]));
+    const rows = initial.page.ids.flatMap(id => { const row = byId.get(id); return row ? [row] : []; });
+    return { key: requestKey(initial.request), countRows: rows, rows, page: initial.page, loading: false, error: null };
+  });
   const [viewCache, setViewCache] = useState(() => new Map<string, CachedView>(
     state && initial && state.rows.length <= VIEW_CACHE_MAX_ROWS ? [[state.key, { state, at: Date.now(),
       channelId: initial.request.channelId, workspaceId: initial.request.workspaceId }]] : []));
@@ -43,8 +42,13 @@ export function useConversationPages(initial: ConversationPagingInitial | undefi
   const recentChangesRef = useRef(new Map<string, number>());
   const catchUpRef = useRef(false);
   const liveRowsRef = useRef(liveRows);
-  const versionsRef = useRef(new Map(liveRows.map(row => [row.id,rowVersion(row)])));
-  const scopesRef = useRef(new Map(liveRows.map(row => [row.id,rowScope(row)])));
+  // Ref arguments still run on every render; serialize the initial rows once.
+  const [initialRowState] = useState(() => ({
+    versions: new Map(liveRows.map(row => [row.id, rowVersion(row)])),
+    scopes: new Map(liveRows.map(row => [row.id, rowScope(row)])),
+  }));
+  const versionsRef = useRef(initialRowState.versions);
+  const scopesRef = useRef(initialRowState.scopes);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => { stateRef.current = state; requestRef.current = request; onRowsRef.current = onRows; liveRowsRef.current = liveRows; });
   useEffect(() => {
@@ -85,8 +89,9 @@ export function useConversationPages(initial: ConversationPagingInitial | undefi
     if (controllerRef.current) { if (mode === "refresh") dirtyRef.current = true; return; }
     const activeRequest = requestRef.current, activeKey = requestKey(activeRequest);
     const cached = viewCacheRef.current.get(activeKey);
+    const liveBusinesses = new Map(liveRowsRef.current.map(row => [row.id, row.business_id]));
     const warm = cached && Date.now() - cached.at <= VIEW_CACHE_TTL_MS ? {
-      ...cached.state, rows: cached.state.rows.filter(row => liveRowsRef.current.some(live => live.id === row.id && live.business_id === row.business_id)),
+      ...cached.state, rows: cached.state.rows.filter(row => liveBusinesses.get(row.id) === row.business_id),
     } : null;
     const current = stateRef.current?.key === activeKey ? stateRef.current : warm;
     if (!current) mode = "replace";

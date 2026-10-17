@@ -1,0 +1,1124 @@
+{
+  "kind": "Synthetic Node server-module fixtures with fixed20ms artificial transport delay; no production/server/network/browser latency claim",
+  "baselineRoot": "C:/Users/TUF/AppData/Local/Temp/tenh-login-release-20261017",
+  "currentRoot": "C:\\Users\\TUF\\AppData\\Local\\Temp\\tenh-inbox-perf-20261017",
+  "sampleCount": 5,
+  "authModel": "createClient is mocked at validated getUser boundary; SDK/JWT/session-policy work is excluded and unchanged",
+  "delayMsPerTransport": 20,
+  "routes": {
+    "page": {
+      "before": {
+        "status": 200,
+        "elapsedMsSamples": [
+          344.19669999999996,
+          347.74160000000006,
+          344.44110000000006,
+          349.6592,
+          344.75019999999995
+        ],
+        "medianElapsedMs": 344.75019999999995,
+        "authTransports": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "databaseTransports": [
+          10,
+          10,
+          10,
+          10,
+          10
+        ],
+        "maxConcurrentTransports": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "responseBytes": 28188,
+        "responseSHA256": "57be1a2d4259ec068cfc2f42bde21c1649ee36ad1234f0ed4937278c98c7d191",
+        "identicalResponseAcrossAllSamples": true,
+        "medianFixtureSerializationMs": 0.9067000000000007,
+        "timeline": [
+          {
+            "kind": "auth",
+            "start": 0,
+            "end": 29.96070000000003,
+            "durationMs": 29.96070000000003
+          },
+          {
+            "kind": "db",
+            "table": "team_members",
+            "columns": "\n  id,\n  user_id,\n  business_id,\n  full_name,\n  email,\n  role,\n  profile_picture_url,\n  is_active\n",
+            "start": 30.172900000000027,
+            "end": 61.293199999999956,
+            "durationMs": 31.12029999999993
+          },
+          {
+            "kind": "db",
+            "table": "team_members",
+            "columns": "business_id",
+            "start": 62.488000000000056,
+            "end": 93.18510000000003,
+            "durationMs": 30.697099999999978
+          },
+          {
+            "kind": "db",
+            "table": "business_subscriptions",
+            "columns": "id,business_id,status,current_period_end,trial_ends_at,created_at",
+            "start": 93.52170000000001,
+            "end": 123.12180000000001,
+            "durationMs": 29.600099999999998
+          },
+          {
+            "kind": "db",
+            "table": "team_members",
+            "columns": "id,business_id",
+            "start": 123.25970000000007,
+            "end": 154.712,
+            "durationMs": 31.452299999999923
+          },
+          {
+            "kind": "db",
+            "table": "inbox_saved_views",
+            "columns": "id,filters",
+            "start": 154.77520000000004,
+            "end": 186.31190000000004,
+            "durationMs": 31.536699999999996
+          },
+          {
+            "kind": "rpc",
+            "name": "tenh_inbox_page",
+            "start": 186.73810000000003,
+            "end": 217.39300000000003,
+            "durationMs": 30.654899999999998
+          },
+          {
+            "kind": "db",
+            "table": "social_accounts",
+            "columns": "id,platform,facebook_token_status,telegram_token_status",
+            "start": 218.0172,
+            "end": 248.23310000000004,
+            "durationMs": 30.215900000000033
+          },
+          {
+            "kind": "db",
+            "table": "social_accounts",
+            "columns": "id,business_id",
+            "start": 248.56330000000003,
+            "end": 279.41790000000003,
+            "durationMs": 30.854600000000005
+          },
+          {
+            "kind": "db",
+            "table": "conversations",
+            "columns": "\n      id,\n      business_id,\n      status,\n      unread_count,\n      last_message_text,\n      last_message_at,\n      updated_at,\n\n      is_pinned,\n      pinned_at,\n      pinned_by,\n\n\n      source_type,\n      facebook_post_id,\n      facebook_messenger_sources,\n      facebook_comment_id,\n      parent_comment_id,\n\n      assigned_to,\n      assigned_at,\n\n      assigned_member:team_members (\n        id,\n        full_name,\n        email,\n        role,\n        profile_picture_url\n      ),\n\n      contact:contacts (\n        id,\n        business_id,\n        full_name,\n        profile_picture_url,\n        platform_user_id,\n        facebook_profile_id,\n        phone,\n        email,\n        address,\n        company_name,\n        customer_note,\n        created_at,\n        last_contact_at\n      ),\n\n      social_account:social_accounts (\n        id,\n        account_name,\n        platform,\n        platform_account_id\n      )\n    ",
+            "start": 279.59979999999996,
+            "end": 310.6491,
+            "durationMs": 31.049300000000017
+          },
+          {
+            "kind": "db",
+            "table": "contact_tags",
+            "columns": "\n      contact_id,\n\n      tag:tags (\n        id,\n        business_id,\n        name,\n        color,\n        sort_index,\n        description,\n        is_active,\n        created_at,\n        updated_at\n      )\n    ",
+            "start": 310.83310000000006,
+            "end": 341.65110000000004,
+            "durationMs": 30.817999999999984
+          },
+          {
+            "kind": "fixture_serialization",
+            "start": 342.50300000000004,
+            "end": 343.40970000000004,
+            "durationMs": 0.9067000000000007
+          }
+        ]
+      },
+      "after": {
+        "status": 200,
+        "elapsedMsSamples": [
+          275.77790000000005,
+          271.69519999999994,
+          283.9081,
+          285.7827,
+          274.5243
+        ],
+        "medianElapsedMs": 275.77790000000005,
+        "authTransports": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "databaseTransports": [
+          9,
+          9,
+          9,
+          9,
+          9
+        ],
+        "maxConcurrentTransports": [
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "responseBytes": 28188,
+        "responseSHA256": "57be1a2d4259ec068cfc2f42bde21c1649ee36ad1234f0ed4937278c98c7d191",
+        "identicalResponseAcrossAllSamples": true,
+        "medianFixtureSerializationMs": 0.8599999999999,
+        "timeline": [
+          {
+            "kind": "auth",
+            "start": 0,
+            "end": 26.385299999999972,
+            "durationMs": 26.385299999999972
+          },
+          {
+            "kind": "db",
+            "table": "team_members",
+            "columns": "\n  id,\n  user_id,\n  business_id,\n  full_name,\n  email,\n  role,\n  profile_picture_url,\n  is_active\n",
+            "start": 26.674999999999955,
+            "end": 57.782100000000014,
+            "durationMs": 31.10710000000006
+          },
+          {
+            "kind": "db",
+            "table": "team_members",
+            "columns": "id,business_id",
+            "start": 59.268100000000004,
+            "end": 88.10259999999994,
+            "durationMs": 28.834499999999935
+          },
+          {
+            "kind": "db",
+            "table": "business_subscriptions",
+            "columns": "id,business_id,status,current_period_end,trial_ends_at,created_at",
+            "start": 88.3347,
+            "end": 119.3356,
+            "durationMs": 31.0009
+          },
+          {
+            "kind": "db",
+            "table": "inbox_saved_views",
+            "columns": "id,filters",
+            "start": 119.52440000000001,
+            "end": 150.69309999999996,
+            "durationMs": 31.168699999999944
+          },
+          {
+            "kind": "rpc",
+            "name": "tenh_inbox_page",
+            "start": 150.88580000000002,
+            "end": 181.09910000000002,
+            "durationMs": 30.213300000000004
+          },
+          {
+            "kind": "db",
+            "table": "social_accounts",
+            "columns": "id,platform,facebook_token_status,telegram_token_status",
+            "start": 181.72129999999993,
+            "end": 211.798,
+            "durationMs": 30.076700000000073
+          },
+          {
+            "kind": "db",
+            "table": "social_accounts",
+            "columns": "id,business_id",
+            "start": 181.7504,
+            "end": 211.85109999999997,
+            "durationMs": 30.10069999999996
+          },
+          {
+            "kind": "db",
+            "table": "conversations",
+            "columns": "\n      id,\n      business_id,\n      status,\n      unread_count,\n      last_message_text,\n      last_message_at,\n      updated_at,\n\n      is_pinned,\n      pinned_at,\n      pinned_by,\n\n\n      source_type,\n      facebook_post_id,\n      facebook_messenger_sources,\n      facebook_comment_id,\n      parent_comment_id,\n\n      assigned_to,\n      assigned_at,\n\n      assigned_member:team_members (\n        id,\n        full_name,\n        email,\n        role,\n        profile_picture_url\n      ),\n\n      contact:contacts (\n        id,\n        business_id,\n        full_name,\n        profile_picture_url,\n        platform_user_id,\n        facebook_profile_id,\n        phone,\n        email,\n        address,\n        company_name,\n        customer_note,\n        created_at,\n        last_contact_at\n      ),\n\n      social_account:social_accounts (\n        id,\n        account_name,\n        platform,\n        platform_account_id\n      )\n    ",
+            "start": 212.09500000000003,
+            "end": 242.31579999999997,
+            "durationMs": 30.22079999999994
+          },
+          {
+            "kind": "db",
+            "table": "contact_tags",
+            "columns": "\n      contact_id,\n\n      tag:tags (\n        id,\n        business_id,\n        name,\n        color,\n        sort_index,\n        description,\n        is_active,\n        created_at,\n        updated_at\n      )\n    ",
+            "start": 242.5222,
+            "end": 273.32989999999995,
+            "durationMs": 30.807699999999954
+          },
+          {
+            "kind": "fixture_serialization",
+            "start": 274.1951,
+            "end": 275.0550999999999,
+            "durationMs": 0.8599999999999
+          }
+        ]
+      }
+    },
+    "live": {
+      "before": {
+        "status": 200,
+        "elapsedMsSamples": [
+          362.3911999999999,
+          367.9818,
+          366.9329,
+          365.87760000000003,
+          377.05690000000016
+        ],
+        "medianElapsedMs": 366.9329,
+        "authTransports": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "databaseTransports": [
+          11,
+          11,
+          11,
+          11,
+          11
+        ],
+        "maxConcurrentTransports": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "responseBytes": 39321,
+        "responseSHA256": "bd976d35636b91e805298c127488ecf43945e14d813858443961a2c83efafb15",
+        "identicalResponseAcrossAllSamples": true,
+        "medianFixtureSerializationMs": 0.46070000000008804,
+        "timeline": [
+          {
+            "kind": "auth",
+            "start": 0,
+            "end": 20.60820000000001,
+            "durationMs": 20.60820000000001
+          },
+          {
+            "kind": "db",
+            "table": "team_members",
+            "columns": "\n  id,\n  user_id,\n  business_id,\n  full_name,\n  email,\n  role,\n  profile_picture_url,\n  is_active\n",
+            "start": 20.69870000000003,
+            "end": 52.171100000000024,
+            "durationMs": 31.472399999999993
+          },
+          {
+            "kind": "db",
+            "table": "team_members",
+            "columns": "business_id",
+            "start": 53.220800000000054,
+            "end": 84.05989999999997,
+            "durationMs": 30.839099999999917
+          },
+          {
+            "kind": "db",
+            "table": "business_subscriptions",
+            "columns": "id,business_id,status,current_period_end,trial_ends_at,created_at",
+            "start": 84.13699999999994,
+            "end": 114.83270000000005,
+            "durationMs": 30.6957000000001
+          },
+          {
+            "kind": "db",
+            "table": "social_accounts",
+            "columns": "id,platform,facebook_token_status,telegram_token_status",
+            "start": 114.89570000000003,
+            "end": 145.89139999999998,
+            "durationMs": 30.995699999999943
+          },
+          {
+            "kind": "db",
+            "table": "social_accounts",
+            "columns": "id,business_id",
+            "start": 145.96350000000007,
+            "end": 176.7487000000001,
+            "durationMs": 30.78520000000003
+          },
+          {
+            "kind": "db",
+            "table": "conversations",
+            "columns": "id,updated_at",
+            "start": 176.97839999999997,
+            "end": 207.91100000000006,
+            "durationMs": 30.932600000000093
+          },
+          {
+            "kind": "db",
+            "table": "social_accounts",
+            "columns": "id,platform,facebook_token_status,telegram_token_status",
+            "start": 208.11400000000003,
+            "end": 237.68180000000007,
+            "durationMs": 29.567800000000034
+          },
+          {
+            "kind": "db",
+            "table": "conversations",
+            "columns": "\n      id,\n      business_id,\n      status,\n      unread_count,\n      last_message_text,\n      last_message_at,\n      updated_at,\n\n      is_pinned,\n      pinned_at,\n      pinned_by,\n\n\n      source_type,\n      facebook_post_id,\n      facebook_messenger_sources,\n      facebook_comment_id,\n      parent_comment_id,\n\n      assigned_to,\n      assigned_at,\n\n      assigned_member:team_members (\n        id,\n        full_name,\n        email,\n        role,\n        profile_picture_url\n      ),\n\n      contact:contacts (\n        id,\n        business_id,\n        full_name,\n        profile_picture_url,\n        platform_user_id,\n        facebook_profile_id,\n        phone,\n        email,\n        address,\n        company_name,\n        customer_note,\n        created_at,\n        last_contact_at\n      ),\n\n      social_account:social_accounts (\n        id,\n        account_name,\n        platform,\n        platform_account_id\n      )\n    ",
+            "start": 237.77520000000004,
+            "end": 269.0299,
+            "durationMs": 31.254699999999957
+          },
+          {
+            "kind": "db",
+            "table": "contact_tags",
+            "columns": "\n      contact_id,\n\n      tag:tags (\n        id,\n        business_id,\n        name,\n        color,\n        sort_index,\n        description,\n        is_active,\n        created_at,\n        updated_at\n      )\n    ",
+            "start": 269.2637,
+            "end": 298.6785,
+            "durationMs": 29.414800000000014
+          },
+          {
+            "kind": "db",
+            "table": "conversations",
+            "columns": "\n      id,\n      business_id,\n      contact_id,\n      is_pinned,\n      pinned_at,\n      pinned_by,\n      assigned_to,\n      assigned_at,\n      status,\n      status_updated_at,\n      unread_count,\n      last_message_text,\n      last_message_at,\n      updated_at,\n      assigned_member:team_members!conversations_assigned_to_fkey (\n        id,\n        business_id,\n        full_name,\n        email,\n        role,\n        profile_picture_url\n      )\n    ",
+            "start": 298.9266,
+            "end": 330.83670000000006,
+            "durationMs": 31.910100000000057
+          },
+          {
+            "kind": "db",
+            "table": "contact_tags",
+            "columns": "\n        contact_id,\n        tag:tags (\n          id,\n          business_id,\n          name,\n          color,\n          sort_index,\n          description,\n          is_active,\n          created_at,\n          updated_at\n        )\n      ",
+            "start": 331.11429999999996,
+            "end": 361.4444000000001,
+            "durationMs": 30.33010000000013
+          },
+          {
+            "kind": "fixture_serialization",
+            "start": 361.8764000000001,
+            "end": 362.2874999999999,
+            "durationMs": 0.41109999999980573
+          }
+        ]
+      },
+      "after": {
+        "status": 200,
+        "elapsedMsSamples": [
+          344.36789999999996,
+          345.82820000000004,
+          343.80960000000005,
+          332.76329999999984,
+          345.29550000000006
+        ],
+        "medianElapsedMs": 344.36789999999996,
+        "authTransports": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "databaseTransports": [
+          10,
+          10,
+          10,
+          10,
+          10
+        ],
+        "maxConcurrentTransports": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "responseBytes": 39321,
+        "responseSHA256": "bd976d35636b91e805298c127488ecf43945e14d813858443961a2c83efafb15",
+        "identicalResponseAcrossAllSamples": true,
+        "medianFixtureSerializationMs": 0.3231999999998152,
+        "timeline": [
+          {
+            "kind": "auth",
+            "start": 0,
+            "end": 32.34469999999999,
+            "durationMs": 32.34469999999999
+          },
+          {
+            "kind": "db",
+            "table": "team_members",
+            "columns": "\n  id,\n  user_id,\n  business_id,\n  full_name,\n  email,\n  role,\n  profile_picture_url,\n  is_active\n",
+            "start": 32.423200000000065,
+            "end": 64.06730000000005,
+            "durationMs": 31.64409999999998
+          },
+          {
+            "kind": "db",
+            "table": "team_members",
+            "columns": "id,business_id",
+            "start": 65.31580000000008,
+            "end": 94.73430000000008,
+            "durationMs": 29.418499999999995
+          },
+          {
+            "kind": "db",
+            "table": "business_subscriptions",
+            "columns": "id,business_id,status,current_period_end,trial_ends_at,created_at",
+            "start": 94.79860000000008,
+            "end": 126.00790000000006,
+            "durationMs": 31.209299999999985
+          },
+          {
+            "kind": "db",
+            "table": "social_accounts",
+            "columns": "id,platform,facebook_token_status,telegram_token_status",
+            "start": 126.20150000000001,
+            "end": 156.3229,
+            "durationMs": 30.121399999999994
+          },
+          {
+            "kind": "db",
+            "table": "social_accounts",
+            "columns": "id,business_id",
+            "start": 156.37700000000007,
+            "end": 188.56859999999995,
+            "durationMs": 32.19159999999988
+          },
+          {
+            "kind": "db",
+            "table": "conversations",
+            "columns": "id,updated_at",
+            "start": 188.75779999999997,
+            "end": 219.7872000000001,
+            "durationMs": 31.029400000000123
+          },
+          {
+            "kind": "db",
+            "table": "conversations",
+            "columns": "\n      id,\n      business_id,\n      status,\n      unread_count,\n      last_message_text,\n      last_message_at,\n      updated_at,\n\n      is_pinned,\n      pinned_at,\n      pinned_by,\n\n\n      source_type,\n      facebook_post_id,\n      facebook_messenger_sources,\n      facebook_comment_id,\n      parent_comment_id,\n\n      assigned_to,\n      assigned_at,\n\n      assigned_member:team_members (\n        id,\n        full_name,\n        email,\n        role,\n        profile_picture_url\n      ),\n\n      contact:contacts (\n        id,\n        business_id,\n        full_name,\n        profile_picture_url,\n        platform_user_id,\n        facebook_profile_id,\n        phone,\n        email,\n        address,\n        company_name,\n        customer_note,\n        created_at,\n        last_contact_at\n      ),\n\n      social_account:social_accounts (\n        id,\n        account_name,\n        platform,\n        platform_account_id\n      )\n    ",
+            "start": 220.1631000000001,
+            "end": 250.09320000000014,
+            "durationMs": 29.93010000000004
+          },
+          {
+            "kind": "db",
+            "table": "contact_tags",
+            "columns": "\n      contact_id,\n\n      tag:tags (\n        id,\n        business_id,\n        name,\n        color,\n        sort_index,\n        description,\n        is_active,\n        created_at,\n        updated_at\n      )\n    ",
+            "start": 250.19809999999995,
+            "end": 280.9339000000001,
+            "durationMs": 30.735800000000154
+          },
+          {
+            "kind": "db",
+            "table": "conversations",
+            "columns": "\n      id,\n      business_id,\n      contact_id,\n      is_pinned,\n      pinned_at,\n      pinned_by,\n      assigned_to,\n      assigned_at,\n      status,\n      status_updated_at,\n      unread_count,\n      last_message_text,\n      last_message_at,\n      updated_at,\n      assigned_member:team_members!conversations_assigned_to_fkey (\n        id,\n        business_id,\n        full_name,\n        email,\n        role,\n        profile_picture_url\n      )\n    ",
+            "start": 281.3737,
+            "end": 312.7111000000001,
+            "durationMs": 31.337400000000116
+          },
+          {
+            "kind": "db",
+            "table": "contact_tags",
+            "columns": "\n        contact_id,\n        tag:tags (\n          id,\n          business_id,\n          name,\n          color,\n          sort_index,\n          description,\n          is_active,\n          created_at,\n          updated_at\n        )\n      ",
+            "start": 313.01570000000004,
+            "end": 343.5802,
+            "durationMs": 30.564499999999953
+          },
+          {
+            "kind": "fixture_serialization",
+            "start": 343.93920000000014,
+            "end": 344.26239999999996,
+            "durationMs": 0.3231999999998152
+          }
+        ]
+      }
+    },
+    "notifications": {
+      "before": {
+        "status": 200,
+        "elapsedMsSamples": [
+          180.08349999999996,
+          177.32119999999986,
+          182.99329999999986,
+          191.3527999999999,
+          177.91740000000004
+        ],
+        "medianElapsedMs": 180.08349999999996,
+        "authTransports": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "databaseTransports": [
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "maxConcurrentTransports": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "responseBytes": 202,
+        "responseSHA256": "0b52dc833cd6d9395e8ebcde4b50fad9d4124751b869a41925373d676c94ba50",
+        "identicalResponseAcrossAllSamples": true,
+        "medianFixtureSerializationMs": 0.27150000000006,
+        "timeline": [
+          {
+            "kind": "auth",
+            "start": 0,
+            "end": 22.255300000000034,
+            "durationMs": 22.255300000000034
+          },
+          {
+            "kind": "db",
+            "table": "team_members",
+            "columns": "id,business_id",
+            "start": 22.30619999999999,
+            "end": 53.71219999999994,
+            "durationMs": 31.40599999999995
+          },
+          {
+            "kind": "db",
+            "table": "business_subscriptions",
+            "columns": "business_id,status,current_period_end,trial_ends_at,created_at",
+            "start": 53.806299999999965,
+            "end": 84.55829999999992,
+            "durationMs": 30.751999999999953
+          },
+          {
+            "kind": "db",
+            "table": "conversation_reminders",
+            "columns": "id,business_id,conversation_id,contact_id,note,remind_at",
+            "start": 85.23430000000008,
+            "end": 115.53390000000013,
+            "durationMs": 30.299600000000055
+          },
+          {
+            "kind": "db",
+            "table": "team_notifications",
+            "columns": "\n      id,\n      business_id,\n      recipient_member_id,\n      notification_type,\n      title,\n      body,\n      link,\n      room_id,\n      conversation_id,\n      contact_id,\n      is_read,\n      read_at,\n      created_at\n    ",
+            "start": 115.64260000000013,
+            "end": 146.48209999999995,
+            "durationMs": 30.839499999999816
+          },
+          {
+            "kind": "db",
+            "table": "social_accounts",
+            "columns": "id,business_id",
+            "start": 146.55099999999993,
+            "end": 178.5082,
+            "durationMs": 31.957200000000057
+          },
+          {
+            "kind": "fixture_serialization",
+            "start": 179.06639999999993,
+            "end": 179.70170000000007,
+            "durationMs": 0.635300000000143
+          }
+        ]
+      },
+      "after": {
+        "status": 200,
+        "elapsedMsSamples": [
+          158.7409,
+          147.08669999999984,
+          159.5009,
+          143.33780000000002,
+          144.39380000000006
+        ],
+        "medianElapsedMs": 147.08669999999984,
+        "authTransports": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "databaseTransports": [
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "maxConcurrentTransports": [
+          2,
+          2,
+          2,
+          2,
+          2
+        ],
+        "responseBytes": 202,
+        "responseSHA256": "0b52dc833cd6d9395e8ebcde4b50fad9d4124751b869a41925373d676c94ba50",
+        "identicalResponseAcrossAllSamples": true,
+        "medianFixtureSerializationMs": 0.2419999999999618,
+        "timeline": [
+          {
+            "kind": "auth",
+            "start": 0,
+            "end": 32.7311000000002,
+            "durationMs": 32.7311000000002
+          },
+          {
+            "kind": "db",
+            "table": "team_members",
+            "columns": "id,business_id",
+            "start": 32.79130000000009,
+            "end": 63.27300000000014,
+            "durationMs": 30.481700000000046
+          },
+          {
+            "kind": "db",
+            "table": "business_subscriptions",
+            "columns": "business_id,status,current_period_end,trial_ends_at,created_at",
+            "start": 63.37250000000017,
+            "end": 94.37049999999999,
+            "durationMs": 30.99799999999982
+          },
+          {
+            "kind": "db",
+            "table": "conversation_reminders",
+            "columns": "id,business_id,conversation_id,contact_id,note,remind_at",
+            "start": 94.76940000000013,
+            "end": 126.2768000000001,
+            "durationMs": 31.50739999999996
+          },
+          {
+            "kind": "db",
+            "table": "social_accounts",
+            "columns": "id,business_id",
+            "start": 94.78880000000004,
+            "end": 126.52530000000002,
+            "durationMs": 31.736499999999978
+          },
+          {
+            "kind": "db",
+            "table": "team_notifications",
+            "columns": "\n      id,\n      business_id,\n      recipient_member_id,\n      notification_type,\n      title,\n      body,\n      link,\n      room_id,\n      conversation_id,\n      contact_id,\n      is_read,\n      read_at,\n      created_at\n    ",
+            "start": 126.45090000000005,
+            "end": 157.80230000000006,
+            "durationMs": 31.351400000000012
+          },
+          {
+            "kind": "fixture_serialization",
+            "start": 158.13110000000006,
+            "end": 158.37310000000002,
+            "durationMs": 0.2419999999999618
+          }
+        ]
+      }
+    },
+    "messages": {
+      "before": {
+        "status": 200,
+        "elapsedMsSamples": [
+          182.21640000000002,
+          183.12110000000007,
+          182.95860000000016,
+          177.74210000000016,
+          186.91419999999994
+        ],
+        "medianElapsedMs": 182.95860000000016,
+        "authTransports": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "databaseTransports": [
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "maxConcurrentTransports": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "responseBytes": 9888,
+        "responseSHA256": "44f2e297117a34a6b26c8349b6e702d7a2efca4f9f24087e40c5167357601c25",
+        "identicalResponseAcrossAllSamples": true,
+        "medianFixtureSerializationMs": 0.20299999999997453,
+        "timeline": [
+          {
+            "kind": "db",
+            "table": "conversations",
+            "columns": "id,business_id,contact_id,social_account_id,platform",
+            "start": 0,
+            "end": 26.57269999999994,
+            "durationMs": 26.57269999999994
+          },
+          {
+            "kind": "auth",
+            "start": 26.827199999999948,
+            "end": 57.57589999999982,
+            "durationMs": 30.74869999999987
+          },
+          {
+            "kind": "db",
+            "table": "team_members",
+            "columns": "id,user_id,business_id,full_name,email,role,profile_picture_url,is_active",
+            "start": 57.63589999999999,
+            "end": 89.27189999999996,
+            "durationMs": 31.635999999999967
+          },
+          {
+            "kind": "db",
+            "table": "business_subscriptions",
+            "columns": "status,current_period_end,trial_ends_at,created_at",
+            "start": 89.30469999999991,
+            "end": 120.03980000000001,
+            "durationMs": 30.735100000000102
+          },
+          {
+            "kind": "db",
+            "table": "conversations",
+            "columns": "\n      id,\n      business_id,\n      contact_id,\n      social_account_id,\n      source_type,\n      platform,\n      updated_at,\n      last_message_at,\n      facebook_post_id,\n      facebook_comment_id\n    ",
+            "start": 120.20669999999996,
+            "end": 150.5281,
+            "durationMs": 30.32140000000004
+          },
+          {
+            "kind": "db",
+            "table": "messages",
+            "columns": "*",
+            "start": 150.93290000000002,
+            "end": 181.35399999999981,
+            "durationMs": 30.421099999999797
+          },
+          {
+            "kind": "fixture_serialization",
+            "start": 181.67989999999986,
+            "end": 181.8804,
+            "durationMs": 0.20050000000014734
+          }
+        ]
+      },
+      "after": {
+        "status": 200,
+        "elapsedMsSamples": [
+          184.73929999999996,
+          176.6844000000001,
+          181.0476000000001,
+          180.15149999999994,
+          182.16240000000016
+        ],
+        "medianElapsedMs": 181.0476000000001,
+        "authTransports": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "databaseTransports": [
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "maxConcurrentTransports": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "responseBytes": 9888,
+        "responseSHA256": "44f2e297117a34a6b26c8349b6e702d7a2efca4f9f24087e40c5167357601c25",
+        "identicalResponseAcrossAllSamples": true,
+        "medianFixtureSerializationMs": 0.18689999999992324,
+        "timeline": [
+          {
+            "kind": "db",
+            "table": "conversations",
+            "columns": "id,business_id,contact_id,social_account_id,platform",
+            "start": 0,
+            "end": 29.870400000000018,
+            "durationMs": 29.870400000000018
+          },
+          {
+            "kind": "auth",
+            "start": 30.212999999999965,
+            "end": 60.133800000000065,
+            "durationMs": 29.9208000000001
+          },
+          {
+            "kind": "db",
+            "table": "team_members",
+            "columns": "id,user_id,business_id,full_name,email,role,profile_picture_url,is_active",
+            "start": 60.189800000000105,
+            "end": 91.27400000000011,
+            "durationMs": 31.08420000000001
+          },
+          {
+            "kind": "db",
+            "table": "business_subscriptions",
+            "columns": "status,current_period_end,trial_ends_at,created_at",
+            "start": 91.30529999999999,
+            "end": 122.12110000000007,
+            "durationMs": 30.81580000000008
+          },
+          {
+            "kind": "db",
+            "table": "conversations",
+            "columns": "\n      id,\n      business_id,\n      contact_id,\n      social_account_id,\n      source_type,\n      platform,\n      updated_at,\n      last_message_at,\n      facebook_post_id,\n      facebook_comment_id\n    ",
+            "start": 122.298,
+            "end": 153.04880000000003,
+            "durationMs": 30.750800000000027
+          },
+          {
+            "kind": "db",
+            "table": "messages",
+            "columns": "*",
+            "start": 153.49400000000014,
+            "end": 183.72749999999996,
+            "durationMs": 30.23349999999982
+          },
+          {
+            "kind": "fixture_serialization",
+            "start": 184.16690000000017,
+            "end": 184.35760000000005,
+            "durationMs": 0.19069999999987886
+          }
+        ]
+      }
+    },
+    "workspaces": {
+      "before": {
+        "status": 200,
+        "elapsedMsSamples": [
+          153.76310000000012,
+          158.24669999999992,
+          151.67459999999983,
+          158.24049999999988,
+          159.17819999999983
+        ],
+        "medianElapsedMs": 158.24049999999988,
+        "authTransports": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "databaseTransports": [
+          8,
+          8,
+          8,
+          8,
+          8
+        ],
+        "maxConcurrentTransports": [
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "responseBytes": 595,
+        "responseSHA256": "b62f42e6382b4b03a50edb5d4436f0916836b3ea988190fd6d7ce37de8dc15c8",
+        "identicalResponseAcrossAllSamples": true,
+        "medianFixtureSerializationMs": 0.30169999999998254,
+        "timeline": [
+          {
+            "kind": "auth",
+            "start": 0,
+            "end": 28.286600000000135,
+            "durationMs": 28.286600000000135
+          },
+          {
+            "kind": "db",
+            "table": "team_members",
+            "columns": "\n  id,\n  user_id,\n  business_id,\n  full_name,\n  email,\n  role,\n  profile_picture_url,\n  is_active\n",
+            "start": 28.375200000000177,
+            "end": 60.33200000000011,
+            "durationMs": 31.95679999999993
+          },
+          {
+            "kind": "db",
+            "table": "team_members",
+            "columns": "id,business_id,role,is_active,permissions",
+            "start": 60.39610000000016,
+            "end": 90.6215000000002,
+            "durationMs": 30.225400000000036
+          },
+          {
+            "kind": "rpc",
+            "name": "tenh_sync_subscription_lifecycle",
+            "start": 90.80860000000007,
+            "end": 121.8922,
+            "durationMs": 31.083599999999933
+          },
+          {
+            "kind": "db",
+            "table": "businesses",
+            "columns": "id,name,slug",
+            "start": 122.0652,
+            "end": 152.76620000000003,
+            "durationMs": 30.701000000000022
+          },
+          {
+            "kind": "db",
+            "table": "business_subscriptions",
+            "columns": "id,business_id,plan_code,status,member_limit,channel_limit,current_period_end,trial_ends_at,billing_cycle,last_paid_amount,last_paid_currency,pricing_snapshot,created_at",
+            "start": 122.08050000000003,
+            "end": 152.77890000000002,
+            "durationMs": 30.698399999999992
+          },
+          {
+            "kind": "db",
+            "table": "team_members",
+            "columns": "business_id,full_name,email,is_active",
+            "start": 122.08460000000014,
+            "end": 152.7895000000001,
+            "durationMs": 30.704899999999952
+          },
+          {
+            "kind": "db",
+            "table": "team_members",
+            "columns": "business_id",
+            "start": 122.08740000000012,
+            "end": 152.79520000000002,
+            "durationMs": 30.707799999999907
+          },
+          {
+            "kind": "db",
+            "table": "social_accounts",
+            "columns": "business_id",
+            "start": 122.0889000000002,
+            "end": 152.81020000000012,
+            "durationMs": 30.72129999999993
+          },
+          {
+            "kind": "fixture_serialization",
+            "start": 153.20330000000013,
+            "end": 153.40030000000002,
+            "durationMs": 0.19699999999988904
+          }
+        ]
+      },
+      "after": {
+        "status": 200,
+        "elapsedMsSamples": [
+          159.96370000000002,
+          161.58220000000006,
+          146.49980000000005,
+          145.01829999999995,
+          148.12210000000005
+        ],
+        "medianElapsedMs": 148.12210000000005,
+        "authTransports": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        "databaseTransports": [
+          8,
+          8,
+          8,
+          8,
+          8
+        ],
+        "maxConcurrentTransports": [
+          5,
+          5,
+          5,
+          5,
+          5
+        ],
+        "responseBytes": 595,
+        "responseSHA256": "b62f42e6382b4b03a50edb5d4436f0916836b3ea988190fd6d7ce37de8dc15c8",
+        "identicalResponseAcrossAllSamples": true,
+        "medianFixtureSerializationMs": 0.19089999999982865,
+        "timeline": [
+          {
+            "kind": "auth",
+            "start": 0,
+            "end": 33.221700000000055,
+            "durationMs": 33.221700000000055
+          },
+          {
+            "kind": "db",
+            "table": "team_members",
+            "columns": "\n  id,\n  user_id,\n  business_id,\n  full_name,\n  email,\n  role,\n  profile_picture_url,\n  is_active\n",
+            "start": 33.302999999999884,
+            "end": 65.1422,
+            "durationMs": 31.83920000000012
+          },
+          {
+            "kind": "db",
+            "table": "team_members",
+            "columns": "id,business_id,role,is_active,permissions",
+            "start": 65.19029999999998,
+            "end": 96.15650000000005,
+            "durationMs": 30.96620000000007
+          },
+          {
+            "kind": "rpc",
+            "name": "tenh_sync_subscription_lifecycle",
+            "start": 96.35439999999994,
+            "end": 127.91730000000007,
+            "durationMs": 31.562900000000127
+          },
+          {
+            "kind": "db",
+            "table": "businesses",
+            "columns": "id,name,slug",
+            "start": 128.07819999999992,
+            "end": 158.93360000000007,
+            "durationMs": 30.855400000000145
+          },
+          {
+            "kind": "db",
+            "table": "business_subscriptions",
+            "columns": "id,business_id,plan_code,status,member_limit,channel_limit,current_period_end,trial_ends_at,billing_cycle,last_paid_amount,last_paid_currency,pricing_snapshot,created_at",
+            "start": 128.10019999999986,
+            "end": 158.94529999999986,
+            "durationMs": 30.845100000000002
+          },
+          {
+            "kind": "db",
+            "table": "team_members",
+            "columns": "business_id,full_name,email,is_active",
+            "start": 128.10259999999994,
+            "end": 158.9592,
+            "durationMs": 30.85660000000007
+          },
+          {
+            "kind": "db",
+            "table": "team_members",
+            "columns": "business_id",
+            "start": 128.10439999999994,
+            "end": 158.9692,
+            "durationMs": 30.86480000000006
+          },
+          {
+            "kind": "db",
+            "table": "social_accounts",
+            "columns": "business_id",
+            "start": 128.10590000000002,
+            "end": 158.9831999999999,
+            "durationMs": 30.877299999999877
+          },
+          {
+            "kind": "fixture_serialization",
+            "start": 159.38930000000005,
+            "end": 159.58019999999988,
+            "durationMs": 0.19089999999982865
+          }
+        ]
+      }
+    }
+  }
+}

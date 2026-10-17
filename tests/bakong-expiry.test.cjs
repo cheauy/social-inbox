@@ -54,7 +54,7 @@ async function fixture(options = {}) {
     } } }) },
     '@/lib/billing/payment-cancellation-feature': { KHQR_CHECKOUT_ENABLED: options.cancellation === true },
   }, { window: dom.window, document: dom.window.document, HTMLElement: dom.window.HTMLElement, navigator: dom.window.navigator, fetch: fetcher, AbortController,
-    performance: { now: () => clock }, setTimeout: (fn, delay) => schedule(fn, delay), clearTimeout: id => timers.delete(id),
+    performance: { now: () => clock }, URLSearchParams: dom.window.URLSearchParams, setTimeout: (fn, delay) => schedule(fn, delay), clearTimeout: id => timers.delete(id),
     setInterval: (fn, delay) => schedule(fn, delay, true), clearInterval: id => timers.delete(id) });
   const { BakongPaymentView } = load('components/subscription/bakong-payment-view.tsx');
   const render = props => act(async () => root.render(React.createElement(React.StrictMode, null,
@@ -218,7 +218,7 @@ test('verified or successful payment at the boundary is not replaced by an expir
     const f = await fixture({ elapsed: LIFETIME, record: { state, application: state === 'applied' ? 'active' : 'none', qrImage: null, canCheck: false } });
     try {
       await f.render(); await f.advance(1000);
-      assert.equal(f.navigations.length, 0); assert.equal(f.dom.window.document.querySelector('img'), null);
+      assert.equal(f.navigations.length, 0); assert.equal(f.dom.window.document.querySelector('img[alt="Scan Bakong KHQR to pay"]'), null);
     } finally { await f.close(); }
   });
 });
@@ -237,7 +237,7 @@ test('a pending inquiry racing expiry keeps the saved result available on Subscr
     const status = spinner.closest('[role="status"]'); assert.equal(status.getAttribute('aria-live'), 'polite');
     await f.advance(1000); assert.equal(f.dom.window.document.querySelector('img'), null); assert.equal(f.navigations.length, 1);
     assert.equal(f.dom.window.document.querySelector('[class*="animate-spin"]'), null, 'expiry stops the spinner while preserving the in-flight result');
-    await act(async () => release()); assert.match(f.dom.window.document.body.textContent, /Subscription active/);
+    await act(async () => release()); assert.match(f.dom.window.document.body.textContent, /Payment successful/);
     assert.equal(f.dom.window.document.querySelector('[class*="animate-spin"]'), null);
     assert.equal(f.requests.filter(r => r.method === 'POST').length, 1);
   } finally { await f.close(); }
@@ -249,7 +249,7 @@ test('a successful inquiry just before expiry takes precedence over the pending 
   try {
     await f.render();
     await f.refresh();
-    await f.advance(1000); assert.equal(f.navigations.length, 0); assert.match(f.dom.window.document.body.textContent, /Subscription active/);
+    await f.advance(1000); assert.equal(f.navigations.length, 0); assert.match(f.dom.window.document.body.textContent, /Payment successful/);
   } finally { await f.close(); }
 });
 

@@ -19,7 +19,7 @@ const code = ts.transpileModule(source.slice(start, end), { compilerOptions: { t
 const row = (id, seconds = 0) => ({ id, conversation_id: 'c1', message_text: id, direction: 'incoming', created_at: new Date(Date.parse('2026-09-13T08:00:00Z') + seconds * 1000).toISOString() });
 const flush = () => new Promise(resolve => setImmediate(resolve));
 
-function run(fetchImpl, healthy = false) {
+function run(fetchImpl, healthy = false, pendingPage) {
   let cleanup;
   const timers = new Map(), warnings = [], notifications = [], calls = [];
   let timerId = 0;
@@ -38,7 +38,7 @@ function run(fetchImpl, healthy = false) {
     console: { warn: (...args) => warnings.push(args) },
     realtimeHealthyRef: { current: healthy }, liveMessagesRef: messages, liveConversationsRef: conversations,
     handledIncomingMessageIdsRef: { current: new Set() }, recentIncomingConversationAtRef: { current: new Map() },
-    lastSoundedIncomingMessageTimeRef: { current: new Map() },
+    conversationMessageRequestRef: { current: pendingPage ? { c1: pendingPage } : {} },
     pendingSendsRef: { current: {} }, pendingAttachmentSendsRef: { current: {} },
     notifyIncomingMessage: value => notifications.push(value),
     setLiveMessages: update => { messages.current = update(messages.current); },
@@ -47,7 +47,8 @@ function run(fetchImpl, healthy = false) {
     sortLiveConversations: value => value, getRealtimeMessagePreview: m => m.message_text,
     isAbortError: error => error?.name === 'AbortError',
   });
-  return { cleanup: () => cleanup(), messages, warnings, notifications, calls, timers,
+  return { cleanup: () => cleanup(), messages, conversations, warnings, notifications, calls, timers,
+    resync: (conversationId = 'c1') => win.dispatchEvent(new CustomEvent('tenh:inbox-sync', { detail: { conversationId } })),
     tick: async () => { const [id, timer] = timers.entries().next().value; timers.delete(id); await timer.callback(); } };
 }
 
@@ -91,4 +92,48 @@ test('an aborted request after cleanup produces no warning', async () => {
   }));
   poll.cleanup(); await flush();
   assert.equal(poll.warnings.length, 0);
+});
+
+test('cold selection joins its unresolved newest-page read instead of starting a duplicate fetch', async () => {
+  let resolve;
+  const pending = new Promise(done => { resolve = done; });
+  const poll = run(() => { throw Error('duplicate fetch'); }, true, pending);
+  assert.equal(poll.calls.length, 0);
+  resolve({ messages: [row('old'), row('new', 30)], hasMore: false }); await flush();
+  assert.deepEqual(Array.from(poll.messages.current, m => m.id), ['old', 'new']);
+  assert.equal(poll.calls.length, 0); poll.cleanup();
+});
+test('batched recovery during a read runs one trailing read and never starts parallel requests', async () => {
+  const responses = [];
+  const poll = run(() => new Promise(resolve => responses.push(resolve)), true);
+  assert.equal(poll.calls.length, 1);
+  for (let n = 0; n < 5; n++) poll.resync();
+  poll.resync('different-thread'); assert.equal(poll.calls.length, 1);
+  responses[0](Response.json({ success: true, messages: [row('old')] })); await flush();
+  assert.equal(poll.calls.length, 2, 'exactly one trailing catch-up after the obsolete snapshot');
+  responses[1](Response.json({ success: true, messages: [row('old'), row('new', 30)] })); await flush();
+  assert.equal(poll.calls.length, 2); assert.equal(poll.messages.current.at(-1).id, 'new'); poll.cleanup();
+});
+test('retiring a request discards queued recovery and even an ignored abort cannot update the old thread', async () => {
+  let resolve;
+  const poll = run(() => new Promise(done => { resolve = done; }), true);
+  poll.resync(); poll.cleanup(); resolve(Response.json({ success: true, messages: [row('wrong', 30)] })); await flush();
+  assert.equal(poll.calls.length, 1); assert.equal(poll.notifications.length, 0);
+  assert.deepEqual(Array.from(poll.messages.current, m => m.id), ['old']);
+});
+test('an unchanged newest page preserves message and preview references; a renewed media URL still updates', async () => {
+  let payload = { ...row('old'), attachment_url: 'https://fixture.invalid/media?token=one' };
+  const poll = run(async () => Response.json({ success: true, messages: [payload] }), true); await flush();
+  const messages = poll.messages.current, preview = poll.conversations.current[0];
+  await poll.tick(); assert.equal(poll.messages.current, messages); assert.equal(poll.conversations.current[0], preview);
+  payload = { ...payload, attachment_url: 'https://fixture.invalid/media?token=two' };
+  await poll.tick(); assert.notEqual(poll.messages.current, messages); assert.equal(poll.messages.current[0].attachment_url, payload.attachment_url);
+  poll.cleanup();
+});
+
+test('own outgoing messages merge without an incoming alert', async () => {
+  const outgoing = { ...row('own-outgoing', 30), direction: 'outgoing' };
+  const poll = run(async () => Response.json({ success: true, messages: [row('old'), outgoing] }), true);
+  await flush(); assert.equal(poll.messages.current.at(-1).id, outgoing.id); assert.equal(poll.notifications.length, 0);
+  await poll.tick(); assert.equal(poll.notifications.length, 0); poll.cleanup();
 });

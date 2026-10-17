@@ -44,7 +44,9 @@ test('waiting animation is decorative; checking and terminal display follow the 
   await f.render();const status=f.dom.window.document.querySelector('[aria-live="polite"]'),section=f.dom.window.document.querySelector('section');
   assert.match(status.textContent,/Waiting for payment/);assert.ok(status.querySelector('[class*="animate-spin"]'));assert.equal(section.getAttribute('aria-busy'),'false');assert.equal(f.requests.filter(x=>x.method==='POST').length,0);
   await f.advance(300000);await f.advance(0);await f.advance(0);assert.match(status.textContent,/Checking payment/);assert.equal(section.getAttribute('aria-busy'),'true');
-  await act(async()=>finish());assert.match(status.textContent,/Subscription active/);assert.equal(status.querySelector('[class*="animate-spin"]'),null);assert.equal(section.getAttribute('aria-busy'),'false');
+  await act(async()=>finish());
+  const successStatus=f.dom.window.document.querySelector('[aria-live="polite"]'),successSection=f.dom.window.document.querySelector('section');
+  assert.match(successStatus.textContent,/Payment successful/);assert.equal(successStatus.querySelector('[class*="animate-spin"]'),null);assert.equal(successSection.getAttribute('aria-busy'),'false');
  }finally{await f.close();}
 });
 test('future Cancel only navigates after authoritative closure, while uncertain or failed responses stay visible',async t=>{

@@ -1,0 +1,203 @@
+[
+  {
+    "file": "components\\inbox\\conversation-list.tsx",
+    "errorCount": 3,
+    "warningCount": 3,
+    "messages": [
+      {
+        "ruleId": "@typescript-eslint/no-unused-vars",
+        "severity": 1,
+        "line": 46,
+        "message": "'getInitial' is defined but never used."
+      },
+      {
+        "ruleId": "@next/next/no-img-element",
+        "severity": 1,
+        "line": 754,
+        "message": "Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element"
+      },
+      {
+        "ruleId": "@typescript-eslint/no-unused-vars",
+        "severity": 1,
+        "line": 1641,
+        "message": "'onClearConversationSelection' is defined but never used."
+      },
+      {
+        "ruleId": "react-hooks/set-state-in-effect",
+        "severity": 2,
+        "line": 1757,
+        "message": "Error: Calling setState synchronously within an effect can trigger cascading renders"
+      },
+      {
+        "ruleId": "react-hooks/set-state-in-effect",
+        "severity": 2,
+        "line": 2121,
+        "message": "Error: Calling setState synchronously within an effect can trigger cascading renders"
+      },
+      {
+        "ruleId": "react-hooks/set-state-in-effect",
+        "severity": 2,
+        "line": 2305,
+        "message": "Error: Calling setState synchronously within an effect can trigger cascading renders"
+      }
+    ]
+  },
+  {
+    "file": "components\\inbox\\inbox-view.tsx",
+    "errorCount": 4,
+    "warningCount": 15,
+    "messages": [
+      {
+        "ruleId": "@typescript-eslint/no-unused-vars",
+        "severity": 1,
+        "line": 507,
+        "message": "'activeConversationId' is defined but never used."
+      },
+      {
+        "ruleId": "react-hooks/set-state-in-effect",
+        "severity": 2,
+        "line": 540,
+        "message": "Error: Calling setState synchronously within an effect can trigger cascading renders"
+      },
+      {
+        "ruleId": "@typescript-eslint/no-unused-vars",
+        "severity": 1,
+        "line": 677,
+        "message": "'pinError' is assigned a value but never used."
+      },
+      {
+        "ruleId": "react-hooks/exhaustive-deps",
+        "severity": 1,
+        "line": 911,
+        "message": "React Hook useEffect has a missing dependency: 'setLiveConversations'. Either include it or remove the dependency array."
+      },
+      {
+        "ruleId": "react-hooks/set-state-in-effect",
+        "severity": 2,
+        "line": 1329,
+        "message": "Error: Calling setState synchronously within an effect can trigger cascading renders"
+      },
+      {
+        "ruleId": "react-hooks/exhaustive-deps",
+        "severity": 1,
+        "line": 1332,
+        "message": "React Hook useEffect has a missing dependency: 'setLiveConversations'. Either include it or remove the dependency array."
+      },
+      {
+        "ruleId": "react-hooks/exhaustive-deps",
+        "severity": 1,
+        "line": 1642,
+        "message": "React Hook useEffect has a missing dependency: 'activeConversation'. Either include it or remove the dependency array."
+      },
+      {
+        "ruleId": "react-hooks/exhaustive-deps",
+        "severity": 1,
+        "line": 3773,
+        "message": "React Hook useEffect has missing dependencies: 'collaborationChannelId', 'collaborationWorkspaceId', and 'setLiveConversations'. Either include them or remove the dependency array."
+      },
+      {
+        "ruleId": "@typescript-eslint/no-unused-vars",
+        "severity": 1,
+        "line": 3794,
+        "message": "'serverLastMessageTime' is assigned a value but never used."
+      },
+      {
+        "ruleId": "@typescript-eslint/no-unused-vars",
+        "severity": 1,
+        "line": 3800,
+        "message": "'localLastMessageTime' is assigned a value but never used."
+      },
+      {
+        "ruleId": "react-hooks/exhaustive-deps",
+        "severity": 1,
+        "line": 4008,
+        "message": "React Hook useEffect has missing dependencies: 'accessibleBusinessIds', 'collaborationChannelId', 'collaborationWorkspaceId', 'setLiveConversations', and 'teamMembers'. Either include them or remove the dependency array."
+      },
+      {
+        "ruleId": "react-hooks/set-state-in-effect",
+        "severity": 2,
+        "line": 4018,
+        "message": "Error: Calling setState synchronously within an effect can trigger cascading renders"
+      },
+      {
+        "ruleId": "react-hooks/exhaustive-deps",
+        "severity": 1,
+        "line": 4104,
+        "message": "React Hook useEffect has a missing dependency: 'setLiveMessages'. Either include it or remove the dependency array."
+      },
+      {
+        "ruleId": "react-hooks/exhaustive-deps",
+        "severity": 1,
+        "line": 4657,
+        "message": "React Hook useCallback has missing dependencies: 'setLiveConversations' and 'setLiveMessages'. Either include them or remove the dependency array."
+      },
+      {
+        "ruleId": "react-hooks/exhaustive-deps",
+        "severity": 1,
+        "line": 4730,
+        "message": "React Hook useCallback has a missing dependency: 'setLiveMessages'. Either include it or remove the dependency array."
+      },
+      {
+        "ruleId": "react-hooks/exhaustive-deps",
+        "severity": 1,
+        "line": 4822,
+        "message": "React Hook useCallback has a missing dependency: 'setLiveMessages'. Either include it or remove the dependency array."
+      },
+      {
+        "ruleId": "react-hooks/exhaustive-deps",
+        "severity": 1,
+        "line": 5255,
+        "message": "React Hook useEffect has missing dependencies: 'setLiveConversations' and 'setLiveMessages'. Either include them or remove the dependency array."
+      },
+      {
+        "ruleId": "react-hooks/set-state-in-effect",
+        "severity": 2,
+        "line": 5498,
+        "message": "Error: Calling setState synchronously within an effect can trigger cascading renders"
+      },
+      {
+        "ruleId": "react-hooks/exhaustive-deps",
+        "severity": 1,
+        "line": 5568,
+        "message": "React Hook useEffect has a missing dependency: 'markConversationReadRealtime'. Either include it or remove the dependency array."
+      }
+    ]
+  },
+  {
+    "file": "components\\inbox\\workspace-storage-modal.tsx",
+    "errorCount": 0,
+    "warningCount": 0,
+    "messages": []
+  },
+  {
+    "file": "lib\\inbox\\use-arrival-notifications.ts",
+    "errorCount": 0,
+    "warningCount": 0,
+    "messages": []
+  },
+  {
+    "file": "lib\\inbox\\use-conversation-pages.ts",
+    "errorCount": 0,
+    "warningCount": 0,
+    "messages": []
+  },
+  {
+    "file": "lib\\inbox\\use-pinned-messages.ts",
+    "errorCount": 2,
+    "warningCount": 0,
+    "messages": [
+      {
+        "ruleId": "react-hooks/refs",
+        "severity": 2,
+        "line": 14,
+        "message": "Error: Cannot access refs during render"
+      },
+      {
+        "ruleId": "react-hooks/set-state-in-effect",
+        "severity": 2,
+        "line": 85,
+        "message": "Error: Calling setState synchronously within an effect can trigger cascading renders"
+      }
+    ]
+  }
+]

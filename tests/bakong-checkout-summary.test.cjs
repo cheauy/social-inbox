@@ -5,7 +5,7 @@ const React=require('react'),{act}=React,{createRoot}=require('react-dom/client'
 const {JSDOM}=require('jsdom'),{loader}=require('./tenh-seven/harness.cjs');
 const BUSINESS='00000000-0000-4000-8000-000000000002',ATTEMPT='00000000-0000-4000-8000-000000000001';
 
-test('selected KHQR summary matches PayWay Total/Checkout styling and still calls only KHQR',async()=>{
+test('retired direct Bakong remains absent even when a stale server advertises it; PayWay and manual stay available',async()=>{
   const dom=new JSDOM('<div id="root"></div>',{url:'https://fixture.invalid/dashboard/subscription/payment'}),previous={};
   for(const [key,value]of Object.entries({window:dom.window,document:dom.window.document,IS_REACT_ACT_ENVIRONMENT:true})){
     previous[key]=global[key];global[key]=value;
@@ -15,7 +15,7 @@ test('selected KHQR summary matches PayWay Total/Checkout styling and still call
   const fetcher=async(url,init={})=>{
     const path=new URL(url,'https://fixture.invalid').pathname,method=init.method??'GET';
     requests.push({path,method,body:init.body?JSON.parse(init.body):null});
-    if(path==='/api/manual-payments'&&method==='GET')return Response.json({success:true,businessId:BUSINESS,request:null,preparedAttempt:null,config:null});
+    if(path==='/api/manual-payments'&&method==='GET')return Response.json({success:true,businessId:BUSINESS,request:null,preparedAttempt:null,config:{enabled:true,bankName:"Fixture Bank",accountName:"Synthetic",accountNumber:"0000",qrImageUrl:null}});
     if(path==='/api/bakong/checkout')return Response.json(method==='GET'
       ?{success:true,businessId:BUSINESS,userId:'fixture-user',memberId:'fixture-member',enabled:true,environment:'production',pendingAttemptId:null,resumeAttemptId:null}
       :{success:true,businessId:BUSINESS,attemptId:ATTEMPT});
@@ -37,20 +37,14 @@ test('selected KHQR summary matches PayWay Total/Checkout styling and still call
     const payway=buttons().find(button=>button.textContent.trim()==='Checkout');assert.ok(payway);
     const paywaySummary=payway.parentElement;
     assert.match(paywaySummary.textContent,/Total/);assert.match(paywaySummary.textContent,/\$25\.37/);
-    const khqr=buttons().find(button=>button.textContent.trim().startsWith('KHQR'));assert.ok(khqr);
-    await act(async()=>khqr.click());
-    const checkout=buttons().find(button=>button.textContent.trim()==='Checkout');assert.ok(checkout);
-    const summary=checkout.parentElement;
-    assert.equal(summary.className,paywaySummary.className,'same responsive summary layout');
-    assert.match(summary.textContent,/KHQR/);assert.match(summary.textContent,/Total/);assert.match(summary.textContent,/\$25\.37/);
-    for(const style of ['bg-blue-600','rounded-2xl','px-6','py-4','text-base','font-extrabold'])assert.ok(checkout.classList.contains(style));
-    assert.ok(checkout.classList.contains('sm:min-w-[230px]'));assert.ok(checkout.classList.contains('w-full'));
-    assert.ok(checkout.querySelector('svg[aria-hidden="true"]'),'same lock icon');assert.equal(checkout.disabled,false);
-    assert.equal(requests.filter(request=>request.method==='POST').length,0,'selection is presentation only');
-    await act(async()=>checkout.click());
-    const posts=requests.filter(request=>request.method==='POST');assert.equal(posts.length,1);assert.equal(posts[0].path,'/api/bakong/checkout');
-    assert.equal(posts[0].body.businessId,BUSINESS);assert.equal(posts[0].body.amount,undefined);assert.equal(paywayCalls,0);
-    assert.match(dom.window.document.body.textContent,/Saved bakong/);
+    assert.equal(buttons().some(button=>button.textContent.trim().startsWith('KHQR')),false);
+    assert.ok(buttons().some(button=>button.textContent.includes('ABA KHQR')),'PayWay QR remains available');
+    const manual=buttons().find(button=>button.textContent.includes('Manual bank transfer'));
+    assert.ok(manual);assert.equal(manual.disabled,false);
+    await act(async()=>manual.click());
+    assert.ok(dom.window.document.querySelector('input[type=file]'),'manual receipt input remains available');
+    assert.equal(requests.filter(request=>request.method==='POST').length,0);
+    assert.equal(paywayCalls,0);
   }finally{
     await act(async()=>root.unmount());dom.window.close();
     for(const key of Object.keys(previous)){if(previous[key]===undefined)delete global[key];else global[key]=previous[key];}

@@ -1,0 +1,46 @@
+{
+  "baselineFocused": {
+    "passed": 94,
+    "failed": 0,
+    "skipped": 0
+  },
+  "finalRelevant": {
+    "total": 354,
+    "passed": 345,
+    "failed": 9,
+    "skipped": 0,
+    "allFailuresReproducedOnBaseline": true
+  },
+  "arrivalsAndRecovery": {
+    "passed": 23,
+    "failed": 0
+  },
+  "typescript": {
+    "command": "node node_modules/typescript/bin/tsc --noEmit --pretty false",
+    "exitCode": 0
+  },
+  "applicationLint": {
+    "newFindings": 0,
+    "baselineErrors": 7,
+    "baselineWarnings": 18
+  },
+  "build": {
+    "command": "npm run build",
+    "exitCode": 1,
+    "reasons": [
+      "ENOTFOUND fonts.googleapis.com",
+      "EPERM mkdir .next/server/app/api/customers/[customerId]/files"
+    ]
+  },
+  "fixtures": {
+    "inboxCompiled": true,
+    "storageCompiled": true,
+    "browserRun": false
+  },
+  "browser": {
+    "inventory": [],
+    "attempt": "cua.createBrowserTab(iab, about:blank)",
+    "outcome": "Browser is not available: iab"
+  },
+  "publication": false
+}

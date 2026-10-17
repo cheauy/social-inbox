@@ -1,0 +1,19 @@
+[
+  "lib\\inbox\\normalize-messages.test.mjs",
+  "tests\\inbox-attachment-picker.test.cjs",
+  "tests\\inbox-bulk-read.test.cjs",
+  "tests\\inbox-compact-web.test.cjs",
+  "tests\\inbox-composer-lifecycle.test.cjs",
+  "tests\\inbox-composer-media-ownership.test.cjs",
+  "tests\\inbox-composer-microphone-ownership.test.cjs",
+  "tests\\inbox-conversation-url-selection.test.cjs",
+  "tests\\inbox-image-ui.test.cjs",
+  "tests\\inbox-navigation-loading.test.cjs",
+  "tests\\inbox-photo-loading.test.cjs",
+  "tests\\inbox-return-context.test.cjs",
+  "tests\\inbox-success-alerts.test.mjs",
+  "tests\\inbox-ui-polish-20260929.test.cjs",
+  "tests\\live-message-fallback\\presence.test.cjs",
+  "tests\\mobile-media-composer.test.cjs",
+  "tests\\mobile-thread-performance.test.cjs"
+]

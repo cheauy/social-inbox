@@ -1,0 +1,62 @@
+[
+  {
+    "file": "components\\inbox\\conversation-list.tsx",
+    "baseline": {
+      "errors": 3,
+      "warnings": 3
+    },
+    "current": {
+      "errors": 3,
+      "warnings": 3
+    },
+    "newFindings": []
+  },
+  {
+    "file": "components\\inbox\\inbox-view.tsx",
+    "baseline": {
+      "errors": 4,
+      "warnings": 15
+    },
+    "current": {
+      "errors": 4,
+      "warnings": 15
+    },
+    "newFindings": []
+  },
+  {
+    "file": "components\\inbox\\workspace-storage-modal.tsx",
+    "baseline": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "current": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "newFindings": []
+  },
+  {
+    "file": "lib\\inbox\\use-arrival-notifications.ts",
+    "baseline": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "current": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "newFindings": []
+  },
+  {
+    "file": "lib\\inbox\\use-conversation-pages.ts",
+    "baseline": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "current": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "newFindings": []
+  }
+]

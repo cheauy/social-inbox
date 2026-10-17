@@ -1,0 +1,24 @@
+# Approved payment-status UI (local only)
+
+The user-supplied local mockup `C:/Users/TUF/social-inbox/public/images/payment-status-mockup.png` was verified readable and visually inspected before implementation. It is 1,282,095 bytes; SHA-256 `6762f83bb832e61ee7dd70ff8fa82a4fc7a396e3d9c62d66bf425f5b756994ec`. The user image is untouched and is not copied or committed as a public asset. This local-file route supersedes the earlier Library materialization blockers.
+
+The responsive status card follows the approved white-card layout, teal PayWay spinner, short status copy and compact upper-right X. Manual submitted attempts show a static amber clock, Under review, Receipt submitted and Awaiting manual verification. Amount/currency come from the saved server attempt; no sample values or fabricated success are used. Production views do not show test-payment labels; genuine sandbox attempts retain their warning. Existing workspace, plan, reference, receipt/history and proof recovery remain available below the card.
+
+Close is an accessible navigation link to Subscription and never invokes cancellation or withdrawal. Explicit cancellation/withdrawal keeps its existing feature gates and confirmation flow. The CSS spinner does not schedule provider requests. Existing saved-status reads, PayWay verification, backoff and twenty-refresh limit are preserved; when that limit is reached the spinner stops and Check status allows an explicit retry of the same saved identity. Terminal PayWay attempts also expose that existing explicit verification path; they do not restart automatic checks. Timeout/error states stop the animation and retain retry/sign-in controls. Manual attempts never invoke provider verification or self-approve.
+
+## Verification
+
+- 75 focused React/controlled-transport tests pass, including the navigation-failure regression, shared success guards, submitted manual review, exact USD/KHR amounts, close versus withdrawal, thirty-second timeout, retry identity, no checkout creation, inquiry limits, legacy expiry/modal behavior and historical/review outcomes.
+- The full mocked browser flow runs EN/KM at 390/768/1024/1440 pixels: lost manual finalize/navigation replies, reload, initial/polled approval/rejection, current versus historical access, auth/permission isolation, private proof recovery/validation, saved PayWay verification and explicit terminal checks. It checks the approved card, close focus/no mutation, no overflow and reduced-motion CSS. All 640 assertions pass across eight cases. Current results and visually inspected screenshots are under `docs/evidence/payment-success-20261017/browser/`.
+- TypeScript passes (`tsc --noEmit --incremental false`); targeted ESLint passes without warnings; `git diff --check` passes. Current logs are `.codex/payment-success-{regressions,types,lint,browser}.txt`.
+- Provider responses, accounts, uploads, money and status data in tests are synthetic. No real payment, provider send, production setting change, push or deployment occurred.
+
+Implementation is isolated on branch `retire-direct-bakong`, following retirement commit `c19d062` and Facebook base `3b5a83f`. Primary worktree edits remain untouched. The combined release remains held for coordination and final review.
+
+## Success card reconciliation and P2 correction
+
+The independent review reproduced a confirmed payment changing to Unable to check payment when only its workspace switch failed. A focused regression failed on `ffa1de8` (`.codex/payment-navigation-before.txt`) before the fix. Navigation now has separate error state, so its failure leaves Payment successful and the saved amount/receipt intact, shows Unable to open workspace, and permits retry without provider verification or another checkout.
+
+The approved primary PaymentSuccessCard was reviewed and integrated with its existing dependencies (`lucide-react`, plan catalog, payment display/language helpers and the existing `public/images/tenh_logo.png`). The richer card includes saved plan/term, amount, provider, reference, receipt and Go to inbox, which first switches to the purchased workspace. The live card requires approved payment plus active application and a known environment. Sandbox cards explicitly disclaim real-money settlement. Historical, unresolved, conflicting and unknown states cannot claim live success.
+
+Only these relevant primary success changes were reconciled. The current branch's newer legacy Bakong dialog/focus/close, expiry routing and explicit-only closed-checkout inquiry safeguards were retained. Its modal effect follows success eligibility so returning from success to historical status opens the correct modal; a regression covers both directions. Primary files, account-deletion work and the user's reference image remain untouched. Publication is still held for independent review and coordinated release.

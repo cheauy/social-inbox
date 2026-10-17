@@ -278,11 +278,14 @@ export async function GET() {
   // The notification center already polls every 30 seconds. On each poll,
   // safely materialize any due reminder into one unread notification for
   // every active member (including Owners) in that workspace.
-  await createDueReminderNotifications(scope.businessIds);
-
-  const { data, error } = await supabaseAdmin
-    .from("team_notifications")
-    .select(`
+  // Privacy metadata is independent after scope authorization. Settle both
+  // branches even on failure: reminder writes must not outlive this handler.
+  const [notificationRead, privacyRead] = await Promise.allSettled([
+    (async () => {
+      await createDueReminderNotifications(scope.businessIds);
+      return supabaseAdmin
+        .from("team_notifications")
+        .select(`
       id,
       business_id,
       recipient_member_id,
@@ -297,11 +300,16 @@ export async function GET() {
       read_at,
       created_at
     `)
-    .in("business_id", scope.businessIds)
-    .in("recipient_member_id", scope.memberIds)
-    .neq("notification_type", "team_chat_mention")
-    .order("created_at", { ascending: false })
-    .limit(80);
+        .in("business_id", scope.businessIds)
+        .in("recipient_member_id", scope.memberIds)
+        .neq("notification_type", "team_chat_mention")
+        .order("created_at", { ascending: false })
+        .limit(80);
+    })(),
+    hiddenPersonalAccountIds(scope.businessIds, scope.user.id),
+  ]);
+  if (notificationRead.status === "rejected") throw notificationRead.reason;
+  const { data, error } = notificationRead.value;
 
   if (error) {
     return NextResponse.json(
@@ -315,10 +323,13 @@ export async function GET() {
   }
 
   // Notifications about Telegram Personal chats this user may not see are not shown.
-  const hiddenPersonal = await hiddenPersonalAccountIds(scope.businessIds, scope.user.id);
+  if (privacyRead.status === "rejected") throw privacyRead.reason;
+  const hiddenPersonal = privacyRead.value;
   const rows = (data ?? []) as Array<{ conversation_id?: string | null; contact_id?: string | null }>;
-  const hiddenConversations = await hiddenConversationIdSet(rows.map((row) => row.conversation_id), hiddenPersonal);
-  const hiddenContacts = await hiddenContactIdSet(rows.map((row) => row.contact_id), hiddenPersonal);
+  const [hiddenConversations, hiddenContacts] = await Promise.all([
+    hiddenConversationIdSet(rows.map((row) => row.conversation_id), hiddenPersonal),
+    hiddenContactIdSet(rows.map((row) => row.contact_id), hiddenPersonal),
+  ]);
   const visible = rows.filter((row) =>
     !(row.conversation_id && hiddenConversations.has(row.conversation_id)) &&
     !(row.contact_id && hiddenContacts.has(row.contact_id)));

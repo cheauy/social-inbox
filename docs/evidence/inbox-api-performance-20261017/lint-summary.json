@@ -1,0 +1,98 @@
+[
+  {
+    "file": "app/api/inbox/live-state/route.ts",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "app/api/team-notifications/route.ts",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "lib/inbox/get-active-inbox-channels.ts",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "lib/inbox/get-active-inbox-memberships.ts",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "lib/inbox/get-conversation-page.ts",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "lib/inbox/get-conversations.ts",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "tests/inbox-api-performance-compare.cjs",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "tests/inbox-api-performance-harness.cjs",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "tests/inbox-api-performance-measure.cjs",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "tests/inbox-api-read-performance.test.cjs",
+    "errors": 0,
+    "warnings": 0,
+    "messages": []
+  },
+  {
+    "file": "tests/inbox-entry-read-lifecycle.rsc.cjs",
+    "errors": 0,
+    "warnings": 1,
+    "messages": [
+      {
+        "ruleId": "@typescript-eslint/no-unused-vars",
+        "severity": 1,
+        "message": "'init' is defined but never used.",
+        "line": 25,
+        "column": 49,
+        "nodeType": "Identifier",
+        "messageId": "unusedVar",
+        "endLine": 25,
+        "endColumn": 53
+      }
+    ]
+  },
+  {
+    "file": "tests/inbox-server-paging.test.cjs",
+    "errors": 0,
+    "warnings": 1,
+    "messages": [
+      {
+        "ruleId": "@typescript-eslint/no-unused-vars",
+        "severity": 1,
+        "message": "'body' is defined but never used.",
+        "line": 117,
+        "column": 44,
+        "nodeType": "Identifier",
+        "messageId": "unusedVar",
+        "endLine": 117,
+        "endColumn": 48
+      }
+    ]
+  }
+]
