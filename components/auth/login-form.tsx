@@ -30,29 +30,39 @@ export function LoginForm() {
   const [error, setError] = useState<"credentials" | "login" | "rate" | "unavailable" | null>(params.get("error") ? "login" : null);
   const active = useRef<AbortController | null>(null);
   useEffect(() => {
+    function restore(event: PageTransitionEvent) {
+      if (event.persisted) { active.current?.abort(); active.current = null; setBusy(null); }
+    }
+    window.addEventListener("pageshow", restore);
+    return () => { window.removeEventListener("pageshow", restore); active.current?.abort(); active.current = null; };
+  }, []);
+  useEffect(() => {
+    if (!rememberMe || rememberDays !== null) return;
     const controller = new AbortController();
     void fetch("/api/auth/policy", { cache: "no-store", signal: controller.signal }).then(async response => {
       const result = await response.json();
       if (!controller.signal.aborted && response.ok && result.success && Number.isInteger(result.rememberDays) && result.rememberDays >= 1 && result.rememberDays <= 90) setRememberDays(result.rememberDays);
     }).catch(() => {});
-    return () => { controller.abort(); active.current?.abort(); active.current = null; };
-  }, []);
+    return () => controller.abort();
+  }, [rememberMe, rememberDays]);
 
   async function signIn(provider?: "google" | "facebook") {
     if (active.current) return;
     const controller = new AbortController(); active.current = controller;
+    let navigating = false;
     setBusy(provider ?? "email"); setError(null);
     try {
       const response = await fetch(provider ? "/api/auth/oauth" : "/api/auth/login", { method: "POST", cache: "no-store", headers: { "Content-Type": "application/json" }, signal: controller.signal, body: JSON.stringify(provider ? { provider, rememberMe, next } : { email: email.trim().toLowerCase(), password, rememberMe, next }) });
       const result = await response.json();
+      if (controller.signal.aborted || active.current !== controller) return;
       if (!response.ok || !result.success) { setError(response.status === 429 ? "rate" : response.status >= 500 ? "unavailable" : !provider && result.code === "AUTH_INVALID_CREDENTIALS" ? "credentials" : "login"); return; }
       const destination = provider ? result.url : result.redirect;
       if (typeof destination !== "string" || (!provider && (!destination.startsWith("/") || destination.startsWith("//") || destination.includes("\\")))) throw new Error("Invalid sign-in destination");
-      if (!controller.signal.aborted) window.location.assign(destination);
+      if (!controller.signal.aborted) { window.location.assign(destination); navigating = true; }
     } catch {
       if (!controller.signal.aborted) setError("unavailable");
     } finally {
-      if (!controller.signal.aborted) { active.current = null; setBusy(null); }
+      if (!controller.signal.aborted && !navigating) { active.current = null; setBusy(null); }
     }
   }
   function handleEmailLogin(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (email.trim() && password) void signIn(); }

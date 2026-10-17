@@ -1,8 +1,9 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- CommonJS regression fixtures. */
 const test=require('node:test'),assert=require('node:assert/strict');const {loader}=require('./tenh-seven/harness.cjs');
 function fixture({admin=false,subscriptionError=false,signedOut=false}={}){let identityCalls=0;const overrides={
  'next/navigation':{redirect:path=>{throw Error('redirect:'+path)}},
  '@/lib/auth/get-current-member':{getCurrentMember:async()=>signedOut?{success:false,status:401}:{success:true,user:{id:'fixture-user'},member:{id:'fixture-member',business_id:'fixture-business'}}},
- '@/lib/admin/tenh-admin-auth':{isCurrentUserTenhAdminIdentity:async()=>{identityCalls++;return admin}},
+ '@/lib/admin/tenh-admin-auth':{isVerifiedUserTenhAdminIdentity:user=>{assert.equal(user.id,'fixture-user');identityCalls++;return admin}},
  '@/lib/subscription/get-business-subscription-access':{getBusinessSubscriptionAccess:async()=>{if(subscriptionError)throw Error('Synthetic subscription failure');return {allowed:true}}},
  '@/components/dashboard/dashboard-utility-navigation':{DashboardUtilityNavigation:'utility-navigation',DashboardUtilityNavigationProvider:'utility-provider'},
  '@/components/dashboard/dashboard-header':{DashboardHeader:'dashboard-header'},

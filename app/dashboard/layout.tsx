@@ -6,7 +6,7 @@ import { verifyAuthTicket } from "@/lib/auth/auth-ticket";
 import { SESSION_HINT_COOKIE } from "@/lib/auth/session-cookie-options";
 
 import { DashboardUtilityNavigation, DashboardUtilityNavigationProvider } from "@/components/dashboard/dashboard-utility-navigation";
-import { isCurrentUserTenhAdminIdentity } from "@/lib/admin/tenh-admin-auth";
+import { isVerifiedUserTenhAdminIdentity } from "@/lib/admin/tenh-admin-auth";
 
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { DashboardSessionBoundary } from "@/components/dashboard/dashboard-session-boundary";
@@ -100,7 +100,7 @@ export default async function DashboardLayout({
     const hint = verifyAuthTicket((await cookies()).get(SESSION_HINT_COOKIE)?.value, "persistence");
     if (typeof hint?.sessionId === "string") initialSessionId = hint.sessionId;
   } catch { /* The verified server user still binds the rendered workspace identity. */ }
-  const isAdmin = await isCurrentUserTenhAdminIdentity();
+  const isAdmin = isVerifiedUserTenhAdminIdentity(authResult.user);
 
   let subscriptionAccess: BusinessSubscriptionAccess;
 

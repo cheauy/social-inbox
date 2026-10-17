@@ -61,6 +61,12 @@ function getTenhAdminConfig() {
   };
 }
 
+/** Navigation only: reuse a user already verified by server Auth; admin APIs still verify independently. */
+export function isVerifiedUserTenhAdminIdentity(user: Pick<User, "id" | "email" | "email_confirmed_at">) {
+  const config = getTenhAdminConfig();
+  return Boolean(config && user.email_confirmed_at && normalizeUuid(user.id) === config.userId && normalizeEmail(user.email) === config.email);
+}
+
 /**
  * Identity-only TENH admin check.
  *

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- CommonJS regression fixtures. */
 const test=require('node:test'),assert=require('node:assert/strict'),path=require('node:path');
 const {loader,tick}=require('./inbox-recovery-harness.cjs');
 const artifact=process.env.TENH_ENTRY_BASELINE_DIR;
@@ -5,7 +6,7 @@ function setup({baseline=false,delay=0,authDenied=false,subscriptionError=false,
  const events=[],start=performance.now();const mark=event=>events.push({event,ms:performance.now()-start});
  const mocks={'next/navigation':{redirect:href=>{throw Error('redirect:'+href)}},
   '@/lib/auth/get-current-member':{getCurrentMember:async()=>authDenied?{success:false,status:401}:{success:true,user:{id:'user'},member:{id:'member',business_id:'business'}}},
-  '@/lib/admin/tenh-admin-auth':{isCurrentUserTenhAdminIdentity:async()=>{mark('admin-start');if(adminPromise)await adminPromise;else if(delay)await new Promise(r=>setTimeout(r,delay));mark('admin-end');if(adminError)throw Error('admin unavailable');return false}},
+  '@/lib/admin/tenh-admin-auth':{isCurrentUserTenhAdminIdentity:async()=>{mark('admin-start');if(adminPromise)await adminPromise;else if(delay)await new Promise(r=>setTimeout(r,delay));mark('admin-end');if(adminError)throw Error('admin unavailable');return false},isVerifiedUserTenhAdminIdentity:user=>{assert.equal(user.id,'user');mark('admin-start');mark('admin-end');if(adminError)throw Error('admin unavailable');return false}},
   '@/lib/subscription/get-business-subscription-access':{getBusinessSubscriptionAccess:async business=>{assert.equal(business,'business');mark('subscription-start');if(subscriptionPromise)await subscriptionPromise;else if(delay)await new Promise(r=>setTimeout(r,delay));mark('subscription-end');if(subscriptionError)throw Error('subscription unavailable');return{locked:false}}},
   '@/components/dashboard/dashboard-utility-navigation':{DashboardUtilityNavigation:'utility',DashboardUtilityNavigationProvider:'utility-provider'},
   '@/components/dashboard/dashboard-header':{DashboardHeader:'header'},'@/components/dashboard/inbox-return-context':{InboxReturnContextProvider:'return-provider'},
@@ -26,10 +27,10 @@ function setup({baseline=false,delay=0,authDenied=false,subscriptionError=false,
  return{events,layout};
 }
 const nodes=tree=>!tree||typeof tree!=='object'?[]:[tree,...[tree.props?.children].flat(Infinity).flatMap(nodes)];
-test('authorized shell waits for successful admin identity before starting subscription access',async()=>{
- let releaseAdmin,releaseSubscription;const adminPromise=new Promise(r=>releaseAdmin=r),subscriptionPromise=new Promise(r=>releaseSubscription=r),f=setup({adminPromise,subscriptionPromise});const pending=f.layout({children:'protected'});
- try{await tick();assert.equal(f.events.filter(e=>e.event==='admin-start').length,1);assert.equal(f.events.filter(e=>e.event==='subscription-start').length,0,'subscription access includes lifecycle work and must retain its existing invocation gate');releaseAdmin();await tick();assert.equal(f.events.filter(e=>e.event==='subscription-start').length,1);}
- finally{releaseAdmin();releaseSubscription();await pending}
+test('authorized shell checks the verified identity before starting subscription access',async()=>{
+ let releaseSubscription;const subscriptionPromise=new Promise(r=>releaseSubscription=r),f=setup({subscriptionPromise});const pending=f.layout({children:'protected'});
+ try{await tick();assert.equal(f.events.filter(e=>e.event==='admin-start').length,1);assert.equal(f.events.filter(e=>e.event==='subscription-start').length,1);assert.ok(f.events.findIndex(e=>e.event==='admin-end')<f.events.findIndex(e=>e.event==='subscription-start'),'subscription lifecycle work still follows the verified identity check');}
+ finally{releaseSubscription();await pending}
 });
 test('shell denies unsigned users before either task and preserves subscription failure gate',async()=>{
  const denied=setup({authDenied:true});await assert.rejects(denied.layout({children:'protected'}),/redirect:\/login/);assert.equal(denied.events.length,0);
